@@ -1,0 +1,12 @@
+den_credentials.json
+den_session.json
+
+# Generated outputs — rebuilt on every run
+output/
+
+# Live data files
+data/master_history_raw.csv
+data/latest_scrape.csv
+
+# macOS
+.DS_Store

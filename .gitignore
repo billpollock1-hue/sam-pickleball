@@ -1,7 +1,7 @@
 den_credentials.json
 den_session.json
 
-# Generated outputs — rebuilt on every run
+# Generated outputs — rebuilt on every run (docs/ is the exception — tracked for GitHub Pages)
 output/
 
 # Live data files

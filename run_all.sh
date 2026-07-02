@@ -92,7 +92,21 @@ python3 pickleball_engine_v2.py \
 mv "$TEMP_OUTPUT" "$FINAL_OUTPUT"
 
 echo ""
+echo "5. Building session viewer..."
+python3 build_session_viewer.py
+
+echo ""
+echo "6. Updating docs/ for GitHub Pages..."
+mkdir -p docs
+cp output/session_viewer.html docs/
+cp output/rating_history.html docs/
+cp output/competitive_balance.html docs/
+cp output/recent_trends.html docs/
+cp output/consistency.html docs/
+
+echo ""
 echo "=== Done ==="
 echo "Outputs are in: output/"
 echo "Main ratings workbook: $FINAL_OUTPUT"
 echo "Summary workbook: output/pickleball_2026_summary_report.xlsx"
+echo "GitHub Pages files updated in: docs/"

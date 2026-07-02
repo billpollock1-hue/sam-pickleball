@@ -87,6 +87,35 @@ def predicted(team_a_rating, team_b_rating):
     gap = (team_a_rating - team_b_rating) * EXPECTATION_COMPRESSION
     return 1 / (1 + 10 ** (-gap / 400))
 
+def game_position_decay(game_position_in_window, window_size=60, total_games=None):
+    """
+    Calculate decay factor based on game position in the 60-game moving window.
+    
+    Games at position 1 (oldest in window) get 25% weight.
+    Games at position 60 (newest) get 100% weight.
+    Linear interpolation between them prevents cliff-drop when games leave window.
+    
+    Args:
+        game_position_in_window: Position within the window (1 to 60)
+        window_size: Size of the moving window (default 60)
+    
+    Returns:
+        Decay factor (0.25 to 1.0)
+    """
+    if total_games is not None and total_games < 60:
+        return 1.0
+    
+    if game_position_in_window < 1 or game_position_in_window > window_size:
+        return 1.0
+    
+    min_weight = 0.25  # Oldest games get 25% weight
+    max_weight = 1.0   # Newest games get 100% weight
+    
+    # Linear interpolation from oldest to newest
+    decay = min_weight + (max_weight - min_weight) * (game_position_in_window - 1) / (window_size - 1)
+    return round(decay, 3)
+
+
 
 def freshness_factor(days_since_last_play, avg_game_age):
     last_play_penalty = max(0, days_since_last_play - NO_AGING_DAYS) / 365
@@ -198,6 +227,18 @@ def _provisional_k(game_num):
 def build_full_player_log(raw):
     ratings = defaultdict(lambda: BASE_ELO)
     player_game_count = defaultdict(int)  # rated games played so far per player
+    player_games_in_window = defaultdict(list)  # Track game sequence for 60-game window
+    
+    # Count total games per player BEFORE processing (needed for decay decision)
+    player_total_games = defaultdict(int)
+    for _, r in raw.iterrows():
+        if bool(r["include_in_ratings"]):
+            w1, w2 = split_team(r["winning_team"])
+            l1, l2 = split_team(r["losing_team"])
+            player_total_games[w1] += 1
+            player_total_games[w2] += 1
+            player_total_games[l1] += 1
+            player_total_games[l2] += 1
     player_rows = []
 
     for match_id, (_, r) in enumerate(raw.iterrows(), start=1):
@@ -223,10 +264,33 @@ def build_full_player_log(raw):
         else:
             k_w1 = k_w2 = k_l1 = k_l2 = 0.0
 
-        d_w1 = round(k_w1 * (1 - exp_win) * mult, 2)
-        d_w2 = round(k_w2 * (1 - exp_win) * mult, 2)
-        d_l1 = round(k_l1 * (0 - exp_lose) * mult, 2)
-        d_l2 = round(k_l2 * (0 - exp_lose) * mult, 2)
+        # Calculate position in 60-game window for phase-out decay
+        w1_pos = len(player_games_in_window[w1]) + 1  # +1 because this is the next game
+        w2_pos = len(player_games_in_window[w2]) + 1
+        l1_pos = len(player_games_in_window[l1]) + 1
+        l2_pos = len(player_games_in_window[l2]) + 1
+        
+        # Only keep last 60 games in the position calculation
+        if w1_pos > 60:
+            w1_pos = 60
+        if w2_pos > 60:
+            w2_pos = 60
+        if l1_pos > 60:
+            l1_pos = 60
+        if l2_pos > 60:
+            l2_pos = 60
+        
+        # Get decay factors for games at each position in window
+        decay_w1 = game_position_decay(w1_pos, total_games=player_total_games[w1]) if include else 1.0
+        decay_w2 = game_position_decay(w2_pos, total_games=player_total_games[w2]) if include else 1.0
+        decay_l1 = game_position_decay(l1_pos, total_games=player_total_games[l1]) if include else 1.0
+        decay_l2 = game_position_decay(l2_pos, total_games=player_total_games[l2]) if include else 1.0
+
+        # Apply decay to rating deltas to smooth window transitions
+        d_w1 = round(k_w1 * (1 - exp_win) * mult * decay_w1, 2)
+        d_w2 = round(k_w2 * (1 - exp_win) * mult * decay_w2, 2)
+        d_l1 = round(k_l1 * (0 - exp_lose) * mult * decay_l1, 2)
+        d_l2 = round(k_l2 * (0 - exp_lose) * mult * decay_l2, 2)
 
         rows_for_game = [
             (w1, w2, l1, l2, 1, sw, sl, d_w1, pred_win),
@@ -281,6 +345,22 @@ def build_full_player_log(raw):
             player_game_count[w2] += 1
             player_game_count[l1] += 1
             player_game_count[l2] += 1
+            
+            # Track games in 60-game window for each player
+            player_games_in_window[w1].append(match_id)
+            player_games_in_window[w2].append(match_id)
+            player_games_in_window[l1].append(match_id)
+            player_games_in_window[l2].append(match_id)
+            
+            # Trim to last 60 games to maintain window size
+            if len(player_games_in_window[w1]) > 60:
+                player_games_in_window[w1] = player_games_in_window[w1][-60:]
+            if len(player_games_in_window[w2]) > 60:
+                player_games_in_window[w2] = player_games_in_window[w2][-60:]
+            if len(player_games_in_window[l1]) > 60:
+                player_games_in_window[l1] = player_games_in_window[l1][-60:]
+            if len(player_games_in_window[l2]) > 60:
+                player_games_in_window[l2] = player_games_in_window[l2][-60:]
 
     return pd.DataFrame(player_rows)
 
@@ -2949,7 +3029,6 @@ def main():
         illustration.to_excel(writer, sheet_name="Illustration", index=False)
         performance_vs_expectation.to_excel(writer, sheet_name="Performance vs Expectation", index=False)
         model_validation.to_excel(writer, sheet_name="Model Validation", index=False)
-        rating_gap_distribution.to_excel(writer, sheet_name="Rating Gap vs Margin", index=False)
         expected_margin_calibration.to_excel(writer, sheet_name="Expected Margin Calibration", index=False)
         team_balance_analysis.to_excel(writer, sheet_name="Team Balance Analysis", index=False)
         extreme_partner_spread.to_excel(writer, sheet_name="Extreme Partner Spread", index=False)
@@ -3850,11 +3929,42 @@ def main():
         blank(r, 4); r += 1
         para(r,
             "Your team's rating is the average of you and your partner. A 100-point gap between teams "
-            "corresponds to roughly a 64% win probability for the stronger team; 200 points is ~76%; "
-            "300 points is ~85%. SAM shootout results have been captured since early 2022; those game records "
+            "corresponds to a 57% win probability for the stronger team; 200 points is 66%; "
+            "300 points is 78%. SAM shootout results have been captured since early 2022; those game records "
             "are what we feed into the model to produce the ratings and match-quality metrics in this workbook.",
             height=44); r += 1
         blank(r, 4); r += 1
+
+        # Rating gap distribution table — observed outcomes confirm win-probability claims
+        para(r,
+            "The table below shows how those probabilities played out across all rated games in the model, "
+            "and how rating gaps translate to point margins in practice.",
+            height=28); r += 1
+        blank(r, 3); r += 1
+
+        rgd_cols = ["Rating Gap", "% Won by Higher-Rated Team",
+                    "Margin 1–2", "Margin 3–4", "Margin 5–6", "Margin 7–8", "Margin 9–11"]
+        th(r, rgd_cols); r += 1
+        for i, (_, rgd_row) in enumerate(rating_gap_distribution.iterrows()):
+            fill = fill_alt if i % 2 == 0 else None
+            td(r, [rgd_row["Rating Gap"],
+                   rgd_row["% Won by Higher-Rated Team"],
+                   rgd_row.get("Margin 1–2", ""),
+                   rgd_row.get("Margin 3–4", ""),
+                   rgd_row.get("Margin 5–6", ""),
+                   rgd_row.get("Margin 7–8", ""),
+                   rgd_row.get("Margin 9–11", "")], fill=fill); r += 1
+
+        # Footnote
+        fn_r = r
+        st_ws.merge_cells(start_row=fn_r, start_column=2, end_row=fn_r, end_column=NCOLS)
+        fn_c = st_ws.cell(row=fn_r, column=2,
+                          value="Based on all rated games in the model through the current run date.")
+        fn_c.font = fIT
+        fn_c.alignment = Alignment(horizontal="left", vertical="center")
+        st_ws.row_dimensions[fn_r].height = 14
+        r += 1
+        blank(r, 8); r += 1
 
         def subsec(r, title):
             st_ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=NCOLS)
@@ -3958,7 +4068,8 @@ def main():
             "If 2-up/2-back had been applied a second time — after Session 2 finished — what court would you have "
             "been moved to? That is your step. If you finished in the bottom two on your Session 2 court (by point "
             "differential), your step is incremented by one — even if you were already on the lowest active court. "
-            "If you finished in the top two, your step decrements by one. Everyone else stays the same.",
+            "If you finished in the top two, your step decrements by one. Players on a middle court who finish "
+            "in the middle stay put; only those on an end court with nowhere to move stay regardless of finish.",
             height=56); r += 1
         blank(r, 4); r += 1
         para(r,
@@ -3973,7 +4084,7 @@ def main():
             "Percentage is a scoring efficiency metric: your total points scored divided by the maximum points you "
             "could have scored, over your last 90 games (or fewer if you have less history). Since each game is "
             "played to 11, the denominator is 90 × 11 = 990 for a full-history player. A player who averages "
-            "7 points per game would have a percentage of roughly 63% (630 / 990). Percentage serves as a "
+            "7 points per game would have a percentage of 63% (630 / 990). Percentage serves as a "
             "tiebreaker within the same step — among players with equal steps, higher percentage earns the "
             "better court position.",
             height=52); r += 1
@@ -4012,7 +4123,7 @@ def main():
             "to a player who plays the same number of games on weaker courts.",
             height=46); r += 1
         bullet(r,
-            "Percentage looks back 90 games (~10 play dates). A session from three months ago counts equally "
+            "Percentage looks back 90 games (~15 play dates). A session from three months ago counts equally "
             "with last week's session. There is no recency weighting.",
             height=22); r += 1
         blank(r, 6); r += 1
@@ -4026,7 +4137,8 @@ def main():
         blank(r, 4); r += 1
         bullet(r,
             f"Approximately 70% of players move to a different court between S1 and S2 — the highest churn "
-            f"of any approach we tested. Most of this movement is mechanical and position-based, not a "
+            f"of any approach we tested. On a typical 4-court day, that means only 3 of the 4 players on "
+            f"each court stay put. Most of this movement is mechanical and position-based, not a "
             f"reflection of how well a player actually performed.",
             height=28); r += 1
         bullet(r,
@@ -4045,7 +4157,7 @@ def main():
         para(r,
             f"The net result: under the current DEN system, the average within-court Elo spread is "
             f"{den['S1 Avg Spread']} for S1 and {den['S2 Avg Spread']} for S2. Courts are actually less "
-            f"balanced after the 2-up/2-back reassignment than they were at the start of the session.",
+            f"balanced after the 2-up/2-back reassignment than they were in Session 1.",
             height=32); r += 1
         blank(r, 4); r += 1
         th(r, ["Session", "Avg Within-Court Elo Spread", "What It Means"]); r += 1

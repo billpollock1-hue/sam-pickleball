@@ -4571,6 +4571,9 @@ def build_rating_history_html(eod_df, output_path):
         title=dict(text="SAM Player Rating History", font=dict(size=18)),
         xaxis_title="Date",
         yaxis_title="Modified Elo Rating",
+        # Lock the vertical scale — drag/scroll zoom applies to the x-axis only,
+        # so casual touches can't distort the rating scale
+        yaxis=dict(fixedrange=True),
         legend=dict(itemclick="toggle", itemdoubleclick="toggleothers"),
         hovermode="closest",
         height=620,

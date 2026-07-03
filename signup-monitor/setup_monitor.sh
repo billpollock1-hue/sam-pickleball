@@ -42,6 +42,13 @@ echo "Copying monitor script..."
 cp "$SCRIPT_DIR/monitor_signups.py" "$RUNTIME_DIR/monitor_signups.py"
 cp "$SCRIPT_DIR/generate_signup_viewer.py" "$RUNTIME_DIR/generate_signup_viewer.py"
 
+# ── Copy headless assignments-refresh chain ─────────────────────────────────
+echo "Copying assignments refresh scripts..."
+cp "$ASSIGNMENTS_DIR/den_assignments.py" "$RUNTIME_DIR/den_assignments.py"
+cp "$ASSIGNMENTS_DIR/generate_assignments_viewer.py" "$RUNTIME_DIR/generate_assignments_viewer.py"
+cp "$ASSIGNMENTS_DIR/refresh_assignments.py" "$RUNTIME_DIR/refresh_assignments.py"
+mkdir -p "$RUNTIME_DIR/output"
+
 # Patch BASE_DIR and add session-sync in the copied script
 python3 - "$RUNTIME_DIR/monitor_signups.py" "$ASSIGNMENTS_DIR" "$RUNTIME_DIR" << 'PYSCRIPT'
 import sys, re

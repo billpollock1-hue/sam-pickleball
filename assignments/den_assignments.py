@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -16,20 +17,33 @@ SIGNUP_URL = "https://app.pickleballden.com/clubSignUpSheetView"
 STARTING_COURT = 3
 PLAYERS_PER_COURT = 4
 
-# Repo root is the parent of this file's directory (assignments/)
+# Repo root is the parent of this file's directory (assignments/).
+# When PB_RUNTIME is set (headless refresh under the launchd monitor, which
+# cannot access ~/Documents), all paths resolve inside that runtime dir and
+# model files are the copies synced there by run_all.sh.
 ASSIGNMENTS_DIR = Path(__file__).resolve().parent
-MODEL_DIR = ASSIGNMENTS_DIR.parent
-MODEL_OUTPUT = MODEL_DIR / "output" / "pickleball_model_latest.xlsx"
-MODEL_INPUT = MODEL_DIR / "data" / "master_history_raw.csv"
-MODEL_SCRIPT = MODEL_DIR / "engine" / "pickleball_engine_v2.py"
+_RUNTIME = os.environ.get("PB_RUNTIME")
 
-OUT_DIR = ASSIGNMENTS_DIR / "output"
-OUT_DIR.mkdir(exist_ok=True)
+if _RUNTIME:
+    _BASE = Path(_RUNTIME)
+    MODEL_DIR = _BASE
+    MODEL_OUTPUT = _BASE / "pickleball_model_latest.xlsx"
+    MODEL_INPUT = _BASE / "master_history_raw.csv"
+    MODEL_SCRIPT = _BASE / "engine-not-available"  # ensure_model_current is never called in auto mode
+    OUT_DIR = _BASE / "output"
+    SESSION_FILE = str(_BASE / "den_session.json")
+else:
+    MODEL_DIR = ASSIGNMENTS_DIR.parent
+    MODEL_OUTPUT = MODEL_DIR / "output" / "pickleball_model_latest.xlsx"
+    MODEL_INPUT = MODEL_DIR / "data" / "master_history_raw.csv"
+    MODEL_SCRIPT = MODEL_DIR / "engine" / "pickleball_engine_v2.py"
+    OUT_DIR = ASSIGNMENTS_DIR / "output"
+    SESSION_FILE = str(ASSIGNMENTS_DIR / "den_session.json")
+
+OUT_DIR.mkdir(exist_ok=True, parents=True)
 
 HISTORY_DIR = OUT_DIR / "assignments_history"
 HISTORY_DIR.mkdir(exist_ok=True, parents=True)
-
-SESSION_FILE = str(ASSIGNMENTS_DIR / "den_session.json")
 DEBUG_MODE = False
 
 

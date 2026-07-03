@@ -17,3 +17,8 @@ git diff --cached --quiet && echo "No changes to publish." || (
   git push &&
   echo "Published: https://billpollock1-hue.github.io/sam-pickleball/session_viewer.html"
 )
+
+echo ""
+echo "Refreshing court assignments for upcoming play dates..."
+(cd assignments && ../.venv/bin/python3 refresh_assignments.py) \
+  || echo "Assignments refresh skipped (no open sheets, or signup/session data unavailable)."

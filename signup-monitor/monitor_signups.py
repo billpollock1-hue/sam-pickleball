@@ -5,8 +5,10 @@ Run every 15 min via launchd. Tracks sign-ups and withdrawals per date.
 
 import csv
 import json
+import os
 import re
 import subprocess
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -321,6 +323,33 @@ def run_monitor():
             print(f"[{timestamp_str}] Updated signup_viewer.html")
         except Exception as e:
             print(f"[{timestamp_str}] Viewer update failed: {e}")
+
+    open_changed = sorted(d for d in dates_with_changes if is_sheet_open(d))
+    if open_changed:
+        trigger_assignments_refresh(open_changed, timestamp_str)
+
+
+def trigger_assignments_refresh(dates, timestamp_str):
+    """Regenerate court assignments after signup changes (headless, in-runtime)."""
+    script = BASE_DIR / "refresh_assignments.py"
+    if not script.exists():
+        print(f"[{timestamp_str}] refresh_assignments.py not deployed — skipping assignments refresh.")
+        return
+    env = {**os.environ, "PB_RUNTIME": str(BASE_DIR)}
+    try:
+        r = subprocess.run(
+            [sys.executable, str(script), "--dates", *dates],
+            env=env, cwd=str(BASE_DIR),
+            capture_output=True, text=True, timeout=240,
+        )
+        if r.returncode == 0:
+            notify(f"Court assignments updated: {', '.join(dates)}")
+            print(f"[{timestamp_str}] Assignments refreshed: {', '.join(dates)}")
+        else:
+            print(f"[{timestamp_str}] Assignments refresh failed (rc={r.returncode}):\n"
+                  f"{r.stdout[-400:]}\n{r.stderr[-400:]}")
+    except Exception as e:
+        print(f"[{timestamp_str}] Assignments refresh error: {e}")
 
 
 def reconstruct_players_from_log(date_str):

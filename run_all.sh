@@ -91,6 +91,15 @@ python3 engine/pickleball_engine_v2.py \
 
 mv "$TEMP_OUTPUT" "$FINAL_OUTPUT"
 
+# Sync model inputs to the monitor runtime so the launchd agent can refresh
+# court assignments headlessly (it cannot read ~/Documents)
+PBM="$HOME/Library/Application Support/PBMonitor"
+if [ -d "$PBM" ]; then
+  cp "$FINAL_OUTPUT" "$PBM/pickleball_model_latest.xlsx"
+  cp "$MASTER_FILE" "$PBM/master_history_raw.csv"
+  echo "Synced model workbook + history to monitor runtime."
+fi
+
 echo ""
 echo "5. Building session viewer..."
 python3 engine/build_session_viewer.py

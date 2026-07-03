@@ -112,7 +112,7 @@ for match_id, (_, r) in enumerate(raw.iterrows(), start=1):
                 "score":    f"{pf}–{pa}",
                 "teamRating": round(team_pre),
                 "oppRating":  round(opp_pre),
-                "gap":        round(abs(team_pre - opp_pre)),
+                "gap":        round(team_pre - opp_pre),
                 "pre":        round(pre),
                 "change":     round(delta),
                 "post":       round(post),
@@ -415,7 +415,7 @@ function renderGames() {{
       <td>${{g.score}}</td>
       <td>${{g.teamRating}}</td>
       <td>${{g.oppRating}}</td>
-      <td>${{g.gap}}</td>
+      <td>${{fmt(g.gap)}}</td>
       <td>${{g.pre}}</td>
       <td>${{fmt(g.change)}}</td>
       <td>${{g.post}}</td>

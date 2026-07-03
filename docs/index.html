@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAM Pickleball — Ratings & Charts</title>
+<style>
+  :root {
+    --blue-dark: #1F4E79;
+    --blue-mid:  #2E75B6;
+    --blue-light:#D6E4F0;
+    --text:      #333333;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Calibri, Arial, sans-serif;
+    color: var(--text);
+    background: #f7f9fc;
+    min-height: 100vh;
+  }
+  header {
+    background: var(--blue-dark);
+    color: #fff;
+    padding: 26px 24px;
+    text-align: center;
+  }
+  header h1 { font-size: 24px; letter-spacing: 0.3px; }
+  header p  { font-size: 14px; opacity: 0.85; margin-top: 6px; }
+
+  main {
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 24px 16px 48px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  a.card {
+    display: block;
+    background: #fff;
+    border: 1px solid #dbe4ee;
+    border-left: 5px solid var(--blue-mid);
+    border-radius: 8px;
+    padding: 16px 18px;
+    text-decoration: none;
+    color: var(--text);
+    transition: box-shadow 0.15s, transform 0.15s;
+  }
+  a.card:hover {
+    box-shadow: 0 3px 10px rgba(31, 78, 121, 0.15);
+    transform: translateY(-1px);
+  }
+  a.card h2 {
+    font-size: 17px;
+    color: var(--blue-dark);
+    margin-bottom: 4px;
+  }
+  a.card p { font-size: 13.5px; color: #555; line-height: 1.4; }
+
+  footer {
+    text-align: center;
+    font-size: 12px;
+    color: #8a97a8;
+    padding: 12px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>SAM Pickleball</h1>
+  <p>Ratings, results, and trends for the 6 AM shootout</p>
+</header>
+
+<main>
+  <a class="card" href="session_viewer.html">
+    <h2>Session Viewer</h2>
+    <p>Game-by-game results and rating changes for any play date. Pick a date, see every game, every score, and how each player's rating moved.</p>
+  </a>
+
+  <a class="card" href="rating_history.html">
+    <h2>Rating History</h2>
+    <p>Interactive rating timelines for every player. Check the players you want, choose a time range, and compare trajectories.</p>
+  </a>
+
+  <a class="card" href="competitive_balance.html">
+    <h2>Competitive Balance</h2>
+    <p>How evenly matched our courts have been over time — average match gap, blowout share, and the size of the player pool by quarter.</p>
+  </a>
+
+  <a class="card" href="recent_trends.html">
+    <h2>Recent Trends</h2>
+    <p>Who's hot and who's cooling off — recent performance versus established rating.</p>
+  </a>
+
+  <a class="card" href="consistency.html">
+    <h2>Consistency</h2>
+    <p>Which players deliver steady results game to game, and which swing between big wins and rough outings.</p>
+  </a>
+</main>
+
+<footer>
+  Updated automatically after each play date.
+</footer>
+
+</body>
+</html>

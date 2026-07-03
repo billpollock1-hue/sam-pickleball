@@ -69,22 +69,22 @@ else
   echo "Date window: $START_DATE through $END_DATE"
   echo "Update rule: scrape only when master history is behind the most recent possible play date."
 
-  node scrape.js --start "$START_DATE" --end "$END_DATE" --output "$LATEST_FILE"
+  node scraper/scrape.js --start "$START_DATE" --end "$END_DATE" --output "$LATEST_FILE"
 
   echo ""
   echo "2. Cleaning/deduping master history..."
-  python3 merge_csv.py
+  python3 scraper/merge_csv.py
 fi
 
 echo ""
 echo "3. Building 2026 summary workbook..."
-python3 build_2026_summaries.py
+python3 engine/build_2026_summaries.py
 
 echo ""
 echo "4. Running rating engine..."
 rm -f "$TEMP_OUTPUT"
 
-python3 pickleball_engine_v2.py \
+python3 engine/pickleball_engine_v2.py \
   --input "$MASTER_FILE" \
   --output "$TEMP_OUTPUT" \
   --with-history
@@ -93,7 +93,7 @@ mv "$TEMP_OUTPUT" "$FINAL_OUTPUT"
 
 echo ""
 echo "5. Building session viewer..."
-python3 build_session_viewer.py
+python3 engine/build_session_viewer.py
 
 echo ""
 echo "6. Updating docs/ for GitHub Pages..."

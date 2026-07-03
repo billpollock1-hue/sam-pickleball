@@ -1,12 +1,22 @@
+# Secrets & sessions
 den_credentials.json
 den_session.json
 
 # Generated outputs — rebuilt on every run (docs/ is the exception — tracked for GitHub Pages)
 output/
+*.pdf
 
 # Live data files
 data/master_history_raw.csv
 data/latest_scrape.csv
+
+# Virtual environment
+.venv/
+
+# Monitor runtime pointers (live files under ~/Library/Application Support/PBMonitor)
+signup-monitor/logs
+signup-monitor/signup_viewer.html
+signup_monitor_state.json
 
 # macOS
 .DS_Store

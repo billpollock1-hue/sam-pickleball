@@ -5,12 +5,16 @@ All data is embedded as JSON — no server required.
 """
 
 import sys, math, json
-sys.path.insert(0, "/Users/billpollock/Documents/SAM Pickleball/PickleballModel")
 
 from collections import defaultdict
 from pathlib import Path
 
 import pandas as pd
+
+# Engine lives in the same directory; repo root is the parent
+ENGINE_DIR = Path(__file__).resolve().parent
+REPO_ROOT  = ENGINE_DIR.parent
+sys.path.insert(0, str(ENGINE_DIR))
 
 from pickleball_engine_v2 import (
     BASE_ELO, K_FACTOR, PROVISIONAL_K_START, PROVISIONAL_K_GAMES,
@@ -18,8 +22,8 @@ from pickleball_engine_v2 import (
     margin_multiplier, game_position_decay, _provisional_k,
 )
 
-DATA_PATH = Path("/Users/billpollock/Documents/SAM Pickleball/PickleballModel/data/master_history_raw.csv")
-OUT_PATH  = Path("/Users/billpollock/Documents/SAM Pickleball/PickleballModel/output/session_viewer.html")
+DATA_PATH = REPO_ROOT / "data" / "master_history_raw.csv"
+OUT_PATH  = REPO_ROOT / "output" / "session_viewer.html"
 
 # ── Load & prepare ────────────────────────────────────────────────────────────
 raw = pd.read_csv(DATA_PATH)

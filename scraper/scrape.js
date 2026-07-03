@@ -8,8 +8,8 @@ const readline = require('readline');
   let rl;
 
   try {
-    const SESSION_FILE = 'den_session.json';
-    const CONFIG_FILE  = 'den_config.json';
+    const SESSION_FILE = `${__dirname}/den_session.json`;
+    const CONFIG_FILE  = `${__dirname}/den_config.json`;
     const hasSession   = fs.existsSync(SESSION_FILE);
     const config       = fs.existsSync(CONFIG_FILE)
       ? JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'))
@@ -337,7 +337,7 @@ const readline = require('readline');
     console.log(`Using date window: ${startDate.toDateString()} through ${endDate.toDateString()}`);
 
     // ── Load credentials if available ───────────────────────────────────
-    const CREDS_FILE = 'den_credentials.json';
+    const CREDS_FILE = `${__dirname}/den_credentials.json`;
     const creds = fs.existsSync(CREDS_FILE)
       ? JSON.parse(fs.readFileSync(CREDS_FILE, 'utf8'))
       : {};

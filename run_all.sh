@@ -109,6 +109,10 @@ echo "5b. Building storybook..."
 python3 engine/build_storybook.py
 
 echo ""
+echo "5c. Building slim leaderboard..."
+python3 engine/build_leaderboard_html.py
+
+echo ""
 echo "6. Updating docs/ for GitHub Pages..."
 mkdir -p docs
 cp output/session_viewer.html docs/
@@ -117,6 +121,7 @@ cp output/competitive_balance.html docs/
 cp output/recent_trends.html docs/
 cp output/consistency.html docs/
 cp output/storybook.html docs/
+cp output/leaderboard.html docs/
 
 echo ""
 echo "=== Done ==="

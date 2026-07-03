@@ -100,13 +100,17 @@ def sv(row, key, default="—"):
     v = row.get(key, default)
     return default if pd.isna(v) else v
 
-# Competitive balance display quarters: first, latest, three waypoints
+# Competitive balance display quarters: first, latest MEANINGFUL, waypoints.
+# The current in-progress quarter can have only a handful of play dates —
+# too thin a sample to anchor trend claims — so require a real game count.
 cbq = cb.set_index("Quarter")
 want = ["2022 Q1", "2023 Q1", "2024 Q1", "2025 Q2"]
 show_q = [q for q in want if q in cbq.index]
-latest_q = cb["Quarter"].iloc[-1]
+mature = cb[cb["Games"] >= 60]
+latest_q = mature["Quarter"].iloc[-1] if not mature.empty else cb["Quarter"].iloc[-1]
 if latest_q not in show_q:
     show_q.append(latest_q)
+show_q = [q for q in show_q if q <= latest_q or q in want]
 q_first = cbq.loc[show_q[0]]
 q_last = cbq.loc[show_q[-1]]
 max_gap = max(cbq.loc[q, "Avg Gap"] for q in show_q)
@@ -118,7 +122,7 @@ for q in show_q:
     balance_rows += f"""
       <tr>
         <td>{q}</td>
-        <td><div class="bar"><span style="width:{barw}%;"></span><em>{round(r['Avg Gap'])}</em></div></td>
+        <td><div class="bar"><div class="track"><span style="width:{barw}%;"></span></div><em>{round(r['Avg Gap'])}</em></div></td>
         <td>{round(100 * r['% Under 200'])}%</td>
       </tr>"""
 
@@ -257,10 +261,11 @@ html = f"""<!DOCTYPE html>
   .btable tr:nth-child(even) td {{ background: #f5efe1; }}
   .btable tr.hl td {{ background: #eee3c5; font-weight: bold; }}
 
-  .bar {{ position: relative; background: #e8dfc9; border-radius: 4px; height: 16px; min-width: 90px; }}
-  .bar span {{ position: absolute; left: 0; top: 0; bottom: 0; background: var(--navy-2); border-radius: 4px; }}
-  .bar em {{ position: absolute; right: 6px; top: 0; bottom: 0; display: flex; align-items: center;
-             font-style: normal; font-size: 10.5px; color: #fff; mix-blend-mode: difference; }}
+  .bar {{ display: flex; align-items: center; gap: 8px; min-width: 110px; }}
+  .bar .track {{ flex: 1; position: relative; background: #e8dfc9; border-radius: 4px; height: 14px; }}
+  .bar .track span {{ position: absolute; left: 0; top: 0; bottom: 0; background: var(--navy-2); border-radius: 4px; }}
+  .bar em {{ font-style: normal; font-family: 'Trebuchet MS', sans-serif; font-size: 11.5px;
+             color: var(--navy); font-weight: bold; width: 30px; text-align: right; flex: none; }}
 
   .flaw {{ background: var(--tan); border-left: 4px solid #b3543a; border-radius: 0 8px 8px 0;
            padding: 3% 4.5%; margin-bottom: 3%; }}

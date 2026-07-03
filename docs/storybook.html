@@ -98,10 +98,11 @@
   .btable tr:nth-child(even) td { background: #f5efe1; }
   .btable tr.hl td { background: #eee3c5; font-weight: bold; }
 
-  .bar { position: relative; background: #e8dfc9; border-radius: 4px; height: 16px; min-width: 90px; }
-  .bar span { position: absolute; left: 0; top: 0; bottom: 0; background: var(--navy-2); border-radius: 4px; }
-  .bar em { position: absolute; right: 6px; top: 0; bottom: 0; display: flex; align-items: center;
-             font-style: normal; font-size: 10.5px; color: #fff; mix-blend-mode: difference; }
+  .bar { display: flex; align-items: center; gap: 8px; min-width: 110px; }
+  .bar .track { flex: 1; position: relative; background: #e8dfc9; border-radius: 4px; height: 14px; }
+  .bar .track span { position: absolute; left: 0; top: 0; bottom: 0; background: var(--navy-2); border-radius: 4px; }
+  .bar em { font-style: normal; font-family: 'Trebuchet MS', sans-serif; font-size: 11.5px;
+             color: var(--navy); font-weight: bold; width: 30px; text-align: right; flex: none; }
 
   .flaw { background: var(--tan); border-left: 4px solid #b3543a; border-radius: 0 8px 8px 0;
            padding: 3% 4.5%; margin-bottom: 3%; }
@@ -244,7 +245,7 @@
         <div class="kicker">Chapter Four</div>
         <h2>The Evidence: A Growing Competitiveness Problem</h2>
         <p>With a trustworthy measuring stick, we can now measure match quality directly. &ldquo;Match gap&rdquo; is the rating difference between the two teams in a game &mdash; smaller means more evenly matched.</p>
-        <p>The trend is unmistakable. The average match gap has nearly doubled since early 2022, and games that qualify as closely matched &mdash; a gap under 200 points &mdash; have fallen from 86% of all games to 65%.</p>
+        <p>The trend is unmistakable. The average match gap has nearly doubled since early 2022, and games that qualify as closely matched &mdash; a gap under 200 points &mdash; have fallen from 86% of all games to 58%.</p>
         <p>Mismatched games are no longer rare exceptions. They are now the norm for roughly 4 in 10 matches.</p>
         <div class="pgnum">7</div>
       </div>
@@ -259,28 +260,28 @@
           
       <tr>
         <td>2022 Q1</td>
-        <td><div class="bar"><span style="width:49%;"></span><em>99</em></div></td>
+        <td><div class="bar"><div class="track"><span style="width:49%;"></span></div><em>99</em></div></td>
         <td>86%</td>
       </tr>
       <tr>
         <td>2023 Q1</td>
-        <td><div class="bar"><span style="width:88%;"></span><em>176</em></div></td>
+        <td><div class="bar"><div class="track"><span style="width:88%;"></span></div><em>176</em></div></td>
         <td>64%</td>
       </tr>
       <tr>
         <td>2024 Q1</td>
-        <td><div class="bar"><span style="width:100%;"></span><em>201</em></div></td>
+        <td><div class="bar"><div class="track"><span style="width:100%;"></span></div><em>201</em></div></td>
         <td>58%</td>
       </tr>
       <tr>
         <td>2025 Q2</td>
-        <td><div class="bar"><span style="width:90%;"></span><em>181</em></div></td>
+        <td><div class="bar"><div class="track"><span style="width:90%;"></span></div><em>181</em></div></td>
         <td>61%</td>
       </tr>
       <tr>
-        <td>2026 Q3</td>
-        <td><div class="bar"><span style="width:89%;"></span><em>179</em></div></td>
-        <td>65%</td>
+        <td>2026 Q2</td>
+        <td><div class="bar"><div class="track"><span style="width:99%;"></span></div><em>199</em></div></td>
+        <td>58%</td>
       </tr>
         </table>
         <div class="callout" style="margin-top:5%;">The average court matchup today is nearly <b>twice as uneven</b> as it was in early 2022.</div>
@@ -301,7 +302,7 @@
       <div class="face front">
         <div class="kicker">Then vs. Now</div>
         <div class="stat-stack">
-          <div class="stat"><div class="num">99 &rarr; 179</div><div class="lbl">average match gap, 2022 Q1 vs. 2026 Q3</div></div>
+          <div class="stat"><div class="num">99 &rarr; 199</div><div class="lbl">average match gap, 2022 Q1 vs. 2026 Q2</div></div>
           <div class="stat"><div class="num">~26 &rarr; 48</div><div class="lbl">active leaderboard players</div></div>
           <div class="stat"><div class="num">1,319 pts</div><div class="lbl">rating spread across today's leaderboard</div></div>
         </div>

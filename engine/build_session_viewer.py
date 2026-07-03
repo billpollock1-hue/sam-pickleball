@@ -182,6 +182,18 @@ html = f"""<!DOCTYPE html>
     background: #fff;
     cursor: pointer;
   }}
+  .sec-head {{ display: flex; align-items: center; gap: 10px; }}
+  .sec-head h2 {{ flex: 1; }}
+  .sec-head label {{ font-weight: bold; color: var(--blue-dark); font-size: 13px; }}
+  .sec-head select {{
+    padding: 5px 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 13px;
+    background: #fff;
+    cursor: pointer;
+    margin-bottom: 8px;
+  }}
   .controls .stat-pills {{ margin-left: auto; display: flex; gap: 10px; flex-wrap: wrap; }}
   .pill {{
     background: var(--blue-light);
@@ -257,7 +269,11 @@ html = f"""<!DOCTYPE html>
     <div id="summaryTable"></div>
   </section>
   <section>
-    <h2>Game by Game</h2>
+    <div class="sec-head">
+      <h2>Game by Game</h2>
+      <label for="playerSelect">Player:</label>
+      <select id="playerSelect" onchange="playerFilter = this.value; renderGames();"></select>
+    </div>
     <div id="gameTable"></div>
   </section>
 </main>
@@ -266,6 +282,7 @@ html = f"""<!DOCTYPE html>
 const DATA   = {data_json};
 const DATES  = {dates_json};
 const LATEST = "{latest_date}";
+let playerFilter = "ALL";
 
 // Populate date dropdown (newest first)
 const sel = document.getElementById("dateSelect");
@@ -345,10 +362,33 @@ function render() {{
   sh += "</tbody></table>";
   document.getElementById("summaryTable").innerHTML = summaryRows.length ? sh : '<p class="no-data">No data for this date.</p>';
 
-  // ── Game by game ────────────────────────────────────────────────────────
-  // Deduplicate to one row per game (take winner-side rows only, then expand)
+  // ── Player filter dropdown ─────────────────────────────────────────────
+  // Rebuild for this date; keep the current selection if that player played
+  const psel = document.getElementById("playerSelect");
+  const names = [...new Set(games.map(g => g.player))].sort();
+  const prev = playerFilter;
+  psel.innerHTML = "";
+  const allOpt = document.createElement("option");
+  allOpt.value = "ALL"; allOpt.text = "All players";
+  psel.appendChild(allOpt);
+  names.forEach(n => {{
+    const o = document.createElement("option");
+    o.value = n; o.text = n;
+    psel.appendChild(o);
+  }});
+  playerFilter = names.includes(prev) ? prev : "ALL";
+  psel.value = playerFilter;
+
+  renderGames();
+}}
+
+function renderGames() {{
+  const date  = sel.value;
+  const games = DATA[date] || [];
+  const view  = playerFilter === "ALL" ? games : games.filter(g => g.player === playerFilter);
+
   // Sort by time
-  const sorted = [...games].sort((a,b) => {{
+  const sorted = [...view].sort((a,b) => {{
     // Parse time for sort
     const t = s => {{ const [h,m,ap] = [s.slice(0,s.indexOf(":")), s.slice(s.indexOf(":")+1,s.indexOf(" ")), s.slice(-2)];
                       return (+h % 12 + (ap==="PM"?12:0))*60 + +m; }};

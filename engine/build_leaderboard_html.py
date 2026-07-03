@@ -17,19 +17,34 @@ OUT_PATH = REPO_ROOT / "output" / "leaderboard.html"
 lb = pd.read_excel(XLSX_PATH, sheet_name="Leaderboard")
 data_through = pd.to_datetime(lb["Last Played"]).max().strftime("%B %-d, %Y")
 
+def signed(v, decimals=0, suffix=""):
+    """Format a signed value with pos/neg coloring."""
+    if pd.isna(v):
+        return "<td>—</td>"
+    val = round(float(v), decimals)
+    if decimals == 0:
+        val = int(val)
+    cls = "pos" if val > 0 else ("neg" if val < 0 else "")
+    sign = "+" if val > 0 else ""
+    return f'<td class="{cls}">{sign}{val}{suffix}</td>'
+
 rows = ""
 for _, r in lb.iterrows():
-    win_pct = round(100 * r["Win %"])
     last = pd.Timestamp(r["Last Played"]).strftime("%b %-d")
     trend = str(r.get("Trend", "")).strip()
     trend = "" if trend in ("—", "-", "nan") else trend
+    vs_exp = signed(100 * r["Win % vs Expected"], 0, "%")
+    pt_diff = signed(r["Avg Point Diff"], 1)
+    edge = signed(r["Avg Matchup Edge"], 0)
     rows += f"""
       <tr>
         <td class="rk">{int(r['Rank'])}</td>
         <td class="nm">{r['Player']} <span class="tr">{trend}</span></td>
         <td class="rt">{int(r['Player Rating'])}</td>
-        <td>{int(r['Wins'])}&ndash;{int(r['Losses'])}</td>
-        <td>{win_pct}%</td>
+        <td>{round(100 * r['Win %'])}%</td>
+        {vs_exp}
+        {pt_diff}
+        {edge}
         <td class="lp">{last}</td>
       </tr>"""
 
@@ -78,6 +93,8 @@ html = f"""<!DOCTYPE html>
   td.nm {{ text-align: left; font-weight: 600; }}
   td.nm .tr {{ font-weight: normal; font-size: 12px; }}
   td.rt {{ font-weight: bold; color: var(--blue-dark); }}
+  td.pos {{ color: #276221; }}
+  td.neg {{ color: #9C3B1B; }}
   tr:nth-child(even) td {{ background: #f2f6fb; }}
   tr.top3 td.rk {{ color: #C9A84C; font-weight: bold; }}
 
@@ -101,14 +118,14 @@ html = f"""<!DOCTYPE html>
   <input class="filter" id="q" type="search" placeholder="Find a player&hellip;" oninput="filterRows()">
   <table>
     <thead>
-      <tr><th>#</th><th class="nm">Player</th><th>Rating</th><th>W&ndash;L</th><th>Win %</th><th class="lp">Last Played</th></tr>
+      <tr><th>#</th><th class="nm">Player</th><th>Rating</th><th>Win %</th><th>Win % vs Expected</th><th>Avg Point Diff</th><th>Avg Matchup Edge</th><th class="lp">Last Played</th></tr>
     </thead>
     <tbody id="body">{rows}
     </tbody>
   </table>
   <p class="foot">
+    All stats reflect each player's last 60 rated games (fewer for newer players).<br>
     Qualification: at least 24 rated games within the past 180 days.<br>
-    W&ndash;L and Win % cover each player's rated games in their current window.<br>
     <a href="index.html">All charts &amp; tools</a> &middot; updated after every play date
   </p>
 </div>

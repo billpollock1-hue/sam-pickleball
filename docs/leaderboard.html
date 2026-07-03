@@ -43,6 +43,8 @@
   td.nm { text-align: left; font-weight: 600; }
   td.nm .tr { font-weight: normal; font-size: 12px; }
   td.rt { font-weight: bold; color: var(--blue-dark); }
+  td.pos { color: #276221; }
+  td.neg { color: #9C3B1B; }
   tr:nth-child(even) td { background: #f2f6fb; }
   tr.top3 td.rk { color: #C9A84C; font-weight: bold; }
 
@@ -66,398 +68,494 @@
   <input class="filter" id="q" type="search" placeholder="Find a player&hellip;" oninput="filterRows()">
   <table>
     <thead>
-      <tr><th>#</th><th class="nm">Player</th><th>Rating</th><th>W&ndash;L</th><th>Win %</th><th class="lp">Last Played</th></tr>
+      <tr><th>#</th><th class="nm">Player</th><th>Rating</th><th>Win %</th><th>Win % vs Expected</th><th>Avg Point Diff</th><th>Avg Matchup Edge</th><th class="lp">Last Played</th></tr>
     </thead>
     <tbody id="body">
       <tr>
         <td class="rk">1</td>
         <td class="nm">Kara Rice <span class="tr">🔥</span></td>
         <td class="rt">1676</td>
-        <td>45&ndash;15</td>
         <td>75%</td>
+        <td class="pos">+9%</td>
+        <td class="pos">+3.4</td>
+        <td class="pos">+152</td>
         <td class="lp">Jul 2</td>
       </tr>
       <tr>
         <td class="rk">2</td>
         <td class="nm">Eric Kramer <span class="tr"></span></td>
         <td class="rt">1570</td>
-        <td>42&ndash;18</td>
         <td>70%</td>
+        <td class="pos">+3%</td>
+        <td class="pos">+2.8</td>
+        <td class="pos">+177</td>
         <td class="lp">Jul 2</td>
       </tr>
       <tr>
         <td class="rk">3</td>
         <td class="nm">Peter Barnett <span class="tr">🔥</span></td>
         <td class="rt">1476</td>
-        <td>39&ndash;21</td>
         <td>65%</td>
+        <td class="pos">+2%</td>
+        <td class="pos">+1.6</td>
+        <td class="pos">+137</td>
         <td class="lp">Jul 2</td>
       </tr>
       <tr>
         <td class="rk">4</td>
         <td class="nm">Russ Brannon <span class="tr">🧊</span></td>
         <td class="rt">1391</td>
-        <td>36&ndash;18</td>
         <td>67%</td>
+        <td class="pos">+13%</td>
+        <td class="pos">+2.4</td>
+        <td class="pos">+48</td>
         <td class="lp">Jul 2</td>
       </tr>
       <tr>
         <td class="rk">5</td>
         <td class="nm">Joe McKamey <span class="tr">🧊</span></td>
         <td class="rt">1371</td>
-        <td>37&ndash;23</td>
         <td>62%</td>
+        <td class="pos">+5%</td>
+        <td class="pos">+1.4</td>
+        <td class="pos">+65</td>
         <td class="lp">Jun 19</td>
       </tr>
       <tr>
         <td class="rk">6</td>
         <td class="nm">Jorge Barroso <span class="tr">🧊</span></td>
         <td class="rt">1353</td>
-        <td>39&ndash;21</td>
         <td>65%</td>
+        <td class="pos">+6%</td>
+        <td class="pos">+2.0</td>
+        <td class="pos">+94</td>
         <td class="lp">Jun 22</td>
       </tr>
       <tr>
         <td class="rk">7</td>
         <td class="nm">Russell Matros <span class="tr"></span></td>
         <td class="rt">1285</td>
-        <td>44&ndash;16</td>
         <td>73%</td>
+        <td class="pos">+17%</td>
+        <td class="pos">+3.1</td>
+        <td class="pos">+59</td>
         <td class="lp">May 21</td>
       </tr>
       <tr>
         <td class="rk">8</td>
         <td class="nm">Peter Rillero <span class="tr">🔥</span></td>
         <td class="rt">1267</td>
-        <td>36&ndash;24</td>
         <td>60%</td>
+        <td class="pos">+4%</td>
+        <td class="pos">+1.2</td>
+        <td class="pos">+70</td>
         <td class="lp">Jun 18</td>
       </tr>
       <tr>
         <td class="rk">9</td>
         <td class="nm">Bill Pollock <span class="tr">🧊</span></td>
         <td class="rt">1260</td>
-        <td>35&ndash;25</td>
         <td>58%</td>
+        <td class="pos">+5%</td>
+        <td class="pos">+1.1</td>
+        <td class="pos">+29</td>
         <td class="lp">May 19</td>
       </tr>
       <tr>
         <td class="rk">10</td>
         <td class="nm">Dave Grubb <span class="tr">🧊</span></td>
         <td class="rt">1251</td>
-        <td>36&ndash;24</td>
         <td>60%</td>
+        <td class="pos">+4%</td>
+        <td class="pos">+1.4</td>
+        <td class="pos">+54</td>
         <td class="lp">Jul 1</td>
       </tr>
       <tr>
         <td class="rk">11</td>
         <td class="nm">Toby Orr <span class="tr"></span></td>
         <td class="rt">1245</td>
-        <td>36&ndash;24</td>
         <td>60%</td>
+        <td class="pos">+7%</td>
+        <td class="pos">+1.2</td>
+        <td class="pos">+27</td>
         <td class="lp">May 6</td>
       </tr>
       <tr>
         <td class="rk">12</td>
         <td class="nm">Alena Nagyova <span class="tr">🔥</span></td>
         <td class="rt">1203</td>
-        <td>29&ndash;31</td>
         <td>48%</td>
+        <td class="neg">-2%</td>
+        <td class="pos">+0.6</td>
+        <td class="neg">-1</td>
         <td class="lp">Jul 2</td>
       </tr>
       <tr>
         <td class="rk">13</td>
         <td class="nm">Steve Ludick <span class="tr">🔥</span></td>
         <td class="rt">1198</td>
-        <td>33&ndash;27</td>
         <td>55%</td>
+        <td class="pos">+3%</td>
+        <td class="pos">+0.2</td>
+        <td class="pos">+29</td>
         <td class="lp">Jul 2</td>
       </tr>
       <tr>
         <td class="rk">14</td>
         <td class="nm">Dirk Olsen <span class="tr"></span></td>
         <td class="rt">1165</td>
-        <td>35&ndash;25</td>
         <td>58%</td>
+        <td class="pos">+10%</td>
+        <td class="pos">+1.0</td>
+        <td class="neg">-10</td>
         <td class="lp">Apr 15</td>
       </tr>
       <tr>
         <td class="rk">15</td>
         <td class="nm">Ron Kelly <span class="tr"></span></td>
         <td class="rt">1158</td>
-        <td>30&ndash;30</td>
         <td>50%</td>
+        <td class="neg">-2%</td>
+        <td class="pos">+0.2</td>
+        <td class="pos">+14</td>
         <td class="lp">Jul 2</td>
       </tr>
       <tr>
         <td class="rk">17</td>
         <td class="nm">Jose L Valdez R <span class="tr"></span></td>
         <td class="rt">1131</td>
-        <td>35&ndash;25</td>
         <td>58%</td>
+        <td class="pos">+6%</td>
+        <td class="pos">+0.8</td>
+        <td class="pos">+15</td>
         <td class="lp">Jun 24</td>
       </tr>
       <tr>
         <td class="rk">18</td>
         <td class="nm">Brad Caskey <span class="tr">🧊</span></td>
         <td class="rt">1120</td>
-        <td>30&ndash;30</td>
         <td>50%</td>
+        <td class="pos">+4%</td>
+        <td class="pos">+0.1</td>
+        <td class="neg">-33</td>
         <td class="lp">Jul 1</td>
       </tr>
       <tr>
         <td class="rk">19</td>
         <td class="nm">Frank DAngelo <span class="tr">🔥</span></td>
         <td class="rt">1113</td>
-        <td>23&ndash;19</td>
         <td>55%</td>
+        <td class="pos">+4%</td>
+        <td class="pos">+1.2</td>
+        <td class="pos">+11</td>
         <td class="lp">Jul 2</td>
       </tr>
       <tr>
         <td class="rk">20</td>
         <td class="nm">Todd Park <span class="tr">🔥</span></td>
         <td class="rt">1106</td>
-        <td>32&ndash;28</td>
         <td>53%</td>
+        <td class="pos">+1%</td>
+        <td class="pos">+0.8</td>
+        <td class="pos">+34</td>
         <td class="lp">Jun 25</td>
       </tr>
       <tr>
         <td class="rk">21</td>
         <td class="nm">Michael McSharry <span class="tr"></span></td>
         <td class="rt">1094</td>
-        <td>33&ndash;27</td>
         <td>55%</td>
+        <td class="pos">+3%</td>
+        <td class="pos">+0.6</td>
+        <td class="pos">+18</td>
         <td class="lp">Mar 31</td>
       </tr>
       <tr>
         <td class="rk">22</td>
         <td class="nm">Greg Egli <span class="tr"></span></td>
         <td class="rt">1089</td>
-        <td>33&ndash;27</td>
         <td>55%</td>
+        <td class="pos">+4%</td>
+        <td class="">0.0</td>
+        <td class="pos">+15</td>
         <td class="lp">Jul 1</td>
       </tr>
       <tr>
         <td class="rk">23</td>
         <td class="nm">Lidia Zolnierczyk <span class="tr">🧊</span></td>
         <td class="rt">1071</td>
-        <td>34&ndash;26</td>
         <td>57%</td>
+        <td class="pos">+5%</td>
+        <td class="pos">+0.5</td>
+        <td class="pos">+16</td>
         <td class="lp">Jul 1</td>
       </tr>
       <tr>
         <td class="rk">24</td>
         <td class="nm">Tron Brinkmann <span class="tr"></span></td>
         <td class="rt">1047</td>
-        <td>31&ndash;29</td>
         <td>52%</td>
+        <td class="neg">-3%</td>
+        <td class="">0.0</td>
+        <td class="pos">+39</td>
         <td class="lp">Jun 3</td>
       </tr>
       <tr>
         <td class="rk">25</td>
         <td class="nm">Amber Tinstman <span class="tr"></span></td>
         <td class="rt">1041</td>
-        <td>28&ndash;32</td>
         <td>47%</td>
+        <td class="">0%</td>
+        <td class="neg">-0.4</td>
+        <td class="neg">-31</td>
         <td class="lp">Jun 25</td>
       </tr>
       <tr>
         <td class="rk">26</td>
         <td class="nm">Helena Niblett <span class="tr">🧊</span></td>
         <td class="rt">1015</td>
-        <td>33&ndash;27</td>
         <td>55%</td>
+        <td class="pos">+1%</td>
+        <td class="pos">+0.3</td>
+        <td class="pos">+36</td>
         <td class="lp">Apr 27</td>
       </tr>
       <tr>
         <td class="rk">27</td>
         <td class="nm">Cary McCormick <span class="tr">🔥</span></td>
         <td class="rt">1004</td>
-        <td>31&ndash;29</td>
         <td>52%</td>
+        <td class="neg">-4%</td>
+        <td class="pos">+0.4</td>
+        <td class="pos">+53</td>
         <td class="lp">Jul 2</td>
       </tr>
       <tr>
         <td class="rk">28</td>
         <td class="nm">Colin Smith <span class="tr">🧊</span></td>
         <td class="rt">993</td>
-        <td>31&ndash;29</td>
         <td>52%</td>
+        <td class="">0%</td>
+        <td class="neg">-0.1</td>
+        <td class="pos">+17</td>
         <td class="lp">May 15</td>
       </tr>
       <tr>
         <td class="rk">29</td>
         <td class="nm">Kindi Backstrom <span class="tr"></span></td>
         <td class="rt">987</td>
-        <td>34&ndash;26</td>
         <td>57%</td>
+        <td class="pos">+2%</td>
+        <td class="pos">+0.8</td>
+        <td class="pos">+52</td>
         <td class="lp">Jul 2</td>
       </tr>
       <tr>
         <td class="rk">30</td>
         <td class="nm">Dwight Christensen <span class="tr">🧊</span></td>
         <td class="rt">980</td>
-        <td>27&ndash;33</td>
         <td>45%</td>
+        <td class="neg">-3%</td>
+        <td class="neg">-0.3</td>
+        <td class="neg">-15</td>
         <td class="lp">Jun 22</td>
       </tr>
       <tr>
         <td class="rk">31</td>
         <td class="nm">Donna Cantrell <span class="tr">🧊</span></td>
         <td class="rt">951</td>
-        <td>27&ndash;33</td>
         <td>45%</td>
+        <td class="">0%</td>
+        <td class="neg">-0.6</td>
+        <td class="neg">-44</td>
         <td class="lp">Jul 2</td>
       </tr>
       <tr>
         <td class="rk">32</td>
         <td class="nm">Wayne Carroll <span class="tr">🔥</span></td>
         <td class="rt">939</td>
-        <td>32&ndash;28</td>
         <td>53%</td>
+        <td class="pos">+1%</td>
+        <td class="">0.0</td>
+        <td class="pos">+30</td>
         <td class="lp">Jul 2</td>
       </tr>
       <tr>
         <td class="rk">33</td>
         <td class="nm">Mike LoPorto <span class="tr"></span></td>
         <td class="rt">881</td>
-        <td>14&ndash;16</td>
         <td>47%</td>
+        <td class="neg">-8%</td>
+        <td class="neg">-0.6</td>
+        <td class="pos">+44</td>
         <td class="lp">Jul 1</td>
       </tr>
       <tr>
         <td class="rk">34</td>
         <td class="nm">Jim Pearson <span class="tr"></span></td>
         <td class="rt">859</td>
-        <td>28&ndash;32</td>
         <td>47%</td>
+        <td class="pos">+1%</td>
+        <td class="neg">-0.4</td>
+        <td class="neg">-46</td>
         <td class="lp">Jun 24</td>
       </tr>
       <tr>
         <td class="rk">35</td>
         <td class="nm">Debbie Witulski <span class="tr"></span></td>
         <td class="rt">822</td>
-        <td>22&ndash;38</td>
         <td>37%</td>
+        <td class="neg">-6%</td>
+        <td class="neg">-1.7</td>
+        <td class="neg">-63</td>
         <td class="lp">Jun 1</td>
       </tr>
       <tr>
         <td class="rk">36</td>
         <td class="nm">John Entreken <span class="tr"></span></td>
         <td class="rt">821</td>
-        <td>16&ndash;26</td>
         <td>38%</td>
+        <td class="neg">-11%</td>
+        <td class="neg">-1.2</td>
+        <td class="neg">-6</td>
         <td class="lp">Jun 30</td>
       </tr>
       <tr>
         <td class="rk">37</td>
         <td class="nm">Heidi Berg <span class="tr">🧊</span></td>
         <td class="rt">763</td>
-        <td>22&ndash;38</td>
         <td>37%</td>
+        <td class="neg">-13%</td>
+        <td class="neg">-1.8</td>
+        <td class="neg">-9</td>
         <td class="lp">May 1</td>
       </tr>
       <tr>
         <td class="rk">38</td>
         <td class="nm">Steve Terpstra <span class="tr">🔥</span></td>
         <td class="rt">761</td>
-        <td>17&ndash;31</td>
         <td>35%</td>
+        <td class="neg">-9%</td>
+        <td class="neg">-2.2</td>
+        <td class="neg">-57</td>
         <td class="lp">Jun 25</td>
       </tr>
       <tr>
         <td class="rk">39</td>
         <td class="nm">Kasia Misiura <span class="tr">🔥</span></td>
         <td class="rt">744</td>
-        <td>13&ndash;26</td>
         <td>33%</td>
+        <td class="neg">-14%</td>
+        <td class="neg">-2.1</td>
+        <td class="neg">-34</td>
         <td class="lp">Jun 24</td>
       </tr>
       <tr>
         <td class="rk">40</td>
         <td class="nm">Jill Peterson <span class="tr">🔥</span></td>
         <td class="rt">739</td>
-        <td>26&ndash;34</td>
         <td>43%</td>
+        <td class="neg">-6%</td>
+        <td class="neg">-0.9</td>
+        <td class="neg">-13</td>
         <td class="lp">Jun 26</td>
       </tr>
       <tr>
         <td class="rk">41</td>
         <td class="nm">Pam Olson <span class="tr">🔥</span></td>
         <td class="rt">738</td>
-        <td>23&ndash;37</td>
         <td>38%</td>
+        <td class="">0%</td>
+        <td class="neg">-1.7</td>
+        <td class="neg">-106</td>
         <td class="lp">Jun 3</td>
       </tr>
       <tr>
         <td class="rk">42</td>
         <td class="nm">Paul Batie <span class="tr">🧊</span></td>
         <td class="rt">724</td>
-        <td>28&ndash;32</td>
         <td>47%</td>
+        <td class="pos">+1%</td>
+        <td class="neg">-0.8</td>
+        <td class="neg">-51</td>
         <td class="lp">Jul 1</td>
       </tr>
       <tr>
         <td class="rk">43</td>
         <td class="nm">Camie Smith <span class="tr">🔥</span></td>
         <td class="rt">667</td>
-        <td>18&ndash;42</td>
         <td>30%</td>
+        <td class="neg">-18%</td>
+        <td class="neg">-2.3</td>
+        <td class="neg">-25</td>
         <td class="lp">May 12</td>
       </tr>
       <tr>
         <td class="rk">44</td>
         <td class="nm">Jackie Maniaci <span class="tr"></span></td>
         <td class="rt">652</td>
-        <td>21&ndash;39</td>
         <td>35%</td>
+        <td class="neg">-3%</td>
+        <td class="neg">-1.1</td>
+        <td class="neg">-124</td>
         <td class="lp">Jul 2</td>
       </tr>
       <tr>
         <td class="rk">45</td>
         <td class="nm">Tonya Carroll <span class="tr"></span></td>
         <td class="rt">597</td>
-        <td>25&ndash;35</td>
         <td>42%</td>
+        <td class="pos">+1%</td>
+        <td class="neg">-1.5</td>
+        <td class="neg">-101</td>
         <td class="lp">Jul 2</td>
       </tr>
       <tr>
         <td class="rk">46</td>
         <td class="nm">Lynnie McKee <span class="tr">🧊</span></td>
         <td class="rt">503</td>
-        <td>20&ndash;40</td>
         <td>33%</td>
+        <td class="neg">-2%</td>
+        <td class="neg">-2.2</td>
+        <td class="neg">-159</td>
         <td class="lp">Jun 30</td>
       </tr>
       <tr>
         <td class="rk">47</td>
         <td class="nm">Elizabeth Flynn <span class="tr">🔥</span></td>
         <td class="rt">444</td>
-        <td>11&ndash;49</td>
         <td>18%</td>
+        <td class="neg">-12%</td>
+        <td class="neg">-4.5</td>
+        <td class="neg">-190</td>
         <td class="lp">May 14</td>
       </tr>
       <tr>
         <td class="rk">48</td>
         <td class="nm">Stacy Kramer <span class="tr"></span></td>
         <td class="rt">421</td>
-        <td>21&ndash;39</td>
         <td>35%</td>
+        <td class="pos">+3%</td>
+        <td class="neg">-2.7</td>
+        <td class="neg">-192</td>
         <td class="lp">Jul 2</td>
       </tr>
       <tr>
         <td class="rk">49</td>
         <td class="nm">Paula Pearson <span class="tr"></span></td>
         <td class="rt">357</td>
-        <td>14&ndash;46</td>
         <td>23%</td>
+        <td class="neg">-10%</td>
+        <td class="neg">-3.9</td>
+        <td class="neg">-180</td>
         <td class="lp">Jun 29</td>
       </tr>
     </tbody>
   </table>
   <p class="foot">
+    All stats reflect each player's last 60 rated games (fewer for newer players).<br>
     Qualification: at least 24 rated games within the past 180 days.<br>
-    W&ndash;L and Win % cover each player's rated games in their current window.<br>
     <a href="index.html">All charts &amp; tools</a> &middot; updated after every play date
   </p>
 </div>

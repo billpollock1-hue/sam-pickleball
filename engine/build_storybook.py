@@ -162,7 +162,7 @@ html = f"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>The Case for Better Courts</title>
+<title>Can SAM Be Improved?</title>
 <style>
   :root {{
     --navy:   #1F4E79;
@@ -322,7 +322,7 @@ html = f"""<!DOCTYPE html>
     <div class="sheet">
       <div class="face front cover">
         <div class="rule"></div>
-        <h1>The Case for<br>Better Courts</h1>
+        <h1>Can SAM<br>Be Improved?</h1>
         <div class="rule"></div>
         <div class="sub">Using four years of shootout data to make<br>every SAM session more competitive</div>
         <div class="hint">click to open &#8250;</div>

@@ -337,7 +337,7 @@ html = f"""<!DOCTYPE html>
         <h2>The Challenge: From Perception to Evidence</h2>
         <p>Players in the SAM shootout have raised concerns about court competitiveness &mdash; too many lopsided games, courts that feel mismatched.</p>
         <p>Perception is a starting point, but it is not enough to diagnose the problem or evaluate solutions. We need an objective metric: a way to measure the skill gap between teams in any given game, consistently, across thousands of games and multiple years.</p>
-        <p>Fortunately, we have exactly the raw material that requires.</p>
+        <p>Fortunately, we have exactly the raw material that requires: the historical SAM shootout data from Pickleball Den.</p>
         <div class="pgnum">1</div>
       </div>
     </div>

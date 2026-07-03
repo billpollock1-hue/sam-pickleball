@@ -133,13 +133,13 @@ for _, r in gap_dist.iterrows():
       <td>{r.get('Margin 1–2','—')}</td><td>{r.get('Margin 9–11','—')}</td></tr>"""
 
 options = [
-    ("Elo S1 &middot; keep 2-up/2-back", sv(e2u, "vs DEN"), sv(e2u, "S1→S2 % Moving"), "Setting change"),
-    ("Elo S1 &middot; 1-up/1-back &nbsp;&#9733; Phase 1", sv(ph1, "vs DEN"), sv(ph1, "S1→S2 % Moving"), "Setting change"),
-    ("Elo S1 &middot; Elo S2 (K=20)", sv(e20, "vs DEN"), sv(e20, "S1→S2 % Moving"), "Automation"),
-    ("Elo S1 &middot; Elo S2 (K=100) &nbsp;&#9733; Phase 2", sv(ph2, "vs DEN"), sv(ph2, "S1→S2 % Moving"), "Automation"),
-    ("Elo S1 &middot; Elo S2 (K=150)", sv(k150, "vs DEN"), sv(k150, "S1→S2 % Moving"), "Automation"),
-    ("Elo S1 &middot; Boundary Swap S2", sv(bsw, "vs DEN"), sv(bsw, "S1→S2 % Moving"), "Automation"),
-    ("Elo S1 &middot; Upset-Triggered S2", sv(upt, "vs DEN"), sv(upt, "S1→S2 % Moving"), "Automation"),
+    ("Rating-seeded start &middot; keep today's shuffle", sv(e2u, "vs DEN"), sv(e2u, "S1→S2 % Moving"), "Settings only"),
+    ("Rating-seeded start &middot; gentler shuffle &nbsp;&#9733; Phase 1", sv(ph1, "vs DEN"), sv(ph1, "S1→S2 % Moving"), "Settings only"),
+    ("Results-driven Session 2 &middot; steady dial", sv(e20, "vs DEN"), sv(e20, "S1→S2 % Moving"), "Automation"),
+    ("Results-driven Session 2 &middot; balanced dial &nbsp;&#9733; Phase 2", sv(ph2, "vs DEN"), sv(ph2, "S1→S2 % Moving"), "Automation"),
+    ("Results-driven Session 2 &middot; fast dial", sv(k150, "vs DEN"), sv(k150, "S1→S2 % Moving"), "Automation"),
+    ("Swap near-ties at court borders only", sv(bsw, "vs DEN"), sv(bsw, "S1→S2 % Moving"), "Automation"),
+    ("Move only big over/under-performers", sv(upt, "vs DEN"), sv(upt, "S1→S2 % Moving"), "Automation"),
 ]
 option_rows = ""
 for label, vs, mv, impl in options:
@@ -479,42 +479,64 @@ html = f"""<!DOCTYPE html>
       </div>
       <div class="face back">
         <div class="kicker">Chapter Eight</div>
-        <h2>What We Tested</h2>
-        <p>We modeled a dozen alternative assignment methods across the same 90 days of real sessions &mdash; same players, same signups, same courts. Each is scored on how much it narrows the within-court spread versus the current system, and how many players move courts between sessions.</p>
-        <p>Approaches range from a one-setting tweak (keep everything, just seed Session 1 by rating) to fully rating-driven sessions at different responsiveness levels.</p>
-        <p>Two stand out &mdash; marked &#9733; on the facing page.</p>
+        <h2>What We Tested &mdash; and How We Scored It</h2>
+        <p>There is no shortage of ideas for assigning courts. To compare them fairly, we replayed the last 90 days of actual sessions &mdash; same players, same signups, same court counts &mdash; under each candidate method.</p>
+        <p>Every method gets two scores. <b>Court tightness:</b> how close in skill the four players on each court are &mdash; a smaller spread means fairer games. <b>Shuffle:</b> what share of players change courts between the two sessions &mdash; some movement is healthy; constant mechanical reshuffling is not.</p>
+        <p>Today&rsquo;s system is the baseline to beat: a combined spread of {den_comb}, with {den_move} of players moving mid-morning.</p>
         <div class="pgnum">15</div>
       </div>
     </div>
 
-    <!-- s8: p16 options table | p17 recommendation -->
+    <!-- s8: p16 ideas in plain english | p17 how to read the scorecard -->
     <div class="sheet">
       <div class="face front">
-        <div class="kicker">The Alternatives, Scored</div>
+        <div class="kicker">Four Families of Ideas</div>
+        <div class="factor"><b>1 &middot; FIX THE STARTING LINEUP</b><span>Build Session 1 courts from player ratings instead of step and percentage. The morning starts fair; everything else stays exactly as it is.</span></div>
+        <div class="factor"><b>2 &middot; SOFTEN THE SHUFFLE</b><span>Keep movement between sessions, but move one player up and one down per court instead of two. Less churn, same reward for winning.</span></div>
+        <div class="factor"><b>3 &middot; LET RESULTS DRIVE SESSION 2</b><span>Re-rank everyone using their Session 1 results &mdash; weighted by who they faced &mdash; and rebuild the courts. A dial controls how strongly one morning moves you: steady, balanced, or fast.</span></div>
+        <div class="factor"><b>4 &middot; TARGETED SWAPS ONLY</b><span>Leave courts alone except in special cases: two players nearly tied at a court boundary, or someone dramatically out-playing or under-playing their rating.</span></div>
+        <div class="pgnum">16</div>
+      </div>
+      <div class="face back">
+        <div class="kicker">Chapter Eight, continued</div>
+        <h2>How to Read the Scorecard</h2>
+        <p><b>Better-matched courts</b> is the improvement in court tightness versus today. +37% means the skill spread inside a typical court shrinks by more than a third.</p>
+        <p><b>Players changing courts</b> is the share of players sitting on a different court in Session 2 than Session 1. Today&rsquo;s 2-up/2-back moves about {den_move} &mdash; the most of anything we tested.</p>
+        <p><b>Effort:</b> &ldquo;Settings only&rdquo; works within DEN as it exists today. &ldquo;Automation&rdquo; relies on the rating engine this project already runs after every play date.</p>
+        <p>The two &#9733; rows are the recommendation &mdash; a starting step and a destination.</p>
+        <div class="pgnum">17</div>
+      </div>
+    </div>
+
+    <!-- s9: p18 scorecard table | p19 recommendation -->
+    <div class="sheet">
+      <div class="face front">
+        <div class="kicker">The Scorecard</div>
         <table class="btable">
-          <tr><th style="text-align:left;">Approach</th><th>vs. Current</th><th>Players Moving S1&rarr;S2</th><th>Effort</th></tr>
+          <tr><th style="text-align:left;">Approach</th><th>Better-Matched Courts</th><th>Players Changing Courts</th><th>Effort</th></tr>
           {option_rows}
         </table>
-        <div class="pgnum">16</div>
+        <p style="font-size:clamp(8.5px,1vw,12px);color:#8a7f6a;margin-top:3%;">Scored across the last 90 days of real sessions. Today&rsquo;s system: {den_comb} combined spread, {den_move} of players moving.</p>
+        <div class="pgnum">18</div>
       </div>
       <div class="face back">
         <div class="kicker">Chapter Nine</div>
         <h2>The Recommendation: Two Phases</h2>
         <div class="phase">
-          <b>PHASE 1 &mdash; Rating-seeded Session 1, 1-up/1-back Session 2</b>
-          <span>Seed the first session by modified Elo instead of step and percentage; soften the session-two shuffle to one-up/one-back. No new tooling &mdash; a DEN settings change.</span>
-          <div class="metric">{ph1_vs} vs. current &middot; combined spread {ph1_comb}</div>
+          <b>PHASE 1 &mdash; Rating-seeded start, gentler shuffle</b>
+          <span>Seed Session 1 by rating instead of step and percentage; soften the mid-morning shuffle to one-up/one-back. No new tooling &mdash; a DEN settings change that could start next week.</span>
+          <div class="metric">{ph1_vs} better-matched courts &middot; combined spread {ph1_comb}</div>
         </div>
         <div class="phase">
-          <b>PHASE 2 &mdash; Rating-driven both sessions (K=100)</b>
-          <span>Session 2 courts re-seeded from Session 1 results, weighted by opponent strength &mdash; movement is earned, not mechanical. Requires the automation this project already runs daily.</span>
-          <div class="metric">{ph2_vs} vs. current &middot; combined spread {ph2_comb}</div>
+          <b>PHASE 2 &mdash; Results-driven Session 2, balanced dial</b>
+          <span>Session 2 courts rebuilt from Session 1 results, weighted by opponent strength &mdash; movement is earned, not mechanical. Runs on the automation this project already uses daily. (For the technically curious: appendix A.)</span>
+          <div class="metric">{ph2_vs} better-matched courts &middot; combined spread {ph2_comb}</div>
         </div>
-        <div class="pgnum">17</div>
+        <div class="pgnum">19</div>
       </div>
     </div>
 
-    <!-- s9: p18 what changes | p19 appendix A left -->
+    <!-- s10: p20 what changes | p21 appendix A left -->
     <div class="sheet">
       <div class="face front">
         <div class="kicker">What Changes for a Player</div>
@@ -522,7 +544,7 @@ html = f"""<!DOCTYPE html>
         <div class="factor"><b>MOVEMENT MEANS SOMETHING</b><span>Moving up is earned by beating expectations, weighted by who you faced &mdash; not by finishing top-two on an easy court.</span></div>
         <div class="factor"><b>EVERY GAME COUNTS</b><span>Your rating updates after every game, with recent play weighted most.</span></div>
         <div class="factor"><b>NOTHING ELSE CHANGES</b><span>Same courts, same times, same shootout format. Only the seeding logic improves.</span></div>
-        <div class="pgnum">18</div>
+        <div class="pgnum">20</div>
       </div>
       <div class="face back apx">
         <div class="kicker" style="color:#8a7f6a;">Technical Appendix &middot; A</div>
@@ -534,18 +556,18 @@ E &nbsp;= expected win prob = 1 / (1 + 10^((R<sub>opp</sub> &minus; R<sub>team</
 M = margin multiplier = min(ln(margin + 1), 2.0)<br>
 D &nbsp;= recency weight, 25% &rarr; 100% across the window</div>
         <p style="font-size:clamp(9px,1.08vw,13px);">Team ratings are the average of the two partners; all four players update after every rated game.</p>
-        <div class="pgnum">19</div>
+        <div class="pgnum">21</div>
       </div>
     </div>
 
-    <!-- s10: p20 appendix A right | p21 appendix B left -->
+    <!-- s11: p22 appendix A right | p23 appendix B left -->
     <div class="sheet">
       <div class="face front apx">
         <div class="kicker" style="color:#8a7f6a;">Technical Appendix &middot; A, continued</div>
         <div class="factor"><b>NO-HISTORY-DRIFT WINDOW</b><span>A player&rsquo;s current rating is rebuilt by replaying only their last 60 rated games from a neutral 1,000 start. Long tenure carries zero legacy inflation; what you&rsquo;ve done lately is what counts.</span></div>
         <div class="factor"><b>PROVISIONAL K</b><span>K starts at 40 for a player&rsquo;s first game and declines linearly to 20 by game 60, then holds. New players converge quickly; established ratings stay stable.</span></div>
-        <div class="factor"><b>EXPECTATION COMPRESSION</b><span>Displayed win probabilities compress the rating gap by 0.85 before the logistic &mdash; matching observed outcomes (57 / 66 / 78%) rather than theoretical chess curves.</span></div>
-        <div class="pgnum">20</div>
+        <div class="factor"><b>RECENCY DECAY</b><span>Within the 60-game window, weight ramps from 25% on the oldest game to 100% on the newest &mdash; the D in the formula. Yesterday&rsquo;s games move your rating roughly four times as much as games about to age out, and nothing jumps when an old game finally leaves the window.</span></div>
+        <div class="pgnum">22</div>
       </div>
       <div class="face back apx">
         <div class="kicker" style="color:#8a7f6a;">Technical Appendix &middot; B</div>
@@ -553,18 +575,19 @@ D &nbsp;= recency weight, 25% &rarr; 100% across the window</div>
         <div class="factor"><b>WHAT COUNTS</b><span>Every posted shootout game since Jan {first_year}. Placeholder entries (tryouts, drop-ins), guest players, and flagged data errors are excluded from ratings; known name glitches are corrected at load.</span></div>
         <div class="factor"><b>LEADERBOARD QUALIFICATION</b><span>At least 24 rated games within the past 180 days. Everyone else still carries a rating &mdash; shown with reduced confidence, pulled toward 1,000 in proportion to sample size and staleness.</span></div>
         <div class="factor"><b>FRESHNESS</b><span>No penalty for 90 days of inactivity; beyond that, a graduated confidence haircut up to 15%.</span></div>
-        <div class="pgnum">21</div>
+        <div class="pgnum">23</div>
       </div>
     </div>
 
-    <!-- s11: p22 appendix B right | endpaper -->
+    <!-- s12: p24 appendix B right | endpaper -->
     <div class="sheet">
       <div class="face front apx">
         <div class="kicker" style="color:#8a7f6a;">Technical Appendix &middot; B, continued</div>
+        <div class="factor"><b>EXPECTATION COMPRESSION</b><span>Displayed win probabilities compress the rating gap by 0.85 before the logistic &mdash; matching observed SAM outcomes (57 / 66 / 78%) rather than theoretical chess curves.</span></div>
         <div class="factor"><b>VALIDATION</b><span>Predictions are checked against outcomes across the full pool every run. Gaps between individual actual and expected win rates reflect normal variance and close as games accumulate; aggregate calibration is what the model is tuned for.</span></div>
         <div class="factor"><b>SCENARIO REPLAY</b><span>Assignment alternatives were tested against the last 90 days of real sessions &mdash; same signups, same court counts &mdash; not simulations of hypothetical players.</span></div>
-        <div class="mono" style="margin-top:4%;">Full methodology: Model Description tab<br>of the ratings workbook &middot; every number in<br>this book regenerates on each model run.</div>
-        <div class="pgnum">22</div>
+        <div class="mono" style="margin-top:3%;">Full methodology: Model Description tab<br>of the ratings workbook &middot; every number in<br>this book regenerates on each model run.</div>
+        <div class="pgnum">24</div>
       </div>
       <div class="face back darkpage">
         <p style="font-style:italic;opacity:0.75;">&mdash; end &mdash;</p>
@@ -587,7 +610,7 @@ D &nbsp;= recency weight, 25% &rarr; 100% across the window</div>
 
   const spreadNames = ["Cover", "The Challenge", "The Metric", "Proof", "The Evidence",
                        "Root Cause", "Today's System", "Net Result", "What We Tested",
-                       "Recommendation", "Appendix A", "Appendix B", "Back Cover"];
+                       "The Scorecard", "Recommendation", "Appendix A", "Appendix B", "Back Cover"];
 
   function render() {{
     sheets.forEach((s, i) => {{

@@ -321,6 +321,16 @@ def run_monitor():
         try:
             _generate_viewer()
             print(f"[{timestamp_str}] Updated signup_viewer.html")
+            import subprocess
+            deploy_result = subprocess.run(
+                ["/opt/homebrew/bin/netlify", "deploy", "--prod",
+                 "--dir", str(BASE_DIR / "logs")],
+                capture_output=True, text=True,
+            )
+            if deploy_result.returncode == 0:
+                print(f"[{timestamp_str}] Deployed signup_viewer.html to Netlify")
+            else:
+                print(f"[{timestamp_str}] Netlify deploy failed: {deploy_result.stderr[-300:]}")
         except Exception as e:
             print(f"[{timestamp_str}] Viewer update failed: {e}")
 

@@ -15,7 +15,8 @@ const readline = require('readline');
       ? JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'))
       : {};
 
-    browser = await chromium.launch({ headless: false, slowMo: 120 });
+    const UNATTENDED = process.env.SCRAPE_UNATTENDED === '1';
+    browser = await chromium.launch({ headless: UNATTENDED, slowMo: UNATTENDED ? 0 : 120 });
     const context = hasSession
       ? await browser.newContext({ storageState: SESSION_FILE })
       : await browser.newContext();
@@ -29,12 +30,16 @@ const readline = require('readline');
     const ask = (question) =>
       new Promise((resolve) => rl.question(question, answer => resolve(answer.trim())));
 
-    const waitForEnter = (message) =>
-      new Promise((resolve) => {
+    const waitForEnter = (message) => {
+      if (UNATTENDED) {
+        throw new Error(`Unattended run requires manual step but none is possible: ${message}`);
+      }
+      return new Promise((resolve) => {
         console.log(message);
         process.stdin.resume();
         process.stdin.once('data', () => resolve());
       });
+    };
 
     const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     const unique = (arr) => [...new Set(arr)];

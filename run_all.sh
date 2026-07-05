@@ -124,6 +124,20 @@ cp output/storybook.html docs/
 cp output/leaderboard.html docs/
 
 echo ""
+echo "7. Committing and pushing docs/ to GitHub Pages..."
+if [ -n "$(git status --porcelain docs/)" ]; then
+  git add docs/
+  git commit -m "Auto-update GitHub Pages docs ($(TZ=America/Phoenix date '+%Y-%m-%d %H:%M %Z'))"
+  if git push origin main; then
+    echo "Pushed docs/ updates to GitHub."
+  else
+    echo "⚠ git push failed — docs/ changes committed locally but NOT pushed. Manual attention needed."
+  fi
+else
+  echo "No changes in docs/ — skipping commit."
+fi
+
+echo ""
 echo "=== Done ==="
 echo "Outputs are in: output/"
 echo "Main ratings workbook: $FINAL_OUTPUT"

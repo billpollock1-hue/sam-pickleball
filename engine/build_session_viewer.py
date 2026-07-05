@@ -50,6 +50,7 @@ ratings             = defaultdict(lambda: BASE_ELO)
 player_game_count   = defaultdict(int)
 player_games_window = defaultdict(list)
 date_games          = defaultdict(list)   # date_str -> list of game dicts
+pool_game_count     = defaultdict(int)    # (date_str, pool) -> games seen so far, for shootout detection
 
 for match_id, (_, r) in enumerate(raw.iterrows(), start=1):
     w1, w2  = split_team(r["winning_team"])
@@ -89,6 +90,10 @@ for match_id, (_, r) in enumerate(raw.iterrows(), start=1):
         pool = str(r.get("pool", "")).strip()
         time_str = posted.strftime("%-I:%M %p")
 
+        # Shootout 1 = earliest 3 games on this pool/date; Shootout 2 = the next 3
+        pool_game_count[(date_str, pool)] += 1
+        shootout = 1 if pool_game_count[(date_str, pool)] <= 3 else 2
+
         for player, partner, opp1, opp2, is_win, pf, pa, delta in [
             (w1, w2, l1, l2, True,  sw, sl, d_w1),
             (w2, w1, l1, l2, True,  sw, sl, d_w2),
@@ -104,6 +109,7 @@ for match_id, (_, r) in enumerate(raw.iterrows(), start=1):
             date_games[date_str].append({
                 "time":     time_str,
                 "pool":     pool,
+                "shootout": shootout,
                 "player":   player,
                 "partner":  partner,
                 "opp1":     opp1,
@@ -271,6 +277,10 @@ html = f"""<!DOCTYPE html>
   <section>
     <div class="sec-head">
       <h2>Game by Game</h2>
+      <label for="shootoutSelect">Shootout:</label>
+      <select id="shootoutSelect" onchange="shootoutFilter = this.value; renderGames();"></select>
+      <label for="poolSelect">Pool:</label>
+      <select id="poolSelect" onchange="poolFilter = this.value; renderGames();"></select>
       <label for="playerSelect">Player:</label>
       <select id="playerSelect" onchange="playerFilter = this.value; renderGames();"></select>
     </div>
@@ -283,6 +293,8 @@ const DATA   = {data_json};
 const DATES  = {dates_json};
 const LATEST = "{latest_date}";
 let playerFilter = "ALL";
+let poolFilter = "ALL";
+let shootoutFilter = "ALL";
 
 // Populate date dropdown (newest first)
 const sel = document.getElementById("dateSelect");
@@ -379,13 +391,47 @@ function render() {{
   playerFilter = names.includes(prev) ? prev : "ALL";
   psel.value = playerFilter;
 
+  // ── Pool filter dropdown ─────────────────────────────────────────────
+  const poolSel = document.getElementById("poolSelect");
+  const pools = [...new Set(games.map(g => g.pool))].sort();
+  const prevPool = poolFilter;
+  poolSel.innerHTML = "";
+  const allPoolOpt = document.createElement("option");
+  allPoolOpt.value = "ALL"; allPoolOpt.text = "All pools";
+  poolSel.appendChild(allPoolOpt);
+  pools.forEach(pl => {{
+    const o = document.createElement("option");
+    o.value = pl; o.text = pl;
+    poolSel.appendChild(o);
+  }});
+  poolFilter = pools.includes(prevPool) ? prevPool : "ALL";
+  poolSel.value = poolFilter;
+
+  // ── Shootout filter dropdown ────────────────────────────────────────
+  const shSel = document.getElementById("shootoutSelect");
+  const prevSh = shootoutFilter;
+  shSel.innerHTML = "";
+  const allShOpt = document.createElement("option");
+  allShOpt.value = "ALL"; allShOpt.text = "Both shootouts";
+  shSel.appendChild(allShOpt);
+  [1,2].forEach(sNum => {{
+    const o = document.createElement("option");
+    o.value = String(sNum); o.text = "Shootout " + sNum;
+    shSel.appendChild(o);
+  }});
+  shootoutFilter = ["ALL","1","2"].includes(prevSh) ? prevSh : "ALL";
+  shSel.value = shootoutFilter;
+
   renderGames();
 }}
 
 function renderGames() {{
   const date  = sel.value;
   const games = DATA[date] || [];
-  const view  = playerFilter === "ALL" ? games : games.filter(g => g.player === playerFilter);
+  let view = games;
+  if (playerFilter !== "ALL") view = view.filter(g => g.player === playerFilter);
+  if (poolFilter !== "ALL") view = view.filter(g => g.pool === poolFilter);
+  if (shootoutFilter !== "ALL") view = view.filter(g => String(g.shootout) === shootoutFilter);
 
   // Sort by time
   const sorted = [...view].sort((a,b) => {{
@@ -397,7 +443,7 @@ function renderGames() {{
 
   let gh = `<table>
     <thead><tr>
-      <th>Time</th><th>Pool</th>
+      <th>Time</th><th>Pool</th><th>Shootout</th>
       <th class="left">Player</th><th class="left">Partner</th>
       <th class="left">Opponents</th>
       <th>W/L</th><th>Score</th>
@@ -408,6 +454,7 @@ function renderGames() {{
     gh += `<tr>
       <td>${{g.time}}</td>
       <td>${{g.pool}}</td>
+      <td>${{g.shootout}}</td>
       <td class="left">${{g.player}}</td>
       <td class="left">${{g.partner}}</td>
       <td class="left">${{g.opp1}}${{g.opp2 ? " / " + g.opp2 : ""}}</td>

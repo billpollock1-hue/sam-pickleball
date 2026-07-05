@@ -120,8 +120,8 @@ cp output/rating_history.html docs/
 cp output/competitive_balance.html docs/
 cp output/recent_trends.html docs/
 cp output/consistency.html docs/
-cp output/storybook.html docs/
 cp output/leaderboard.html docs/
+# storybook.html intentionally excluded from docs/ sync while still in development
 
 echo ""
 echo "7. Committing and pushing docs/ to GitHub Pages..."

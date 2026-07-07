@@ -101,7 +101,8 @@ def refresh_date(date_str, den_ratings, player_ratings, ratings_through):
         assignments = pd.DataFrame()
         waitlist = pd.DataFrame()
     else:
-        if den_ratings.empty:
+        den_current = not den_ratings.empty
+    if den_ratings.empty:
         assignments = pd.DataFrame()
         waitlist = pd.DataFrame()
     else:
@@ -120,6 +121,7 @@ def refresh_date(date_str, den_ratings, player_ratings, ratings_through):
         rating_assignments=rating_assignments,
         rating_waitlist=rating_waitlist,
         ratings_through=ratings_through,
+        den_current=den_current,
     )
     print(f"{date_str}: refreshed ({len(signups)} signups).")
     return True

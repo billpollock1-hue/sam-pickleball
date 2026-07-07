@@ -432,17 +432,39 @@ def _comparison_to_json(den_assignments, rating_assignments):
     return {"rows": rows, "moved": moved, "total": total}
 
 
+def _last_signup_change(play_date_file):
+    """Return the most recent signup change timestamp for a date, or None."""
+    log_file = Path(PBMONITOR_LOGS) / f"{play_date_file}_signup_log.csv"
+    if not log_file.exists():
+        return None
+    try:
+        import csv
+        last_ts = None
+        with open(log_file, "r") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                ts = row.get("timestamp_mt", "").strip().strip('"')
+                if ts and not ts.startswith("#"):
+                    last_ts = ts
+        return last_ts
+    except Exception:
+        return None
+
+PBMONITOR_LOGS = Path.home() / "Library" / "Application Support" / "PBMonitor" / "logs"
+
 def save_assignments_snapshot(assignments, waitlist, play_date_file, play_date_display,
                                total_signups, rating_assignments=None, rating_waitlist=None,
-                               ratings_through=None):
+                               ratings_through=None, den_current=True):
     """Write this session's court assignments to a JSON snapshot for the HTML viewer."""
-    generated = datetime.now(ZoneInfo("America/Phoenix")).strftime("%m/%d/%Y %I:%M %p AZ")
+    generated = datetime.now(ZoneInfo("America/Phoenix")).strftime("%m/%d/%Y %I:%M %p MST")
 
     snapshot = {
         "date_display": play_date_display,
         "generated": generated,
         "total_signups": total_signups,
         "ratings_through": ratings_through.strftime("%-m/%-d/%y") if ratings_through else None,
+        "den_current": den_current,
+        "last_signup_change": _last_signup_change(play_date_file),
         "den": _courts_to_json(assignments, waitlist, is_rating=False),
     }
 

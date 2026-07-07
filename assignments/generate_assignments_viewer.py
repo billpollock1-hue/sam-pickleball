@@ -58,6 +58,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 .pg-header { margin-bottom: 14px; }
 .pg-title { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
 .pg-sub { font-size: 12px; color: #666; }
+.pg-warn { font-size: 12px; font-weight: bold; color: #c00000; margin-top: 3px; }
+.pg-preliminary { font-size: 12px; font-weight: bold; color: #7030a0; margin-top: 3px; }
 
 h2.court-title { font-size: 13px; font-weight: 700; color: #333;
                  margin: 18px 0 6px; padding-top: 10px; border-top: 2px solid #333; }
@@ -124,11 +126,40 @@ td { padding: 4px 9px; border: 1px solid #e4e4e4; overflow-wrap: break-word; }
 <script>
 const DATA = %%JSON%%;
 
-function pageHeader(d, extra) {
+function isPreliminary(dateStr) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const d = new Date(dateStr + 'T00:00:00');
+  return d > tomorrow;
+}
+
+function pageHeader(d, extra, dateStr) {
   let h = '<div class="pg-header">';
   h += `<div class="pg-title">ANTHEM 6 AM SHOOTOUT — ${d.date_display}</div>`;
   h += `<div class="pg-sub">${d.total_signups} Players • Generated ${d.generated}</div>`;
   if (extra) h += `<div class="pg-sub">${extra}</div>`;
+  if (d.last_signup_change) {
+    h += `<div class="pg-sub">Last signup change: ${d.last_signup_change} MST</div>`;
+  }
+
+  if (dateStr && isPreliminary(dateStr)) {
+    h += `<div class="pg-preliminary">📋 PRELIMINARY — Court assignments and ratings will update as more sessions are played before this date.</div>`;
+  } else {
+    if (d.den_current === false) {
+      h += `<div class="pg-warn">⚠ DEN ASSIGNMENTS STALE — Step/% data could not be refreshed. Run DEN Assignments to update.</div>`;
+    }
+    if (d.ratings_through) {
+      const ratingsDate = new Date(d.ratings_through.replace(/(\d+)\/(\d+)\/(\d+)/, '20$3-$1-$2'));
+      const sessionDate = dateStr ? new Date(dateStr + 'T00:00:00') : new Date();
+      const daysDiff = Math.floor((sessionDate - ratingsDate) / (1000 * 60 * 60 * 24));
+      if (daysDiff > 1) {
+        h += `<div class="pg-warn">⚠ RATINGS MAY BE STALE — Based on results through ${d.ratings_through}. Run model to update.</div>`;
+      }
+    }
+  }
+
   h += '</div>';
   return h;
 }
@@ -209,7 +240,7 @@ function render(dateStr) {
   const [yyyy, mm, dd] = dateStr.split('-');
   document.title = `${mm}-${dd}-${yyyy.slice(2)} SAM Court Assignments`;
 
-  document.getElementById('den-body').innerHTML = pageHeader(d) + courtTable(d.den, false);
+  document.getElementById('den-body').innerHTML = pageHeader(d, null, dateStr) + courtTable(d.den, false);
 
   const hasRating = !!d.rating;
   document.querySelector('.tab-btn[data-tab="rating"]').style.display = hasRating ? '' : 'none';
@@ -220,9 +251,9 @@ function render(dateStr) {
       ? `Ratings based on SAM results through ${d.ratings_through}`
       : '';
     document.getElementById('rating-body').innerHTML =
-      pageHeader(d, ratingsNote) + courtTable(d.rating, true);
+      pageHeader(d, ratingsNote, dateStr) + courtTable(d.rating, true);
     document.getElementById('comparison-body').innerHTML =
-      pageHeader(d, ratingsNote) + comparisonTable(d.comparison);
+      pageHeader(d, ratingsNote, dateStr) + comparisonTable(d.comparison);
   } else {
     document.getElementById('rating-body').innerHTML = '';
     document.getElementById('comparison-body').innerHTML = '';

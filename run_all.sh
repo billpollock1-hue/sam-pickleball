@@ -69,11 +69,19 @@ else
   echo "Date window: $START_DATE through $END_DATE"
   echo "Update rule: scrape only when master history is behind the most recent possible play date."
 
-  node scraper/scrape.js --start "$START_DATE" --end "$END_DATE" --output "$LATEST_FILE"
+  SCRAPE_OUTPUT=$(node scraper/scrape.js --start "$START_DATE" --end "$END_DATE" --output "$LATEST_FILE" 2>&1)
+  echo "$SCRAPE_OUTPUT"
+
+  SHOOTOUT_COUNT=$(echo "$SCRAPE_OUTPUT" | grep -o "Collected [0-9]* shootout" | grep -o "[0-9]*" || echo "0")
 
   echo ""
-  echo "2. Cleaning/deduping master history..."
-  python3 scraper/merge_csv.py
+  if [ "$START_DATE" = "$END_DATE" ] && [ "${SHOOTOUT_COUNT:-0}" -lt 2 ]; then
+    echo "2. Skipping merge — only $SHOOTOUT_COUNT shootout(s) found for $START_DATE (need 2)."
+    echo "   Results may not be fully posted yet. Will retry on next scheduled run."
+  else
+    echo "2. Cleaning/deduping master history..."
+    python3 scraper/merge_csv.py
+  fi
 fi
 
 echo ""

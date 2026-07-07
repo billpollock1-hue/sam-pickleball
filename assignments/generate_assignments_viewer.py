@@ -148,14 +148,14 @@ function pageHeader(d, extra, dateStr) {
     h += `<div class="pg-preliminary">📋 PRELIMINARY — Court assignments and ratings will update as more sessions are played before this date.</div>`;
   } else {
     if (d.den_current === false) {
-      h += `<div class="pg-warn">⚠ DEN ASSIGNMENTS STALE — Step/% data could not be refreshed. Run DEN Assignments to update.</div>`;
+      h += `<div class="pg-warn">⚠ DEN ASSIGNMENTS STALE — Step/% data will refresh automatically at the next scheduled update.</div>`;
     }
     if (d.ratings_through) {
       const ratingsDate = new Date(d.ratings_through.replace(/(\d+)\/(\d+)\/(\d+)/, '20$3-$1-$2'));
       const sessionDate = dateStr ? new Date(dateStr + 'T00:00:00') : new Date();
       const daysDiff = Math.floor((sessionDate - ratingsDate) / (1000 * 60 * 60 * 24));
       if (daysDiff > 1) {
-        h += `<div class="pg-warn">⚠ RATINGS MAY BE STALE — Based on results through ${d.ratings_through}. Run model to update.</div>`;
+        h += `<div class="pg-warn">⚠ RATINGS MAY BE STALE — Based on results through ${d.ratings_through}. Updated ratings will appear automatically after the next scheduled refresh.</div>`;
       }
     }
   }

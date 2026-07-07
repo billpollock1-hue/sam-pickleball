@@ -255,6 +255,22 @@ document.querySelectorAll('.tab-btn').forEach(b => {
 });
 
 const sel = document.getElementById('date-select');
+
+// Filter dropdown to today and future dates only
+const today = new Date();
+today.setHours(0, 0, 0, 0);
+Array.from(sel.options).forEach(opt => {
+  const d = new Date(opt.value + 'T00:00:00');
+  if (d < today) opt.remove();
+});
+// Fallback: if all dates removed, restore the last one
+if (sel.options.length === 0 && DATES.length > 0) {
+  const opt = document.createElement('option');
+  opt.value = DATES[DATES.length - 1];
+  opt.text = DATES[DATES.length - 1];
+  sel.appendChild(opt);
+}
+
 sel.addEventListener('change', () => render(sel.value));
 
 setTab('den');

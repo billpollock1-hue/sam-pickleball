@@ -126,13 +126,15 @@ td { padding: 4px 9px; border: 1px solid #e4e4e4; overflow-wrap: break-word; }
 <script>
 const DATA = %%JSON%%;
 
-function isPreliminary(dateStr) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const d = new Date(dateStr + 'T00:00:00');
-  return d > tomorrow;
+function isPreliminary(dateStr, ratingsThrough) {
+  if (!ratingsThrough) return false;
+  const parts = ratingsThrough.split('/');
+  if (parts.length !== 3) return false;
+  const rDate = new Date('20' + parts[2] + '-' + parts[0].padStart(2,'0') + '-' + parts[1].padStart(2,'0') + 'T00:00:00');
+  const sDate = new Date(dateStr + 'T00:00:00');
+  const dayBefore = new Date(sDate);
+  dayBefore.setDate(dayBefore.getDate() - 1);
+  return rDate < dayBefore;
 }
 
 function pageHeader(d, extra, dateStr) {
@@ -144,7 +146,7 @@ function pageHeader(d, extra, dateStr) {
     h += `<div class="pg-sub">Last signup change: ${d.last_signup_change} MST</div>`;
   }
 
-  if (dateStr && isPreliminary(dateStr)) {
+  if (dateStr && isPreliminary(dateStr, d.ratings_through)) {
     h += `<div class="pg-preliminary">📋 PRELIMINARY — Court assignments and ratings will update as more sessions are played before this date.</div>`;
   } else {
     if (d.den_current === false) {

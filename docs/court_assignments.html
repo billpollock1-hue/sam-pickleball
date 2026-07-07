@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anthem 6AM Shootout — Court Assignments</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+       font-size: 13px; color: #222; background: #f4f4f4; }
+
+/* ── Controls bar ── */
+#controls { display: flex; align-items: center; gap: 12px; padding: 12px 20px;
+            background: #fff; border-bottom: 1px solid #ddd;
+            position: sticky; top: 0; z-index: 10; flex-wrap: wrap; }
+#controls label { font-size: 12px; color: #666; }
+#date-select { font-size: 13px; padding: 5px 8px; border: 1px solid #ccc;
+               border-radius: 5px; background: #fff; cursor: pointer; }
+
+#tabs { display: flex; gap: 4px; }
+.tab-btn { padding: 6px 14px; font-size: 12px; border: 1px solid #ccc;
+           border-radius: 5px; background: #fff; cursor: pointer; }
+.tab-btn.active { background: #1565c0; color: #fff; border-color: #1565c0; }
+
+#print-group { margin-left: auto; display: flex; gap: 8px; }
+.print-btn { padding: 6px 14px; font-size: 12px; border: 1px solid #bbb;
+             border-radius: 5px; background: #fff; cursor: pointer; white-space: nowrap; }
+.print-btn:hover { background: #f0f0f0; }
+
+/* ── Content area ── */
+#content { padding: 20px; max-width: 720px; }
+.section { display: none; }
+.section.active { display: block; }
+.pg-header { margin-bottom: 14px; }
+.pg-title { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+.pg-sub { font-size: 12px; color: #666; }
+
+h2.court-title { font-size: 13px; font-weight: 700; color: #333;
+                 margin: 18px 0 6px; padding-top: 10px; border-top: 2px solid #333; }
+h2.court-title:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+
+table { border-collapse: collapse; table-layout: fixed; font-size: 12px; width: 100%; margin-bottom: 4px; }
+th { background: #ebebeb; color: #555; font-weight: 600; padding: 5px 9px;
+     border: 1px solid #ddd; text-align: left; overflow: hidden; text-overflow: ellipsis; }
+th.num, td.num { text-align: right; }
+td { padding: 4px 9px; border: 1px solid #e4e4e4; overflow-wrap: break-word; }
+
+.wl-heading { font-size: 12px; font-weight: 700; color: #333; margin: 16px 0 6px;
+              padding-top: 10px; border-top: 2px solid #333; }
+
+.diff-row td { font-weight: 700; color: #c0392b; }
+
+#comp-footer { margin-top: 10px; font-size: 12px; color: #555; font-weight: 600; }
+
+/* ── Print ── */
+@media print {
+  body { background: #fff; }
+  #controls { display: none; }
+  #content { padding: 0; max-width: none; }
+  table { font-size: 11px; }
+  td, th { padding: 4px 8px; }
+  @page { size: letter portrait; margin: 0.75in 1in; }
+
+  /* 1-page print: only DEN section, regardless of active tab */
+  body.print-1page .section { display: none; }
+  body.print-1page .section[data-section="den"] { display: block; }
+
+  /* 3-page print: DEN, Rating, Comparison each on their own page.
+     DEN gets no page-break-before so it stays on page 1. */
+  body.print-3page .section { display: block !important; }
+  body.print-3page .section[data-section="rating"],
+  body.print-3page .section[data-section="comparison"] { page-break-before: always; }
+}
+</style>
+</head>
+<body>
+
+<div id="controls">
+  <label for="date-select">Session date</label>
+  <select id="date-select"><option value="2026-07-17">Fri, Jul 17, 2026</option><option value="2026-07-16">Thu, Jul 16, 2026</option><option value="2026-07-15">Wed, Jul 15, 2026</option><option value="2026-07-14">Tue, Jul 14, 2026</option><option value="2026-07-13">Mon, Jul 13, 2026</option><option value="2026-07-10">Fri, Jul 10, 2026</option><option value="2026-07-09">Thu, Jul 9, 2026</option><option value="2026-07-08">Wed, Jul 8, 2026</option><option value="2026-07-07">Tue, Jul 7, 2026</option><option value="2026-07-06">Mon, Jul 6, 2026</option><option value="2026-07-03">Fri, Jul 3, 2026</option></select>
+
+  <div id="tabs">
+    <button class="tab-btn" data-tab="den">DEN</button>
+    <button class="tab-btn" data-tab="rating">Rating</button>
+    <button class="tab-btn" data-tab="comparison">Comparison</button>
+  </div>
+
+  <div id="print-group">
+    <button class="print-btn" onclick="printMode('1page')">Print 1-page</button>
+    <button class="print-btn" onclick="printMode('3page')">Print 3-page</button>
+  </div>
+</div>
+
+<div id="content">
+  <div class="section" data-section="den"><div id="den-body"></div></div>
+  <div class="section" data-section="rating"><div id="rating-body"></div></div>
+  <div class="section" data-section="comparison"><div id="comparison-body"></div></div>
+</div>
+
+<script>
+const DATA = {"2026-07-03":{"date_display":"Friday, July 3, 2026","generated":"07/03/2026 04:17 AM MST","total_signups":16,"ratings_through":"7/2/26","den":{"courts":[{"court":3,"players":[{"pos":1,"su":10,"name":"Russ Brannon","step":1,"pct":84.8},{"pos":2,"su":16,"name":"Dave Grubb","step":1,"pct":82.0},{"pos":3,"su":9,"name":"Jim Pearson","step":1,"pct":73.6},{"pos":4,"su":4,"name":"Eric Kramer","step":2,"pct":86.7}]},{"court":4,"players":[{"pos":1,"su":11,"name":"Debbie Lacey","step":2,"pct":81.1},{"pos":2,"su":14,"name":"Ron Kelly","step":2,"pct":79.9},{"pos":3,"su":5,"name":"Lidia Zolnierczyk","step":2,"pct":76.8},{"pos":4,"su":2,"name":"Alena Nagyova","step":2,"pct":75.7}]},{"court":5,"players":[{"pos":1,"su":1,"name":"Paul Batie","step":3,"pct":69.7},{"pos":2,"su":12,"name":"Jackie Maniaci","step":3,"pct":66.2},{"pos":3,"su":6,"name":"Donna Cantrell","step":4,"pct":73.2},{"pos":4,"su":13,"name":"John Entreken","step":4,"pct":71.7}]},{"court":6,"players":[{"pos":1,"su":3,"name":"Stacy Kramer","step":4,"pct":60.7},{"pos":2,"su":8,"name":"Paula Pearson","step":5,"pct":54.6},{"pos":3,"su":7,"name":"Lynnie McKee","step":6,"pct":61.0},{"pos":4,"su":15,"name":"Terry Truett","step":null,"pct":null}]}],"waitlist":[]},"rating":{"courts":[{"court":3,"players":[{"pos":1,"su":4,"name":"Eric Kramer","rating":1570},{"pos":2,"su":10,"name":"Russ Brannon","rating":1391},{"pos":3,"su":16,"name":"Dave Grubb","rating":1251},{"pos":4,"su":2,"name":"Alena Nagyova","rating":1203}]},{"court":4,"players":[{"pos":1,"su":14,"name":"Ron Kelly","rating":1158},{"pos":2,"su":5,"name":"Lidia Zolnierczyk","rating":1071},{"pos":3,"su":11,"name":"Debbie Lacey","rating":1039},{"pos":4,"su":6,"name":"Donna Cantrell","rating":951}]},{"court":5,"players":[{"pos":1,"su":9,"name":"Jim Pearson","rating":859},{"pos":2,"su":13,"name":"John Entreken","rating":821},{"pos":3,"su":1,"name":"Paul Batie","rating":724},{"pos":4,"su":12,"name":"Jackie Maniaci","rating":652}]},{"court":6,"players":[{"pos":1,"su":7,"name":"Lynnie McKee","rating":503},{"pos":2,"su":3,"name":"Stacy Kramer","rating":421},{"pos":3,"su":8,"name":"Paula Pearson","rating":357},{"pos":4,"su":15,"name":"Terry Truett","rating":null}]}],"waitlist":[]},"comparison":{"rows":[{"name":"Eric Kramer","den_court":3,"rating_court":3,"diff":0},{"name":"Russ Brannon","den_court":3,"rating_court":3,"diff":0},{"name":"Dave Grubb","den_court":3,"rating_court":3,"diff":0},{"name":"Alena Nagyova","den_court":4,"rating_court":3,"diff":1},{"name":"Ron Kelly","den_court":4,"rating_court":4,"diff":0},{"name":"Lidia Zolnierczyk","den_court":4,"rating_court":4,"diff":0},{"name":"Debbie Lacey","den_court":4,"rating_court":4,"diff":0},{"name":"Donna Cantrell","den_court":5,"rating_court":4,"diff":1},{"name":"Jim Pearson","den_court":3,"rating_court":5,"diff":-2},{"name":"John Entreken","den_court":5,"rating_court":5,"diff":0},{"name":"Paul Batie","den_court":5,"rating_court":5,"diff":0},{"name":"Jackie Maniaci","den_court":5,"rating_court":5,"diff":0},{"name":"Lynnie McKee","den_court":6,"rating_court":6,"diff":0},{"name":"Stacy Kramer","den_court":6,"rating_court":6,"diff":0},{"name":"Paula Pearson","den_court":6,"rating_court":6,"diff":0},{"name":"Terry Truett","den_court":6,"rating_court":6,"diff":0}],"moved":3,"total":16}},"2026-07-06":{"date_display":"Monday, July 6, 2026","generated":"07/06/2026 04:23 AM MST","total_signups":12,"ratings_through":"7/3/26","den":{"courts":[{"court":3,"players":[{"pos":1,"su":10,"name":"Kara Rice","step":1,"pct":90.9},{"pos":2,"su":3,"name":"Eric Kramer","step":1,"pct":87.8},{"pos":3,"su":5,"name":"Steve Ludick","step":1,"pct":76.6},{"pos":4,"su":11,"name":"Donna Cantrell","step":1,"pct":74.1}]},{"court":4,"players":[{"pos":1,"su":6,"name":"Cary McCormick","step":1,"pct":73.7},{"pos":2,"su":9,"name":"Ron Kelly","step":2,"pct":80.8},{"pos":3,"su":1,"name":"Lidia Zolnierczyk","step":2,"pct":78.0},{"pos":4,"su":4,"name":"Alena Nagyova","step":2,"pct":77.6}]},{"court":5,"players":[{"pos":1,"su":7,"name":"Peter Barnett","step":3,"pct":81.5},{"pos":2,"su":12,"name":"Dwight Christensen","step":3,"pct":75.5},{"pos":3,"su":8,"name":"Maggie Hanzmann","step":4,"pct":76.8},{"pos":4,"su":2,"name":"Stacy Kramer","step":5,"pct":60.6}]}],"waitlist":[]},"rating":{"courts":[{"court":3,"players":[{"pos":1,"su":10,"name":"Kara Rice","rating":1667},{"pos":2,"su":3,"name":"Eric Kramer","rating":1508},{"pos":3,"su":7,"name":"Peter Barnett","rating":1450},{"pos":4,"su":4,"name":"Alena Nagyova","rating":1190}]},{"court":4,"players":[{"pos":1,"su":5,"name":"Steve Ludick","rating":1190},{"pos":2,"su":9,"name":"Ron Kelly","rating":1184},{"pos":3,"su":1,"name":"Lidia Zolnierczyk","rating":1056},{"pos":4,"su":6,"name":"Cary McCormick","rating":996}]},{"court":5,"players":[{"pos":1,"su":12,"name":"Dwight Christensen","rating":977},{"pos":2,"su":8,"name":"Maggie Hanzmann","rating":969},{"pos":3,"su":11,"name":"Donna Cantrell","rating":957},{"pos":4,"su":2,"name":"Stacy Kramer","rating":404}]}],"waitlist":[]},"comparison":{"rows":[{"name":"Kara Rice","den_court":3,"rating_court":3,"diff":0},{"name":"Eric Kramer","den_court":3,"rating_court":3,"diff":0},{"name":"Peter Barnett","den_court":5,"rating_court":3,"diff":2},{"name":"Alena Nagyova","den_court":4,"rating_court":3,"diff":1},{"name":"Steve Ludick","den_court":3,"rating_court":4,"diff":-1},{"name":"Ron Kelly","den_court":4,"rating_court":4,"diff":0},{"name":"Lidia Zolnierczyk","den_court":4,"rating_court":4,"diff":0},{"name":"Cary McCormick","den_court":4,"rating_court":4,"diff":0},{"name":"Dwight Christensen","den_court":5,"rating_court":5,"diff":0},{"name":"Maggie Hanzmann","den_court":5,"rating_court":5,"diff":0},{"name":"Donna Cantrell","den_court":3,"rating_court":5,"diff":-2},{"name":"Stacy Kramer","den_court":5,"rating_court":5,"diff":0}],"moved":4,"total":12}},"2026-07-07":{"date_display":"Tuesday, July 7, 2026","generated":"07/06/2026 05:30 PM MST","total_signups":16,"ratings_through":"7/3/26","den":{"courts":[{"court":3,"players":[{"pos":1,"su":5,"name":"Eric Kramer","step":1,"pct":86.2},{"pos":2,"su":12,"name":"Peter Barnett","step":1,"pct":82.7},{"pos":3,"su":8,"name":"Brad Caskey","step":1,"pct":77.3},{"pos":4,"su":13,"name":"Ron Kelly","step":2,"pct":81.0}]},{"court":4,"players":[{"pos":1,"su":15,"name":"Frank DAngelo","step":2,"pct":79.5},{"pos":2,"su":7,"name":"Alena Nagyova","step":2,"pct":78.6},{"pos":3,"su":16,"name":"Joe McKamey","step":3,"pct":79.7},{"pos":4,"su":11,"name":"Kindi Backstrom","step":3,"pct":79.2}]},{"court":5,"players":[{"pos":1,"su":9,"name":"Steve Ludick","step":3,"pct":75.5},{"pos":2,"su":14,"name":"John Entreken","step":3,"pct":72.2},{"pos":3,"su":6,"name":"Jackie Maniaci","step":3,"pct":69.3},{"pos":4,"su":2,"name":"Steve Terpstra","step":3,"pct":64.4}]},{"court":6,"players":[{"pos":1,"su":4,"name":"Stacy Kramer","step":3,"pct":59.5},{"pos":2,"su":3,"name":"Lidia Zolnierczyk","step":4,"pct":75.9},{"pos":3,"su":10,"name":"Joseph Rosales","step":5,"pct":64.9},{"pos":4,"su":1,"name":"Tonya Carroll","step":6,"pct":62.7}]}],"waitlist":[]},"rating":{"courts":[{"court":3,"players":[{"pos":1,"su":5,"name":"Eric Kramer","rating":1508},{"pos":2,"su":12,"name":"Peter Barnett","rating":1450},{"pos":3,"su":16,"name":"Joe McKamey","rating":1366},{"pos":4,"su":7,"name":"Alena Nagyova","rating":1190}]},{"court":4,"players":[{"pos":1,"su":9,"name":"Steve Ludick","rating":1190},{"pos":2,"su":13,"name":"Ron Kelly","rating":1184},{"pos":3,"su":15,"name":"Frank DAngelo","rating":1113},{"pos":4,"su":8,"name":"Brad Caskey","rating":1109}]},{"court":5,"players":[{"pos":1,"su":3,"name":"Lidia Zolnierczyk","rating":1056},{"pos":2,"su":11,"name":"Kindi Backstrom","rating":986},{"pos":3,"su":14,"name":"John Entreken","rating":808},{"pos":4,"su":10,"name":"Joseph Rosales","rating":774}]},{"court":6,"players":[{"pos":1,"su":2,"name":"Steve Terpstra","rating":761},{"pos":2,"su":6,"name":"Jackie Maniaci","rating":656},{"pos":3,"su":1,"name":"Tonya Carroll","rating":592},{"pos":4,"su":4,"name":"Stacy Kramer","rating":404}]}],"waitlist":[]},"comparison":{"rows":[{"name":"Eric Kramer","den_court":3,"rating_court":3,"diff":0},{"name":"Peter Barnett","den_court":3,"rating_court":3,"diff":0},{"name":"Joe McKamey","den_court":4,"rating_court":3,"diff":1},{"name":"Alena Nagyova","den_court":4,"rating_court":3,"diff":1},{"name":"Steve Ludick","den_court":5,"rating_court":4,"diff":1},{"name":"Ron Kelly","den_court":3,"rating_court":4,"diff":-1},{"name":"Frank DAngelo","den_court":4,"rating_court":4,"diff":0},{"name":"Brad Caskey","den_court":3,"rating_court":4,"diff":-1},{"name":"Lidia Zolnierczyk","den_court":6,"rating_court":5,"diff":1},{"name":"Kindi Backstrom","den_court":4,"rating_court":5,"diff":-1},{"name":"John Entreken","den_court":5,"rating_court":5,"diff":0},{"name":"Joseph Rosales","den_court":6,"rating_court":5,"diff":1},{"name":"Steve Terpstra","den_court":5,"rating_court":6,"diff":-1},{"name":"Jackie Maniaci","den_court":5,"rating_court":6,"diff":-1},{"name":"Tonya Carroll","den_court":6,"rating_court":6,"diff":0},{"name":"Stacy Kramer","den_court":6,"rating_court":6,"diff":0}],"moved":10,"total":16}},"2026-07-08":{"date_display":"Wednesday, July 8, 2026","generated":"07/06/2026 11:35 AM MST","total_signups":17,"ratings_through":"7/3/26","den":{"courts":[{"court":3,"players":[{"pos":1,"su":15,"name":"Kara Rice","step":1,"pct":92.2},{"pos":2,"su":4,"name":"Eric Kramer","step":1,"pct":86.2},{"pos":3,"su":12,"name":"Peter Barnett","step":1,"pct":82.7},{"pos":4,"su":9,"name":"Brad Caskey","step":1,"pct":77.3}]},{"court":4,"players":[{"pos":1,"su":14,"name":"Ron Kelly","step":2,"pct":81.0},{"pos":2,"su":7,"name":"Alena Nagyova","step":2,"pct":78.6},{"pos":3,"su":13,"name":"Greg Egli","step":2,"pct":78.2},{"pos":4,"su":16,"name":"Joe McKamey","step":3,"pct":79.7}]},{"court":5,"players":[{"pos":1,"su":11,"name":"Kindi Backstrom","step":3,"pct":79.2},{"pos":2,"su":8,"name":"Tron Brinkmann","step":3,"pct":78.2},{"pos":3,"su":10,"name":"Steve Ludick","step":3,"pct":75.5},{"pos":4,"su":5,"name":"Donna Cantrell","step":3,"pct":72.5}]},{"court":6,"players":[{"pos":1,"su":2,"name":"Paul Batie","step":3,"pct":70.5},{"pos":2,"su":6,"name":"Jackie Maniaci","step":3,"pct":69.3},{"pos":3,"su":3,"name":"Stacy Kramer","step":3,"pct":59.5},{"pos":4,"su":1,"name":"Tonya Carroll","step":6,"pct":62.7}]}],"waitlist":[{"pos":1,"su":17,"name":"Dave Grubb","step":1,"pct":82.6}]},"rating":{"courts":[{"court":3,"players":[{"pos":1,"su":15,"name":"Kara Rice","rating":1667},{"pos":2,"su":4,"name":"Eric Kramer","rating":1508},{"pos":3,"su":12,"name":"Peter Barnett","rating":1450},{"pos":4,"su":16,"name":"Joe McKamey","rating":1366}]},{"court":4,"players":[{"pos":1,"su":7,"name":"Alena Nagyova","rating":1190},{"pos":2,"su":10,"name":"Steve Ludick","rating":1190},{"pos":3,"su":14,"name":"Ron Kelly","rating":1184},{"pos":4,"su":9,"name":"Brad Caskey","rating":1109}]},{"court":5,"players":[{"pos":1,"su":13,"name":"Greg Egli","rating":1083},{"pos":2,"su":8,"name":"Tron Brinkmann","rating":1045},{"pos":3,"su":11,"name":"Kindi Backstrom","rating":986},{"pos":4,"su":5,"name":"Donna Cantrell","rating":957}]},{"court":6,"players":[{"pos":1,"su":2,"name":"Paul Batie","rating":703},{"pos":2,"su":6,"name":"Jackie Maniaci","rating":656},{"pos":3,"su":1,"name":"Tonya Carroll","rating":592},{"pos":4,"su":3,"name":"Stacy Kramer","rating":404}]}],"waitlist":[{"pos":1,"su":17,"name":"Dave Grubb","rating":1233}]},"comparison":{"rows":[{"name":"Kara Rice","den_court":3,"rating_court":3,"diff":0},{"name":"Eric Kramer","den_court":3,"rating_court":3,"diff":0},{"name":"Peter Barnett","den_court":3,"rating_court":3,"diff":0},{"name":"Joe McKamey","den_court":4,"rating_court":3,"diff":1},{"name":"Alena Nagyova","den_court":4,"rating_court":4,"diff":0},{"name":"Steve Ludick","den_court":5,"rating_court":4,"diff":1},{"name":"Ron Kelly","den_court":4,"rating_court":4,"diff":0},{"name":"Brad Caskey","den_court":3,"rating_court":4,"diff":-1},{"name":"Greg Egli","den_court":4,"rating_court":5,"diff":-1},{"name":"Tron Brinkmann","den_court":5,"rating_court":5,"diff":0},{"name":"Kindi Backstrom","den_court":5,"rating_court":5,"diff":0},{"name":"Donna Cantrell","den_court":5,"rating_court":5,"diff":0},{"name":"Paul Batie","den_court":6,"rating_court":6,"diff":0},{"name":"Jackie Maniaci","den_court":6,"rating_court":6,"diff":0},{"name":"Tonya Carroll","den_court":6,"rating_court":6,"diff":0},{"name":"Stacy Kramer","den_court":6,"rating_court":6,"diff":0}],"moved":4,"total":16}},"2026-07-09":{"date_display":"Thursday, July 9, 2026","generated":"07/06/2026 08:45 AM MST","total_signups":16,"ratings_through":"7/3/26","den":{"courts":[{"court":3,"players":[{"pos":1,"su":16,"name":"Kara Rice","step":1,"pct":92.2},{"pos":2,"su":4,"name":"Eric Kramer","step":1,"pct":86.2},{"pos":3,"su":12,"name":"Peter Barnett","step":1,"pct":82.7},{"pos":4,"su":13,"name":"Ron Kelly","step":2,"pct":81.0}]},{"court":4,"players":[{"pos":1,"su":8,"name":"Alena Nagyova","step":2,"pct":78.6},{"pos":2,"su":9,"name":"Amber Tinstman","step":2,"pct":76.9},{"pos":3,"su":10,"name":"Steve Ludick","step":3,"pct":75.5},{"pos":4,"su":6,"name":"Jim Pearson","step":3,"pct":74.6}]},{"court":5,"players":[{"pos":1,"su":15,"name":"John Entreken","step":3,"pct":72.2},{"pos":2,"su":7,"name":"Jackie Maniaci","step":3,"pct":69.3},{"pos":3,"su":3,"name":"Stacy Kramer","step":3,"pct":59.5},{"pos":4,"su":2,"name":"Lidia Zolnierczyk","step":4,"pct":75.9}]},{"court":6,"players":[{"pos":1,"su":14,"name":"Mike LoPorto","step":5,"pct":74.2},{"pos":2,"su":11,"name":"Joseph Rosales","step":5,"pct":64.9},{"pos":3,"su":5,"name":"Paula Pearson","step":5,"pct":56.3},{"pos":4,"su":1,"name":"Tonya Carroll","step":6,"pct":62.7}]}],"waitlist":[]},"rating":{"courts":[{"court":3,"players":[{"pos":1,"su":16,"name":"Kara Rice","rating":1667},{"pos":2,"su":4,"name":"Eric Kramer","rating":1508},{"pos":3,"su":12,"name":"Peter Barnett","rating":1450},{"pos":4,"su":8,"name":"Alena Nagyova","rating":1190}]},{"court":4,"players":[{"pos":1,"su":10,"name":"Steve Ludick","rating":1190},{"pos":2,"su":13,"name":"Ron Kelly","rating":1184},{"pos":3,"su":2,"name":"Lidia Zolnierczyk","rating":1056},{"pos":4,"su":9,"name":"Amber Tinstman","rating":1040}]},{"court":5,"players":[{"pos":1,"su":14,"name":"Mike LoPorto","rating":880},{"pos":2,"su":6,"name":"Jim Pearson","rating":850},{"pos":3,"su":15,"name":"John Entreken","rating":808},{"pos":4,"su":11,"name":"Joseph Rosales","rating":774}]},{"court":6,"players":[{"pos":1,"su":7,"name":"Jackie Maniaci","rating":656},{"pos":2,"su":1,"name":"Tonya Carroll","rating":592},{"pos":3,"su":3,"name":"Stacy Kramer","rating":404},{"pos":4,"su":5,"name":"Paula Pearson","rating":367}]}],"waitlist":[]},"comparison":{"rows":[{"name":"Kara Rice","den_court":3,"rating_court":3,"diff":0},{"name":"Eric Kramer","den_court":3,"rating_court":3,"diff":0},{"name":"Peter Barnett","den_court":3,"rating_court":3,"diff":0},{"name":"Alena Nagyova","den_court":4,"rating_court":3,"diff":1},{"name":"Steve Ludick","den_court":4,"rating_court":4,"diff":0},{"name":"Ron Kelly","den_court":3,"rating_court":4,"diff":-1},{"name":"Lidia Zolnierczyk","den_court":5,"rating_court":4,"diff":1},{"name":"Amber Tinstman","den_court":4,"rating_court":4,"diff":0},{"name":"Mike LoPorto","den_court":6,"rating_court":5,"diff":1},{"name":"Jim Pearson","den_court":4,"rating_court":5,"diff":-1},{"name":"John Entreken","den_court":5,"rating_court":5,"diff":0},{"name":"Joseph Rosales","den_court":6,"rating_court":5,"diff":1},{"name":"Jackie Maniaci","den_court":5,"rating_court":6,"diff":-1},{"name":"Tonya Carroll","den_court":6,"rating_court":6,"diff":0},{"name":"Stacy Kramer","den_court":5,"rating_court":6,"diff":-1},{"name":"Paula Pearson","den_court":6,"rating_court":6,"diff":0}],"moved":8,"total":16}},"2026-07-10":{"date_display":"Friday, July 10, 2026","generated":"07/05/2026 05:37 PM MST","total_signups":14,"ratings_through":"7/3/26","den":{"courts":[{"court":3,"players":[{"pos":1,"su":4,"name":"Eric Kramer","step":1,"pct":87.8},{"pos":2,"su":8,"name":"Steve Ludick","step":1,"pct":76.6},{"pos":3,"su":5,"name":"Donna Cantrell","step":1,"pct":74.1},{"pos":4,"su":12,"name":"Greg Egli","step":2,"pct":78.2}]},{"court":4,"players":[{"pos":1,"su":2,"name":"Lidia Zolnierczyk","step":2,"pct":78.0},{"pos":2,"su":6,"name":"Alena Nagyova","step":2,"pct":77.6},{"pos":3,"su":10,"name":"Amber Tinstman","step":2,"pct":76.9},{"pos":4,"su":11,"name":"Peter Barnett","step":3,"pct":81.5}]},{"court":5,"players":[{"pos":1,"su":9,"name":"Kindi Backstrom","step":3,"pct":79.2},{"pos":2,"su":7,"name":"Tron Brinkmann","step":3,"pct":78.2},{"pos":3,"su":1,"name":"Paul Batie","step":3,"pct":70.5},{"pos":4,"su":3,"name":"Stacy Kramer","step":5,"pct":60.6}]}],"waitlist":[{"pos":1,"su":13,"name":"Ron Kelly","step":2,"pct":80.8},{"pos":2,"su":14,"name":"Debbie Lacey","step":2,"pct":81.3}]},"rating":{"courts":[{"court":3,"players":[{"pos":1,"su":4,"name":"Eric Kramer","rating":1508},{"pos":2,"su":11,"name":"Peter Barnett","rating":1450},{"pos":3,"su":6,"name":"Alena Nagyova","rating":1190},{"pos":4,"su":8,"name":"Steve Ludick","rating":1190}]},{"court":4,"players":[{"pos":1,"su":12,"name":"Greg Egli","rating":1083},{"pos":2,"su":2,"name":"Lidia Zolnierczyk","rating":1056},{"pos":3,"su":7,"name":"Tron Brinkmann","rating":1045},{"pos":4,"su":10,"name":"Amber Tinstman","rating":1040}]},{"court":5,"players":[{"pos":1,"su":9,"name":"Kindi Backstrom","rating":986},{"pos":2,"su":5,"name":"Donna Cantrell","rating":957},{"pos":3,"su":1,"name":"Paul Batie","rating":703},{"pos":4,"su":3,"name":"Stacy Kramer","rating":404}]}],"waitlist":[{"pos":1,"su":13,"name":"Ron Kelly","rating":1184},{"pos":2,"su":14,"name":"Debbie Lacey","rating":1043}]},"comparison":{"rows":[{"name":"Eric Kramer","den_court":3,"rating_court":3,"diff":0},{"name":"Peter Barnett","den_court":4,"rating_court":3,"diff":1},{"name":"Alena Nagyova","den_court":4,"rating_court":3,"diff":1},{"name":"Steve Ludick","den_court":3,"rating_court":3,"diff":0},{"name":"Greg Egli","den_court":3,"rating_court":4,"diff":-1},{"name":"Lidia Zolnierczyk","den_court":4,"rating_court":4,"diff":0},{"name":"Tron Brinkmann","den_court":5,"rating_court":4,"diff":1},{"name":"Amber Tinstman","den_court":4,"rating_court":4,"diff":0},{"name":"Kindi Backstrom","den_court":5,"rating_court":5,"diff":0},{"name":"Donna Cantrell","den_court":3,"rating_court":5,"diff":-2},{"name":"Paul Batie","den_court":5,"rating_court":5,"diff":0},{"name":"Stacy Kramer","den_court":5,"rating_court":5,"diff":0}],"moved":5,"total":12}},"2026-07-13":{"date_display":"Monday, July 13, 2026","generated":"07/06/2026 07:33 PM MST","total_signups":9,"ratings_through":"7/3/26","den":{"courts":[{"court":3,"players":[{"pos":1,"su":4,"name":"Eric Kramer","step":1,"pct":86.2},{"pos":2,"su":5,"name":"Alena Nagyova","step":2,"pct":78.6},{"pos":3,"su":2,"name":"Kindi Backstrom","step":3,"pct":79.2},{"pos":4,"su":8,"name":"Steve Ludick","step":3,"pct":75.5}]},{"court":4,"players":[{"pos":1,"su":7,"name":"Jim Pearson","step":3,"pct":74.6},{"pos":2,"su":3,"name":"Stacy Kramer","step":3,"pct":59.5},{"pos":3,"su":1,"name":"Lidia Zolnierczyk","step":4,"pct":75.9},{"pos":4,"su":6,"name":"Paula Pearson","step":5,"pct":56.3}]}],"waitlist":[{"pos":1,"su":9,"name":"Lynnie McKee","step":4,"pct":63.4}]},"rating":{"courts":[{"court":3,"players":[{"pos":1,"su":4,"name":"Eric Kramer","rating":1508},{"pos":2,"su":5,"name":"Alena Nagyova","rating":1190},{"pos":3,"su":8,"name":"Steve Ludick","rating":1190},{"pos":4,"su":1,"name":"Lidia Zolnierczyk","rating":1056}]},{"court":4,"players":[{"pos":1,"su":2,"name":"Kindi Backstrom","rating":986},{"pos":2,"su":7,"name":"Jim Pearson","rating":850},{"pos":3,"su":3,"name":"Stacy Kramer","rating":404},{"pos":4,"su":6,"name":"Paula Pearson","rating":367}]}],"waitlist":[{"pos":1,"su":9,"name":"Lynnie McKee","rating":491}]},"comparison":{"rows":[{"name":"Eric Kramer","den_court":3,"rating_court":3,"diff":0},{"name":"Alena Nagyova","den_court":3,"rating_court":3,"diff":0},{"name":"Steve Ludick","den_court":3,"rating_court":3,"diff":0},{"name":"Lidia Zolnierczyk","den_court":4,"rating_court":3,"diff":1},{"name":"Kindi Backstrom","den_court":3,"rating_court":4,"diff":-1},{"name":"Jim Pearson","den_court":4,"rating_court":4,"diff":0},{"name":"Stacy Kramer","den_court":4,"rating_court":4,"diff":0},{"name":"Paula Pearson","den_court":4,"rating_court":4,"diff":0}],"moved":2,"total":8}},"2026-07-14":{"date_display":"Tuesday, July 14, 2026","generated":"07/06/2026 07:33 PM MST","total_signups":14,"ratings_through":"7/3/26","den":{"courts":[{"court":3,"players":[{"pos":1,"su":5,"name":"Eric Kramer","step":1,"pct":86.2},{"pos":2,"su":12,"name":"Brad Caskey","step":1,"pct":77.3},{"pos":3,"su":7,"name":"Alena Nagyova","step":2,"pct":78.6},{"pos":4,"su":10,"name":"Amber Tinstman","step":2,"pct":76.9}]},{"court":4,"players":[{"pos":1,"su":2,"name":"Kindi Backstrom","step":3,"pct":79.2},{"pos":2,"su":9,"name":"Steve Ludick","step":3,"pct":75.5},{"pos":3,"su":11,"name":"Donna Cantrell","step":3,"pct":72.5},{"pos":4,"su":8,"name":"Jackie Maniaci","step":3,"pct":69.3}]},{"court":5,"players":[{"pos":1,"su":3,"name":"Steve Terpstra","step":3,"pct":64.4},{"pos":2,"su":4,"name":"Stacy Kramer","step":3,"pct":59.5},{"pos":3,"su":1,"name":"Lidia Zolnierczyk","step":4,"pct":75.9},{"pos":4,"su":6,"name":"Tonya Carroll","step":6,"pct":62.7}]}],"waitlist":[{"pos":1,"su":13,"name":"Joseph Rosales","step":5,"pct":64.9},{"pos":2,"su":14,"name":"Lynnie McKee","step":4,"pct":63.4}]},"rating":{"courts":[{"court":3,"players":[{"pos":1,"su":5,"name":"Eric Kramer","rating":1508},{"pos":2,"su":7,"name":"Alena Nagyova","rating":1190},{"pos":3,"su":9,"name":"Steve Ludick","rating":1190},{"pos":4,"su":12,"name":"Brad Caskey","rating":1109}]},{"court":4,"players":[{"pos":1,"su":1,"name":"Lidia Zolnierczyk","rating":1056},{"pos":2,"su":10,"name":"Amber Tinstman","rating":1040},{"pos":3,"su":2,"name":"Kindi Backstrom","rating":986},{"pos":4,"su":11,"name":"Donna Cantrell","rating":957}]},{"court":5,"players":[{"pos":1,"su":3,"name":"Steve Terpstra","rating":761},{"pos":2,"su":8,"name":"Jackie Maniaci","rating":656},{"pos":3,"su":6,"name":"Tonya Carroll","rating":592},{"pos":4,"su":4,"name":"Stacy Kramer","rating":404}]}],"waitlist":[{"pos":1,"su":13,"name":"Joseph Rosales","rating":774},{"pos":2,"su":14,"name":"Lynnie McKee","rating":491}]},"comparison":{"rows":[{"name":"Eric Kramer","den_court":3,"rating_court":3,"diff":0},{"name":"Alena Nagyova","den_court":3,"rating_court":3,"diff":0},{"name":"Steve Ludick","den_court":4,"rating_court":3,"diff":1},{"name":"Brad Caskey","den_court":3,"rating_court":3,"diff":0},{"name":"Lidia Zolnierczyk","den_court":5,"rating_court":4,"diff":1},{"name":"Amber Tinstman","den_court":3,"rating_court":4,"diff":-1},{"name":"Kindi Backstrom","den_court":4,"rating_court":4,"diff":0},{"name":"Donna Cantrell","den_court":4,"rating_court":4,"diff":0},{"name":"Steve Terpstra","den_court":5,"rating_court":5,"diff":0},{"name":"Jackie Maniaci","den_court":4,"rating_court":5,"diff":-1},{"name":"Tonya Carroll","den_court":5,"rating_court":5,"diff":0},{"name":"Stacy Kramer","den_court":5,"rating_court":5,"diff":0}],"moved":4,"total":12}},"2026-07-15":{"date_display":"Wednesday, July 15, 2026","generated":"07/05/2026 10:26 AM MST","total_signups":13,"ratings_through":"7/3/26","den":{"courts":[{"court":3,"players":[{"pos":1,"su":3,"name":"Eric Kramer","step":1,"pct":87.8},{"pos":2,"su":11,"name":"Brad Caskey","step":1,"pct":77.3},{"pos":3,"su":9,"name":"Steve Ludick","step":1,"pct":76.6},{"pos":4,"su":10,"name":"Donna Cantrell","step":1,"pct":74.1}]},{"court":4,"players":[{"pos":1,"su":1,"name":"Lidia Zolnierczyk","step":2,"pct":78.0},{"pos":2,"su":5,"name":"Alena Nagyova","step":2,"pct":77.6},{"pos":3,"su":7,"name":"Jim Pearson","step":3,"pct":74.6},{"pos":4,"su":8,"name":"Jackie Maniaci","step":3,"pct":69.3}]},{"court":5,"players":[{"pos":1,"su":12,"name":"Christopher Lay","step":4,"pct":72.3},{"pos":2,"su":2,"name":"Stacy Kramer","step":5,"pct":60.6},{"pos":3,"su":6,"name":"Paula Pearson","step":5,"pct":56.3},{"pos":4,"su":4,"name":"Tonya Carroll","step":6,"pct":62.7}]}],"waitlist":[{"pos":1,"su":13,"name":"Greg Egli","step":2,"pct":78.2}]},"rating":{"courts":[{"court":3,"players":[{"pos":1,"su":3,"name":"Eric Kramer","rating":1508},{"pos":2,"su":5,"name":"Alena Nagyova","rating":1190},{"pos":3,"su":9,"name":"Steve Ludick","rating":1190},{"pos":4,"su":11,"name":"Brad Caskey","rating":1109}]},{"court":4,"players":[{"pos":1,"su":1,"name":"Lidia Zolnierczyk","rating":1056},{"pos":2,"su":12,"name":"Christopher Lay","rating":1001},{"pos":3,"su":10,"name":"Donna Cantrell","rating":957},{"pos":4,"su":7,"name":"Jim Pearson","rating":850}]},{"court":5,"players":[{"pos":1,"su":8,"name":"Jackie Maniaci","rating":656},{"pos":2,"su":4,"name":"Tonya Carroll","rating":592},{"pos":3,"su":2,"name":"Stacy Kramer","rating":404},{"pos":4,"su":6,"name":"Paula Pearson","rating":367}]}],"waitlist":[{"pos":1,"su":13,"name":"Greg Egli","rating":1083}]},"comparison":{"rows":[{"name":"Eric Kramer","den_court":3,"rating_court":3,"diff":0},{"name":"Alena Nagyova","den_court":4,"rating_court":3,"diff":1},{"name":"Steve Ludick","den_court":3,"rating_court":3,"diff":0},{"name":"Brad Caskey","den_court":3,"rating_court":3,"diff":0},{"name":"Lidia Zolnierczyk","den_court":4,"rating_court":4,"diff":0},{"name":"Christopher Lay","den_court":5,"rating_court":4,"diff":1},{"name":"Donna Cantrell","den_court":3,"rating_court":4,"diff":-1},{"name":"Jim Pearson","den_court":4,"rating_court":4,"diff":0},{"name":"Jackie Maniaci","den_court":4,"rating_court":5,"diff":-1},{"name":"Tonya Carroll","den_court":5,"rating_court":5,"diff":0},{"name":"Stacy Kramer","den_court":5,"rating_court":5,"diff":0},{"name":"Paula Pearson","den_court":5,"rating_court":5,"diff":0}],"moved":4,"total":12}},"2026-07-16":{"date_display":"Thursday, July 16, 2026","generated":"07/06/2026 12:22 PM MST","total_signups":13,"ratings_through":"7/3/26","den":{"courts":[{"court":3,"players":[{"pos":1,"su":4,"name":"Eric Kramer","step":1,"pct":86.2},{"pos":2,"su":6,"name":"Alena Nagyova","step":2,"pct":78.6},{"pos":3,"su":12,"name":"Greg Egli","step":2,"pct":78.2},{"pos":4,"su":11,"name":"Amber Tinstman","step":2,"pct":76.9}]},{"court":4,"players":[{"pos":1,"su":10,"name":"Steve Ludick","step":3,"pct":75.5},{"pos":2,"su":8,"name":"Jim Pearson","step":3,"pct":74.6},{"pos":3,"su":9,"name":"Jackie Maniaci","step":3,"pct":69.3},{"pos":4,"su":2,"name":"Steve Terpstra","step":3,"pct":64.4}]},{"court":5,"players":[{"pos":1,"su":3,"name":"Stacy Kramer","step":3,"pct":59.5},{"pos":2,"su":1,"name":"Lidia Zolnierczyk","step":4,"pct":75.9},{"pos":3,"su":7,"name":"Paula Pearson","step":5,"pct":56.3},{"pos":4,"su":5,"name":"Tonya Carroll","step":6,"pct":62.7}]}],"waitlist":[{"pos":1,"su":13,"name":"Joseph Rosales","step":5,"pct":64.9}]},"rating":{"courts":[{"court":3,"players":[{"pos":1,"su":4,"name":"Eric Kramer","rating":1508},{"pos":2,"su":6,"name":"Alena Nagyova","rating":1190},{"pos":3,"su":10,"name":"Steve Ludick","rating":1190},{"pos":4,"su":12,"name":"Greg Egli","rating":1083}]},{"court":4,"players":[{"pos":1,"su":1,"name":"Lidia Zolnierczyk","rating":1056},{"pos":2,"su":11,"name":"Amber Tinstman","rating":1040},{"pos":3,"su":8,"name":"Jim Pearson","rating":850},{"pos":4,"su":2,"name":"Steve Terpstra","rating":761}]},{"court":5,"players":[{"pos":1,"su":9,"name":"Jackie Maniaci","rating":656},{"pos":2,"su":5,"name":"Tonya Carroll","rating":592},{"pos":3,"su":3,"name":"Stacy Kramer","rating":404},{"pos":4,"su":7,"name":"Paula Pearson","rating":367}]}],"waitlist":[{"pos":1,"su":13,"name":"Joseph Rosales","rating":774}]},"comparison":{"rows":[{"name":"Eric Kramer","den_court":3,"rating_court":3,"diff":0},{"name":"Alena Nagyova","den_court":3,"rating_court":3,"diff":0},{"name":"Steve Ludick","den_court":4,"rating_court":3,"diff":1},{"name":"Greg Egli","den_court":3,"rating_court":3,"diff":0},{"name":"Lidia Zolnierczyk","den_court":5,"rating_court":4,"diff":1},{"name":"Amber Tinstman","den_court":3,"rating_court":4,"diff":-1},{"name":"Jim Pearson","den_court":4,"rating_court":4,"diff":0},{"name":"Steve Terpstra","den_court":4,"rating_court":4,"diff":0},{"name":"Jackie Maniaci","den_court":4,"rating_court":5,"diff":-1},{"name":"Tonya Carroll","den_court":5,"rating_court":5,"diff":0},{"name":"Stacy Kramer","den_court":5,"rating_court":5,"diff":0},{"name":"Paula Pearson","den_court":5,"rating_court":5,"diff":0}],"moved":4,"total":12}},"2026-07-17":{"date_display":"Friday, July 17, 2026","generated":"07/04/2026 10:57 AM MST","total_signups":8,"ratings_through":"7/3/26","den":{"courts":[{"court":3,"players":[{"pos":1,"su":4,"name":"Eric Kramer","step":1,"pct":87.8},{"pos":2,"su":6,"name":"Steve Ludick","step":1,"pct":76.6},{"pos":3,"su":7,"name":"Donna Cantrell","step":1,"pct":74.1},{"pos":4,"su":1,"name":"Lidia Zolnierczyk","step":2,"pct":78.0}]},{"court":4,"players":[{"pos":1,"su":5,"name":"Alena Nagyova","step":2,"pct":77.6},{"pos":2,"su":2,"name":"Kindi Backstrom","step":3,"pct":79.2},{"pos":3,"su":8,"name":"Christopher Lay","step":4,"pct":72.3},{"pos":4,"su":3,"name":"Stacy Kramer","step":5,"pct":60.6}]}],"waitlist":[]},"rating":{"courts":[{"court":3,"players":[{"pos":1,"su":4,"name":"Eric Kramer","rating":1508},{"pos":2,"su":5,"name":"Alena Nagyova","rating":1190},{"pos":3,"su":6,"name":"Steve Ludick","rating":1190},{"pos":4,"su":1,"name":"Lidia Zolnierczyk","rating":1056}]},{"court":4,"players":[{"pos":1,"su":8,"name":"Christopher Lay","rating":1001},{"pos":2,"su":2,"name":"Kindi Backstrom","rating":986},{"pos":3,"su":7,"name":"Donna Cantrell","rating":957},{"pos":4,"su":3,"name":"Stacy Kramer","rating":404}]}],"waitlist":[]},"comparison":{"rows":[{"name":"Eric Kramer","den_court":3,"rating_court":3,"diff":0},{"name":"Alena Nagyova","den_court":4,"rating_court":3,"diff":1},{"name":"Steve Ludick","den_court":3,"rating_court":3,"diff":0},{"name":"Lidia Zolnierczyk","den_court":3,"rating_court":3,"diff":0},{"name":"Christopher Lay","den_court":4,"rating_court":4,"diff":0},{"name":"Kindi Backstrom","den_court":4,"rating_court":4,"diff":0},{"name":"Donna Cantrell","den_court":3,"rating_court":4,"diff":-1},{"name":"Stacy Kramer","den_court":4,"rating_court":4,"diff":0}],"moved":2,"total":8}}};
+
+function pageHeader(d, extra) {
+  let h = '<div class="pg-header">';
+  h += `<div class="pg-title">ANTHEM 6 AM SHOOTOUT — ${d.date_display}</div>`;
+  h += `<div class="pg-sub">${d.total_signups} Players • Generated ${d.generated}</div>`;
+  if (extra) h += `<div class="pg-sub">${extra}</div>`;
+  h += '</div>';
+  return h;
+}
+
+function courtColgroup(isRating) {
+  return isRating
+    ? '<colgroup><col style="width:16%"><col style="width:16%"><col style="width:40%"><col style="width:28%"></colgroup>'
+    : '<colgroup><col style="width:14%"><col style="width:14%"><col style="width:38%"><col style="width:17%"><col style="width:17%"></colgroup>';
+}
+
+function fmtPct(pct) {
+  return pct == null ? '' : `${pct.toFixed(1)}%`;
+}
+
+function courtTable(courtData, isRating) {
+  const colgroup = courtColgroup(isRating);
+  let h = '';
+  for (const c of courtData.courts) {
+    h += `<h2 class="court-title">COURT ${c.court}</h2>`;
+    h += `<table>${colgroup}<thead><tr><th class="num">Pos</th><th class="num">SU</th><th>Player</th>`;
+    h += isRating ? '<th class="num">Rating</th>' : '<th class="num">Step</th><th class="num">%</th>';
+    h += '</tr></thead><tbody>';
+    for (const p of c.players) {
+      h += `<tr><td class="num">${p.pos}</td><td class="num">${p.su}</td><td>${p.name}</td>`;
+      h += isRating
+        ? `<td class="num">${p.rating ?? ''}</td>`
+        : `<td class="num">${p.step ?? ''}</td><td class="num">${fmtPct(p.pct)}</td>`;
+      h += '</tr>';
+    }
+    h += '</tbody></table>';
+  }
+
+  h += '<div class="wl-heading">WAIT LIST</div>';
+  if (!courtData.waitlist.length) {
+    h += '<p>None</p>';
+  } else {
+    h += `<table>${colgroup}<thead><tr><th class="num">Pos</th><th class="num">SU</th><th>Player</th>`;
+    h += isRating ? '<th class="num">Rating</th>' : '<th class="num">Step</th><th class="num">%</th>';
+    h += '</tr></thead><tbody>';
+    for (const p of courtData.waitlist) {
+      h += `<tr><td class="num">${p.pos}</td><td class="num">${p.su}</td><td>${p.name}</td>`;
+      h += isRating
+        ? `<td class="num">${p.rating ?? ''}</td>`
+        : `<td class="num">${p.step ?? ''}</td><td class="num">${fmtPct(p.pct)}</td>`;
+      h += '</tr>';
+    }
+    h += '</tbody></table>';
+  }
+  return h;
+}
+
+function moveLabel(diff) {
+  if (diff === 0) return '';
+  const n = Math.abs(diff);
+  const courts = n === 1 ? 'court' : 'courts';
+  return diff > 0 ? `Move up ${n} ${courts}` : `Move down ${n} ${courts}`;
+}
+
+function comparisonTable(comp) {
+  const colgroup = '<colgroup><col style="width:28%"><col style="width:14%">'
+    + '<col style="width:14%"><col style="width:44%"></colgroup>';
+  let h = `<table>${colgroup}<thead><tr><th>Player</th><th class="num">DEN</th>`;
+  h += '<th class="num">Model</th><th>Adjustment</th></tr></thead><tbody>';
+  for (const r of comp.rows) {
+    h += `<tr${r.diff !== 0 ? ' class="diff-row"' : ''}>`;
+    h += `<td>${r.name}</td><td class="num">${r.den_court}</td>`;
+    h += `<td class="num">${r.rating_court}</td><td>${moveLabel(r.diff)}</td></tr>`;
+  }
+  h += '</tbody></table>';
+  h += `<div id="comp-footer">${comp.moved} of ${comp.total} players on different courts</div>`;
+  return h;
+}
+
+function render(dateStr) {
+  const d = DATA[dateStr];
+  if (!d) return;
+
+  const [yyyy, mm, dd] = dateStr.split('-');
+  document.title = `${mm}-${dd}-${yyyy.slice(2)} SAM Court Assignments`;
+
+  document.getElementById('den-body').innerHTML = pageHeader(d) + courtTable(d.den, false);
+
+  const hasRating = !!d.rating;
+  document.querySelector('.tab-btn[data-tab="rating"]').style.display = hasRating ? '' : 'none';
+  document.querySelector('.tab-btn[data-tab="comparison"]').style.display = hasRating ? '' : 'none';
+
+  if (hasRating) {
+    const ratingsNote = d.ratings_through
+      ? `Ratings based on SAM results through ${d.ratings_through}`
+      : '';
+    document.getElementById('rating-body').innerHTML =
+      pageHeader(d, ratingsNote) + courtTable(d.rating, true);
+    document.getElementById('comparison-body').innerHTML =
+      pageHeader(d, ratingsNote) + comparisonTable(d.comparison);
+  } else {
+    document.getElementById('rating-body').innerHTML = '';
+    document.getElementById('comparison-body').innerHTML = '';
+  }
+}
+
+function setTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.section').forEach(s => s.classList.toggle('active', s.dataset.section === tab));
+}
+
+function printMode(mode) {
+  document.body.classList.remove('print-1page', 'print-3page');
+  document.body.classList.add(mode === '1page' ? 'print-1page' : 'print-3page');
+  window.print();
+}
+
+document.querySelectorAll('.tab-btn').forEach(b => {
+  b.addEventListener('click', () => setTab(b.dataset.tab));
+});
+
+const sel = document.getElementById('date-select');
+sel.addEventListener('change', () => render(sel.value));
+
+setTab('den');
+render(sel.value);
+</script>
+</body>
+</html>

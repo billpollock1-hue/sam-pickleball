@@ -2,141 +2,79 @@
 """
 Builds a self-contained HTML session viewer with date dropdown.
 All data is embedded as JSON — no server required.
+Ratings sourced from Player_Game_Log in pickleball_model_latest.xlsx
+to ensure consistency with leaderboard and court assignments viewer.
 """
 
-import sys, math, json
-
-from collections import defaultdict
+import sys, json
 from pathlib import Path
-
+from collections import defaultdict
 import pandas as pd
 
-# Engine lives in the same directory; repo root is the parent
 ENGINE_DIR = Path(__file__).resolve().parent
 REPO_ROOT  = ENGINE_DIR.parent
-sys.path.insert(0, str(ENGINE_DIR))
 
-from pickleball_engine_v2 import (
-    BASE_ELO, K_FACTOR, PROVISIONAL_K_START, PROVISIONAL_K_GAMES,
-    norm, split_team, apply_manual_fix, team_has_placeholder,
-    margin_multiplier, game_position_decay, _provisional_k,
-)
+MODEL_PATH = REPO_ROOT / "output" / "pickleball_model_latest.xlsx"
+OUT_PATH   = REPO_ROOT / "output" / "session_viewer.html"
 
-DATA_PATH = REPO_ROOT / "data" / "master_history_raw.csv"
-OUT_PATH  = REPO_ROOT / "output" / "session_viewer.html"
+# ── Load Player_Game_Log ──────────────────────────────────────────────────────
+pgl = pd.read_excel(MODEL_PATH, sheet_name="Player_Game_Log")
+pgl["posted_dt"] = pd.to_datetime(pgl["posted_dt"])
+pgl["date_str"]  = pgl["posted_dt"].dt.strftime("%Y-%m-%d")
+pgl["time_str"]  = pgl["posted_dt"].dt.strftime("%H:%M")
 
-# ── Load & prepare ────────────────────────────────────────────────────────────
-raw = pd.read_csv(DATA_PATH)
-raw["posted_dt"] = pd.to_datetime(raw["posted"], errors="coerce")
-raw = raw.sort_values("posted_dt").reset_index(drop=True)
-raw["winning_team"] = raw.apply(lambda r: apply_manual_fix(r["winning_team"], r["posted_dt"]), axis=1)
-raw["losing_team"]  = raw.apply(lambda r: apply_manual_fix(r["losing_team"],  r["posted_dt"]), axis=1)
-raw["exclude_match"] = raw.get("exclude_match", False).fillna(False).astype(bool)
-raw["include_in_ratings"] = ~(
-    raw["winning_team"].apply(team_has_placeholder) |
-    raw["losing_team"].apply(team_has_placeholder)  |
-    raw["exclude_match"]
-)
+# Only include rated games
+pgl = pgl[
+    (pgl["include_in_ratings"] == "Yes") &
+    pgl["nhd_pre_rating"].notna()
+].copy()
 
-player_total_games = defaultdict(int)
-for _, r in raw.iterrows():
-    if r["include_in_ratings"]:
-        for p in split_team(r["winning_team"]) + split_team(r["losing_team"]):
-            if p:
-                player_total_games[p] += 1
+# ── Build date_games dict ─────────────────────────────────────────────────────
+date_games = defaultdict(list)
 
-# ── Run full Elo history, collect per-date game rows ─────────────────────────
-ratings             = defaultdict(lambda: BASE_ELO)
-player_game_count   = defaultdict(int)
-player_games_window = defaultdict(list)
-date_games          = defaultdict(list)   # date_str -> list of game dicts
-pool_game_count     = defaultdict(int)    # (date_str, pool) -> games seen so far, for shootout detection
+for _, r in pgl.sort_values("posted_dt").iterrows():
+    is_win  = bool(r["is_win"])
+    pf      = int(r["pf"]) if pd.notna(r.get("pf")) else 0
+    pa      = int(r["pa"]) if pd.notna(r.get("pa")) else 0
+    pre     = round(float(r["nhd_pre_rating"]))
+    post    = round(float(r["nhd_post_rating"]))
+    change  = round(float(r["nhd_post_rating"]) - float(r["nhd_pre_rating"]), 1)
+    team    = round(float(r["team_pre_rating"]))
+    opp     = round(float(r["opp_team_pre_rating"]))
+    gap     = round(team - opp)
+    opp2    = r.get("opp2", "")
+    opp2    = "" if pd.isna(opp2) else str(opp2)
+    partner = r.get("partner", "")
+    partner = "" if pd.isna(partner) else str(partner)
 
-for match_id, (_, r) in enumerate(raw.iterrows(), start=1):
-    w1, w2  = split_team(r["winning_team"])
-    l1, l2  = split_team(r["losing_team"])
-    sw, sl  = int(r["winning_score"]), int(r["losing_score"])
-    include = bool(r["include_in_ratings"])
-    posted  = r["posted_dt"]
+    # Score always from player perspective: pf = points for, pa = points against
+    score = f"{pf}\u2013{pa}"
 
-    snap = {}
-    for p in [w1, w2, l1, l2]:
-        if p:
-            snap[p] = ratings[p]
-
-    team_win_pre  = (snap.get(w1, BASE_ELO) + snap.get(w2, BASE_ELO)) / 2
-    team_lose_pre = (snap.get(l1, BASE_ELO) + snap.get(l2, BASE_ELO)) / 2
-    exp_win = 1 / (1 + 10 ** ((team_lose_pre - team_win_pre) / 400))
-    mult    = min(math.log(abs(sw - sl) + 1), 2.0)
-
-    k_w1 = _provisional_k(player_game_count[w1] + 1) if include else 0.0
-    k_w2 = _provisional_k(player_game_count[w2] + 1) if include else 0.0
-    k_l1 = _provisional_k(player_game_count[l1] + 1) if include else 0.0
-    k_l2 = _provisional_k(player_game_count[l2] + 1) if include else 0.0
-
-    def pos(p):
-        return min(len(player_games_window[p]) + 1, 60)
-
-    def decay(p):
-        return game_position_decay(pos(p), total_games=player_total_games[p]) if include else 1.0
-
-    d_w1 = round(k_w1 * (1 - exp_win) * mult * decay(w1), 2) if w1 else 0
-    d_w2 = round(k_w2 * (1 - exp_win) * mult * decay(w2), 2) if w2 else 0
-    d_l1 = round(k_l1 * (0 - (1 - exp_win)) * mult * decay(l1), 2) if l1 else 0
-    d_l2 = round(k_l2 * (0 - (1 - exp_win)) * mult * decay(l2), 2) if l2 else 0
-
-    if pd.notna(posted) and include:
-        date_str = posted.strftime("%Y-%m-%d")
-        pool = str(r.get("pool", "")).strip()
-        time_str = posted.strftime("%-I:%M %p")
-
-        # Shootout 1 = earliest 3 games on this pool/date; Shootout 2 = the next 3
-        pool_game_count[(date_str, pool)] += 1
-        shootout = 1 if pool_game_count[(date_str, pool)] <= 3 else 2
-
-        for player, partner, opp1, opp2, is_win, pf, pa, delta in [
-            (w1, w2, l1, l2, True,  sw, sl, d_w1),
-            (w2, w1, l1, l2, True,  sw, sl, d_w2),
-            (l1, l2, w1, w2, False, sl, sw, d_l1),
-            (l2, l1, w1, w2, False, sl, sw, d_l2),
-        ]:
-            if not player:
-                continue
-            pre  = snap.get(player, BASE_ELO)
-            post = round(pre + delta, 2)
-            team_pre = (snap.get(player, BASE_ELO) + snap.get(partner, BASE_ELO)) / 2 if partner else snap.get(player, BASE_ELO)
-            opp_pre  = (snap.get(opp1, BASE_ELO)   + snap.get(opp2, BASE_ELO))   / 2 if opp2    else snap.get(opp1, BASE_ELO)
-            date_games[date_str].append({
-                "time":     time_str,
-                "pool":     pool,
-                "shootout": shootout,
-                "player":   player,
-                "partner":  partner,
-                "opp1":     opp1,
-                "opp2":     opp2 or "",
-                "win":      is_win,
-                "score":    f"{pf}–{pa}",
-                "teamRating": round(team_pre),
-                "oppRating":  round(opp_pre),
-                "gap":        round(team_pre - opp_pre),
-                "pre":        round(pre),
-                "change":     round(delta),
-                "post":       round(post),
-            })
-
-    if include:
-        for p, d in [(w1, d_w1), (w2, d_w2), (l1, d_l1), (l2, d_l2)]:
-            if p:
-                ratings[p] = round(snap.get(p, BASE_ELO) + d, 2)
-                player_game_count[p] += 1
-                player_games_window[p].append(match_id)
-                if len(player_games_window[p]) > 60:
-                    player_games_window[p] = player_games_window[p][-60:]
+    date_games[r["date_str"]].append({
+        "time":       r["time_str"],
+        "pool":       str(r.get("pool", "") or ""),
+        "shootout":   int(r.get("shootout", 1) or 1),
+        "player":     str(r["player"]),
+        "partner":    partner,
+        "opp1":       str(r.get("opp1", "") or ""),
+        "opp2":       opp2,
+        "win":        is_win,
+        "score":      score,
+        "teamRating": int(team),
+        "oppRating":  int(opp),
+        "gap":        int(gap),
+        "pre":        int(pre),
+        "change":     change,
+        "post":       int(post),
+    })
 
 dates_sorted = sorted(date_games.keys())
 data_json    = json.dumps(date_games)
 dates_json   = json.dumps(dates_sorted)
 latest_date  = dates_sorted[-1] if dates_sorted else ""
+
+print(f"Dates included: {len(dates_sorted)}")
+print(f"Latest date: {latest_date}")
 
 # ── Build HTML ────────────────────────────────────────────────────────────────
 html = f"""<!DOCTYPE html>

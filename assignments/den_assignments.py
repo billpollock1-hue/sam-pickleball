@@ -436,7 +436,7 @@ def save_assignments_snapshot(assignments, waitlist, play_date_file, play_date_d
                                total_signups, rating_assignments=None, rating_waitlist=None,
                                ratings_through=None):
     """Write this session's court assignments to a JSON snapshot for the HTML viewer."""
-    generated = datetime.now(ZoneInfo("America/Phoenix")).strftime("%m/%d/%Y %I:%M %p MST")
+    generated = datetime.now(ZoneInfo("America/Phoenix")).strftime("%m/%d/%Y %I:%M %p AZ")
 
     snapshot = {
         "date_display": play_date_display,

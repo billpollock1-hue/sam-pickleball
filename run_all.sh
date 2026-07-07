@@ -113,6 +113,14 @@ echo "5c. Building slim leaderboard..."
 python3 engine/build_leaderboard_html.py
 
 echo ""
+echo "5d. Refreshing court assignment snapshots..."
+(cd assignments && python3 refresh_assignments.py)
+
+echo ""
+echo "5e. Building court assignments viewer..."
+(cd assignments && python3 generate_assignments_viewer.py)
+
+echo ""
 echo "6. Updating docs/ for GitHub Pages..."
 mkdir -p docs
 cp output/session_viewer.html docs/
@@ -121,13 +129,14 @@ cp output/competitive_balance.html docs/
 cp output/recent_trends.html docs/
 cp output/consistency.html docs/
 cp output/leaderboard.html docs/
+cp assignments/output/court_assignments_viewer.html docs/court_assignments.html
 # storybook.html intentionally excluded from docs/ sync while still in development
 
 echo ""
 echo "7. Committing and pushing docs/ to GitHub Pages..."
 if [ -n "$(git status --porcelain docs/)" ]; then
   git add docs/
-  git commit -m "Auto-update GitHub Pages docs ($(TZ=America/Phoenix date '+%Y-%m-%d %H:%M %Z'))"
+  git commit -m "Auto-update GitHub Pages docs ($(TZ=America/Phoenix date '+%Y-%m-%d %H:%M') AZ)"
   if git push origin main; then
     echo "Pushed docs/ updates to GitHub."
   else

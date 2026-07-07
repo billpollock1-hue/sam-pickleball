@@ -97,7 +97,15 @@ def refresh_date(date_str, den_ratings, player_ratings, ratings_through):
         print(f"{date_str}: only {len(signups)} signups — skipping (need {da.PLAYERS_PER_COURT}).")
         return False
 
-    assignments, waitlist = da.assign_courts(signups, den_ratings)
+    if den_ratings.empty:
+        assignments = pd.DataFrame()
+        waitlist = pd.DataFrame()
+    else:
+        if den_ratings.empty:
+        assignments = pd.DataFrame()
+        waitlist = pd.DataFrame()
+    else:
+        assignments, waitlist = da.assign_courts(signups, den_ratings)
 
     rating_assignments = rating_waitlist = None
     if not player_ratings.empty:
@@ -138,8 +146,9 @@ def main():
 
     den_ratings = fetch_den_ratings()
     if den_ratings.empty:
-        print("DEN ratings fetch returned nothing — session may be expired. Aborting.")
-        return 1
+        print("⚠ DEN ratings fetch returned nothing — session may be expired.")
+        print("  Proceeding with model ratings only. DEN Step/% columns will be empty.")
+        print("  Run DEN Assignments manually to refresh the session.")
 
     player_ratings = da.load_player_ratings()
     ratings_through = ratings_through_date()

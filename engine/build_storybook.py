@@ -106,7 +106,14 @@ def sv(row, key, default="—"):
 cbq = cb.set_index("Quarter")
 want = ["2022 Q1", "2023 Q1", "2024 Q1", "2025 Q2"]
 show_q = [q for q in want if q in cbq.index]
-mature = cb[cb["Games"] >= 60]
+# The current in-progress calendar quarter must never be treated as
+# "mature" for trend claims, no matter how many games it has already
+# accumulated -- a fast-playing group can clear a game-count threshold
+# within days of a new quarter starting, long before the quarter is
+# actually representative of anything.
+_current_q = pd.Timestamp.now().to_period("Q")
+_current_q_str = f"{_current_q.year} Q{_current_q.quarter}"
+mature = cb[(cb["Games"] >= 60) & (cb["Quarter"] != _current_q_str)]
 latest_q = mature["Quarter"].iloc[-1] if not mature.empty else cb["Quarter"].iloc[-1]
 if latest_q not in show_q:
     show_q.append(latest_q)
@@ -399,6 +406,7 @@ html = f"""<!DOCTYPE html>
         <h2>The Evidence: A Growing Competitiveness Problem</h2>
         <p>With a trustworthy measuring stick, we can now measure match quality directly. &ldquo;Match gap&rdquo; is the rating difference between the two teams in a game &mdash; smaller means more evenly matched.</p>
         <p>The trend is unmistakable. The average match gap has nearly doubled since early {first_year + 0 if first_year >= 2022 else 2022}, and games that qualify as closely matched &mdash; a gap under 200 points &mdash; have fallen from {pct_lt200_first}% of all games to {pct_lt200_last}%.</p>
+        <p>Raw scores tell a quieter version of the same story: games decided by 3 points or less have fallen from 35% to 28% of all matches, while blowouts (9+ points) have risen from 14% to 18%.</p>
         <p>Mismatched games are no longer rare exceptions. They are now the norm for roughly 4 in 10 matches.</p>
         <div class="pgnum">7</div>
       </div>
@@ -450,7 +458,7 @@ html = f"""<!DOCTYPE html>
     <div class="sheet">
       <div class="face front">
         <div class="kicker">Structural Weaknesses</div>
-        <div class="flaw"><b>STALE BY DESIGN</b><span>Step reflects your last play date &mdash; which may be weeks or months old.</span></div>
+        <div class="flaw"><b>SINGLE-EVENT MEMORY</b><span>Step is always tied to one event &mdash; your last shootout &mdash; not any broader track record.</span></div>
         <div class="flaw"><b>COURT-COUNT BLIND</b><span>A step earned on a 5-court day penalizes you on a 3-court day. High-turnout days systematically punish; low-turnout days reward.</span></div>
         <div class="flaw"><b>OPPONENT BLIND</b><span>Bottom-two on Court 1 against the strongest players costs the same as bottom-two on Court 3 against the weakest. Points scored are never adjusted for who you played or partnered with.</span></div>
         <div class="flaw"><b>NO RECENCY</b><span>A session three months ago counts exactly as much as last week&rsquo;s.</span></div>
@@ -466,7 +474,209 @@ html = f"""<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- s7: p14 spread table | p15 options narrative -->
+    <!-- s6.5: p14 real signup sheet distortion chart | p15 narrative -->
+    <div class="sheet">
+      <div class="face front">
+        <div class="kicker">Case Study &mdash; June 17, 2026</div>
+        <svg viewBox="0 0 420 520" width="100%" style="display:block;">
+          <text x="135" y="14" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="12" font-weight="bold" fill="var(--navy)">True skill rank</text>
+          <text x="340" y="14" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="12" font-weight="bold" fill="var(--navy)">DEN's pools</text>
+          <rect x="270" y="26" width="140" height="104" rx="6" fill="var(--tan)" stroke="var(--navy-2)" stroke-width="0.75"/>
+          <text x="280" y="42" font-family="'Trebuchet MS',sans-serif" font-size="11" font-weight="bold" fill="var(--navy)">Pool 1</text>
+          <rect x="270" y="144" width="140" height="104" rx="6" fill="var(--tan)" stroke="var(--navy-2)" stroke-width="0.75"/>
+          <text x="280" y="160" font-family="'Trebuchet MS',sans-serif" font-size="11" font-weight="bold" fill="var(--navy)">Pool 2</text>
+          <rect x="270" y="262" width="140" height="104" rx="6" fill="var(--tan)" stroke="var(--navy-2)" stroke-width="0.75"/>
+          <text x="280" y="278" font-family="'Trebuchet MS',sans-serif" font-size="11" font-weight="bold" fill="var(--navy)">Pool 3</text>
+          <rect x="270" y="380" width="140" height="104" rx="6" fill="var(--tan)" stroke="var(--navy-2)" stroke-width="0.75"/>
+          <text x="280" y="396" font-family="'Trebuchet MS',sans-serif" font-size="11" font-weight="bold" fill="var(--navy)">Pool 4</text>
+          <line x1="135" y1="30" x2="290" y2="200" stroke="#E8871E" stroke-width="2"/>
+          <line x1="135" y1="60" x2="290" y2="126" stroke="#1E8449" stroke-width="1.5"/>
+          <line x1="135" y1="90" x2="290" y2="178" stroke="#E8871E" stroke-width="2"/>
+          <line x1="135" y1="120" x2="290" y2="296" stroke="#C23B22" stroke-width="3"/>
+          <line x1="135" y1="150" x2="290" y2="104" stroke="#E8871E" stroke-width="2"/>
+          <line x1="135" y1="180" x2="290" y2="60" stroke="#E8871E" stroke-width="2"/>
+          <line x1="135" y1="210" x2="290" y2="362" stroke="#E8871E" stroke-width="2"/>
+          <line x1="135" y1="240" x2="290" y2="340" stroke="#E8871E" stroke-width="2"/>
+          <line x1="135" y1="270" x2="290" y2="480" stroke="#E8871E" stroke-width="2"/>
+          <line x1="135" y1="300" x2="290" y2="82" stroke="#C23B22" stroke-width="3"/>
+          <line x1="135" y1="330" x2="290" y2="222" stroke="#E8871E" stroke-width="2"/>
+          <line x1="135" y1="360" x2="290" y2="436" stroke="#E8871E" stroke-width="2"/>
+          <line x1="135" y1="390" x2="290" y2="244" stroke="#C23B22" stroke-width="3"/>
+          <line x1="135" y1="420" x2="290" y2="458" stroke="#1E8449" stroke-width="1.5"/>
+          <line x1="135" y1="450" x2="290" y2="318" stroke="#E8871E" stroke-width="2"/>
+          <line x1="135" y1="480" x2="290" y2="414" stroke="#1E8449" stroke-width="1.5"/>
+          <text x="125" y="30" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">E. Kramer</text>
+          <text x="125" y="60" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">J. Barroso</text>
+          <text x="125" y="90" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">P. Rillero</text>
+          <text x="125" y="120" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">G. Egli</text>
+          <text x="125" y="150" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">A. Nagyova</text>
+          <text x="125" y="180" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">B. Caskey</text>
+          <text x="125" y="210" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">D. Lacey</text>
+          <text x="125" y="240" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">C. McCormick</text>
+          <text x="125" y="270" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">M. LoPorto</text>
+          <text x="125" y="300" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">L. Zolnierczyk</text>
+          <text x="125" y="330" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">D. Cantrell</text>
+          <text x="125" y="360" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">W. Carroll</text>
+          <text x="125" y="390" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">P. Batie</text>
+          <text x="125" y="420" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">J. Peterson</text>
+          <text x="125" y="450" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">J. Maniaci</text>
+          <text x="125" y="480" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">S. Kramer</text>
+          <circle cx="135" cy="30" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="60" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="90" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="120" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="150" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="180" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="210" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="240" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="270" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="300" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="330" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="360" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="390" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="420" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="450" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="480" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="200" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="126" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="178" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="296" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="104" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="60" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="362" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="340" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="480" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="82" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="222" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="436" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="244" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="458" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="318" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="414" r="2.5" fill="var(--navy)"/>
+          <text x="210" y="505" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="10.5" fill="var(--ink)">Green: matched &#183; Amber: 1 tier off &#183; Red: 2 tiers off</text>
+        </svg>
+        <div class="pgnum">14</div>
+      </div>
+      <div class="face back">
+        <div class="kicker">Chapter Seven, Continued</div>
+        <h2>Not an Isolated Court</h2>
+        <p>On the morning of June 17, 2026, sixteen players signed up. DEN's Step and Percentage system sorted them into four pools of four &mdash; but as the chart shows, thirteen of the sixteen landed at least one tier away from where their real skill would place them, and three landed two tiers away.</p>
+        <p>Pool 2 tells the story plainly: Peter Rillero and Eric Kramer &mdash; ranked #3 and #1 overall &mdash; were grouped with Donna Cantrell and Paul Batie, ranked #11 and #13. When Rillero and Kramer teamed up in the round-robin rotation, they won <b>11&ndash;4</b>, a 651-point average rating gap between the teams.</p>
+        <p>This wasn&rsquo;t a one-off. Pool 1 and Pool 3 that same morning also produced lopsided matchups &mdash; the entire signup sheet was miscalibrated, not just one court.</p>
+        <div class="pgnum">15</div>
+      </div>
+    </div>
+
+    <!-- s6.6: p16 session2 distortion chart | p17 narrative -->
+    <div class="sheet">
+      <div class="face front">
+        <div class="kicker">Case Study &mdash; May 4, 2026</div>
+        <svg viewBox="0 0 420 500" width="100%" style="display:block;">
+          <text x="135" y="14" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="12" font-weight="bold" fill="var(--navy)">True rank after S1</text>
+          <text x="340" y="14" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="12" font-weight="bold" fill="var(--navy)">Session 2 pools</text>
+          <rect x="270" y="26" width="140" height="140" rx="6" fill="var(--tan)" stroke="var(--navy-2)" stroke-width="0.75"/>
+          <text x="280" y="42" font-family="'Trebuchet MS',sans-serif" font-size="11" font-weight="bold" fill="var(--navy)">Pool 1</text>
+          <rect x="270" y="181" width="140" height="140" rx="6" fill="var(--tan)" stroke="var(--navy-2)" stroke-width="0.75"/>
+          <text x="280" y="197" font-family="'Trebuchet MS',sans-serif" font-size="11" font-weight="bold" fill="var(--navy)">Pool 2</text>
+          <rect x="270" y="336" width="140" height="140" rx="6" fill="var(--tan)" stroke="var(--navy-2)" stroke-width="0.75"/>
+          <text x="280" y="352" font-family="'Trebuchet MS',sans-serif" font-size="11" font-weight="bold" fill="var(--navy)">Pool 3</text>
+          <line x1="135" y1="30" x2="290" y2="56" stroke="#1E8449" stroke-width="1.5"/>
+          <line x1="135" y1="70" x2="290" y2="88" stroke="#1E8449" stroke-width="1.5"/>
+          <line x1="135" y1="110" x2="290" y2="307" stroke="#E8871E" stroke-width="2"/>
+          <line x1="135" y1="150" x2="290" y2="243" stroke="#E8871E" stroke-width="2"/>
+          <line x1="135" y1="190" x2="290" y2="366" stroke="#E8871E" stroke-width="2"/>
+          <line x1="135" y1="230" x2="290" y2="152" stroke="#E8871E" stroke-width="2"/>
+          <line x1="135" y1="270" x2="290" y2="120" stroke="#E8871E" stroke-width="2"/>
+          <line x1="135" y1="310" x2="290" y2="430" stroke="#E8871E" stroke-width="2"/>
+          <line x1="135" y1="350" x2="290" y2="211" stroke="#E8871E" stroke-width="2"/>
+          <line x1="135" y1="390" x2="290" y2="462" stroke="#1E8449" stroke-width="1.5"/>
+          <line x1="135" y1="430" x2="290" y2="275" stroke="#E8871E" stroke-width="2"/>
+          <line x1="135" y1="470" x2="290" y2="398" stroke="#1E8449" stroke-width="1.5"/>
+          <text x="125" y="30" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">E. Kramer</text>
+          <text x="125" y="70" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">P. Barnett</text>
+          <text x="125" y="110" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">P. Rillero</text>
+          <text x="125" y="150" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">S. Ludick</text>
+          <text x="125" y="190" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">J. Barroso</text>
+          <text x="125" y="230" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">L. Zolnierczyk</text>
+          <text x="125" y="270" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">D. Christensen</text>
+          <text x="125" y="310" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">C. McCormick</text>
+          <text x="125" y="350" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">K. Backstrom</text>
+          <text x="125" y="390" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">A. Tinstman</text>
+          <text x="125" y="430" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">N. Whitson</text>
+          <text x="125" y="470" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">P. Batie</text>
+          <circle cx="135" cy="30" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="70" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="110" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="150" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="190" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="230" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="270" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="310" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="350" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="390" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="430" r="2.5" fill="var(--navy)"/>
+          <circle cx="135" cy="470" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="56" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="88" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="307" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="243" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="366" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="152" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="120" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="430" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="211" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="462" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="275" r="2.5" fill="var(--navy)"/>
+          <circle cx="290" cy="398" r="2.5" fill="var(--navy)"/>
+          <text x="210" y="488" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="10.5" fill="var(--ink)">Green: matched &#183; Amber: 1 tier off</text>
+        </svg>
+        <div class="pgnum">16</div>
+      </div>
+      <div class="face back">
+        <div class="kicker">Chapter Seven, Continued</div>
+        <h2>Perfect, Then Scrambled</h2>
+        <p>On May 4, 2026, Session 1 got it exactly right. Every one of twelve players landed in the pool matching their true skill rank &mdash; zero mismatches. Step and Percentage worked as designed.</p>
+        <p>Then 2-up/2-back moved players for Session 2, using only that morning's three games as its signal. The result: eight of twelve players &mdash; two-thirds of the field &mdash; landed in the wrong pool.</p>
+        <p>Pool 1 shows the damage directly. Eric Kramer and Peter Barnett, the two highest-rated players in the field, ended up paired together by the shuffle and beat Dwight Christensen and Lidia Zolnierczyk &mdash; correctly separated into a lower tier just one session earlier &mdash; <b>11&ndash;4</b>. The movement rule undid a correct assignment using less information than the assignment it replaced.</p>
+        <div class="pgnum">17</div>
+      </div>
+    </div>
+
+    <!-- s6.7: p18 court-count blind chart | p19 narrative -->
+    <div class="sheet">
+      <div class="face front">
+        <div class="kicker">Court-Count Blind &mdash; In Practice</div>
+        <div style="margin-top:10%;">
+          <div style="margin-bottom:9%;">
+            <div style="font-family:'Trebuchet MS',sans-serif;font-size:clamp(9px,1.05vw,12px);color:var(--ink);margin-bottom:2.5%;">2 courts &mdash; Oct 9, 2025</div>
+            <div class="bar"><div class="track"><span style="width:50%;"></span></div><em>Top 50%</em></div>
+          </div>
+          <div style="margin-bottom:9%;">
+            <div style="font-family:'Trebuchet MS',sans-serif;font-size:clamp(9px,1.05vw,12px);color:var(--ink);margin-bottom:2.5%;">3 courts &mdash; Oct 27, 2025</div>
+            <div class="bar"><div class="track"><span style="width:67%;"></span></div><em>Top 33%</em></div>
+          </div>
+          <div style="margin-bottom:9%;">
+            <div style="font-family:'Trebuchet MS',sans-serif;font-size:clamp(9px,1.05vw,12px);color:var(--ink);margin-bottom:2.5%;">4 courts &mdash; Feb 6, 2026</div>
+            <div class="bar"><div class="track"><span style="width:75%;"></span></div><em>Top 25%</em></div>
+          </div>
+          <div>
+            <div style="font-family:'Trebuchet MS',sans-serif;font-size:clamp(9px,1.05vw,12px);color:var(--ink);margin-bottom:2.5%;">5 courts &mdash; Apr 10, 2026</div>
+            <div class="bar"><div class="track"><span style="width:80%;"></span></div><em>Top 20%</em></div>
+          </div>
+        </div>
+        <div class="pgnum">18</div>
+      </div>
+      <div class="face back">
+        <div class="kicker">Chapter Seven, Continued</div>
+        <h2>Pool 1 Isn&rsquo;t Pool 1</h2>
+        <p>On a two-court day, reaching Pool 1 means finishing in the top half of eight players. On a three-court day, it means the top third of twelve. On a five-court day, it means the top fifth of twenty &mdash; a genuinely higher bar.</p>
+        <p>Step doesn&rsquo;t know the difference. A step earned in Pool 1 on a slow, low-turnout day carries the same weight as one earned in Pool 1 on a big, high-turnout day, even though the second is a meaningfully harder accomplishment.</p>
+        <p>The same blindness runs the other direction too: falling to the bottom pool on a big day &mdash; getting outplayed by three-quarters of the field &mdash; costs the same as falling to the bottom pool on a quiet day, where only half the field was ahead of you.</p>
+        <div class="pgnum">19</div>
+      </div>
+    </div>
+
+    <!-- s7: p20 spread table | p21 options narrative -->
     <div class="sheet">
       <div class="face front">
         <div class="kicker">Within-Court Skill Spread &mdash; Current System</div>
@@ -475,7 +685,7 @@ html = f"""<!DOCTYPE html>
           <div class="stat" style="border-left-color:#b3543a;"><div class="num">{den_s2}</div><div class="lbl">Session 2 average spread (after 2-up/2-back)</div></div>
           <div class="stat"><div class="num">{den_comb}</div><div class="lbl">combined baseline &mdash; the number to beat</div></div>
         </div>
-        <div class="pgnum">14</div>
+        <div class="pgnum">20</div>
       </div>
       <div class="face back">
         <div class="kicker">Chapter Eight</div>
@@ -483,7 +693,7 @@ html = f"""<!DOCTYPE html>
         <p>There is no shortage of ideas for assigning courts. To compare them fairly, we replayed the last 90 days of actual sessions &mdash; same players, same signups, same court counts &mdash; under each candidate method.</p>
         <p>Every method gets two scores. <b>Court tightness:</b> how close in skill the four players on each court are &mdash; a smaller spread means fairer games. <b>Shuffle:</b> what share of players change courts between the two sessions &mdash; some movement is healthy; constant mechanical reshuffling is not.</p>
         <p>Today&rsquo;s system is the baseline to beat: a combined spread of {den_comb}, with {den_move} of players moving mid-morning.</p>
-        <div class="pgnum">15</div>
+        <div class="pgnum">21</div>
       </div>
     </div>
 
@@ -495,7 +705,7 @@ html = f"""<!DOCTYPE html>
         <div class="factor"><b>2 &middot; SOFTEN THE SHUFFLE</b><span>Keep movement between sessions, but move one player up and one down per court instead of two. Less churn, same reward for winning.</span></div>
         <div class="factor"><b>3 &middot; LET RESULTS DRIVE SESSION 2</b><span>Re-rank everyone using their Session 1 results &mdash; weighted by who they faced &mdash; and rebuild the courts. A dial controls how strongly one morning moves you: steady, balanced, or fast.</span></div>
         <div class="factor"><b>4 &middot; TARGETED SWAPS ONLY</b><span>Leave courts alone except in special cases: two players nearly tied at a court boundary, or someone dramatically out-playing or under-playing their rating.</span></div>
-        <div class="pgnum">16</div>
+        <div class="pgnum">22</div>
       </div>
       <div class="face back">
         <div class="kicker">Chapter Eight, continued</div>
@@ -504,7 +714,7 @@ html = f"""<!DOCTYPE html>
         <p><b>Players changing courts</b> is the share of players sitting on a different court in Session 2 than Session 1. Today&rsquo;s 2-up/2-back moves about {den_move} &mdash; the most of anything we tested.</p>
         <p><b>Effort:</b> &ldquo;Settings only&rdquo; works within DEN as it exists today. &ldquo;Automation&rdquo; relies on the rating engine this project already runs after every play date.</p>
         <p>The two &#9733; rows are the recommendation &mdash; a starting step and a destination.</p>
-        <div class="pgnum">17</div>
+        <div class="pgnum">23</div>
       </div>
     </div>
 
@@ -517,7 +727,7 @@ html = f"""<!DOCTYPE html>
           {option_rows}
         </table>
         <p style="font-size:clamp(8.5px,1vw,12px);color:#8a7f6a;margin-top:3%;">Scored across the last 90 days of real sessions. Today&rsquo;s system: {den_comb} combined spread, {den_move} of players moving.</p>
-        <div class="pgnum">18</div>
+        <div class="pgnum">24</div>
       </div>
       <div class="face back">
         <div class="kicker">Chapter Nine</div>
@@ -532,7 +742,7 @@ html = f"""<!DOCTYPE html>
           <span>Session 2 courts rebuilt from Session 1 results, weighted by opponent strength &mdash; movement is earned, not mechanical. Runs on the automation this project already uses daily. (For the technically curious: appendix A.)</span>
           <div class="metric">{ph2_vs} better-matched courts &middot; combined spread {ph2_comb}</div>
         </div>
-        <div class="pgnum">19</div>
+        <div class="pgnum">25</div>
       </div>
     </div>
 
@@ -544,7 +754,7 @@ html = f"""<!DOCTYPE html>
         <div class="factor"><b>MOVEMENT MEANS SOMETHING</b><span>Moving up is earned by beating expectations, weighted by who you faced &mdash; not by finishing top-two on an easy court.</span></div>
         <div class="factor"><b>EVERY GAME COUNTS</b><span>Your rating updates after every game, with recent play weighted most.</span></div>
         <div class="factor"><b>NOTHING ELSE CHANGES</b><span>Same courts, same times, same shootout format. Only the seeding logic improves.</span></div>
-        <div class="pgnum">20</div>
+        <div class="pgnum">26</div>
       </div>
       <div class="face back apx">
         <div class="kicker" style="color:#8a7f6a;">Technical Appendix &middot; A</div>
@@ -556,7 +766,7 @@ E &nbsp;= expected win prob = 1 / (1 + 10^((R<sub>opp</sub> &minus; R<sub>team</
 M = margin multiplier = min(ln(margin + 1), 2.0)<br>
 D &nbsp;= recency weight, 25% &rarr; 100% across the window</div>
         <p style="font-size:clamp(9px,1.08vw,13px);">Team ratings are the average of the two partners; all four players update after every rated game.</p>
-        <div class="pgnum">21</div>
+        <div class="pgnum">27</div>
       </div>
     </div>
 
@@ -567,7 +777,7 @@ D &nbsp;= recency weight, 25% &rarr; 100% across the window</div>
         <div class="factor"><b>NO-HISTORY-DRIFT WINDOW</b><span>A player&rsquo;s current rating is rebuilt by replaying only their last 60 rated games from a neutral 1,000 start. Long tenure carries zero legacy inflation; what you&rsquo;ve done lately is what counts.</span></div>
         <div class="factor"><b>PROVISIONAL K</b><span>K starts at 40 for a player&rsquo;s first game and declines linearly to 20 by game 60, then holds. New players converge quickly; established ratings stay stable.</span></div>
         <div class="factor"><b>RECENCY DECAY</b><span>Within the 60-game window, weight ramps from 25% on the oldest game to 100% on the newest &mdash; the D in the formula. Yesterday&rsquo;s games move your rating roughly four times as much as games about to age out, and nothing jumps when an old game finally leaves the window.</span></div>
-        <div class="pgnum">22</div>
+        <div class="pgnum">28</div>
       </div>
       <div class="face back apx">
         <div class="kicker" style="color:#8a7f6a;">Technical Appendix &middot; B</div>
@@ -575,7 +785,7 @@ D &nbsp;= recency weight, 25% &rarr; 100% across the window</div>
         <div class="factor"><b>WHAT COUNTS</b><span>Every posted shootout game since Jan {first_year}. Placeholder entries (tryouts, drop-ins), guest players, and flagged data errors are excluded from ratings; known name glitches are corrected at load.</span></div>
         <div class="factor"><b>LEADERBOARD QUALIFICATION</b><span>At least 24 rated games within the past 180 days. Everyone else still carries a rating &mdash; shown with reduced confidence, pulled toward 1,000 in proportion to sample size and staleness.</span></div>
         <div class="factor"><b>FRESHNESS</b><span>No penalty for 90 days of inactivity; beyond that, a graduated confidence haircut up to 15%.</span></div>
-        <div class="pgnum">23</div>
+        <div class="pgnum">29</div>
       </div>
     </div>
 
@@ -587,7 +797,7 @@ D &nbsp;= recency weight, 25% &rarr; 100% across the window</div>
         <div class="factor"><b>VALIDATION</b><span>Predictions are checked against outcomes across the full pool every run. Gaps between individual actual and expected win rates reflect normal variance and close as games accumulate; aggregate calibration is what the model is tuned for.</span></div>
         <div class="factor"><b>SCENARIO REPLAY</b><span>Assignment alternatives were tested against the last 90 days of real sessions &mdash; same signups, same court counts &mdash; not simulations of hypothetical players.</span></div>
         <div class="mono" style="margin-top:3%;">Full methodology: Model Description tab<br>of the ratings workbook &middot; every number in<br>this book regenerates on each model run.</div>
-        <div class="pgnum">24</div>
+        <div class="pgnum">30</div>
       </div>
       <div class="face back darkpage">
         <p style="font-style:italic;opacity:0.75;">&mdash; end &mdash;</p>

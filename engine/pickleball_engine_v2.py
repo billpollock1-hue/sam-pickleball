@@ -333,6 +333,8 @@ def build_full_player_log(raw):
                     "opp_team_pre_rating": round(team_lose_pre if is_win else team_win_pre, 2),
                     "expected_result": round(exp_result, 4),
                     "include_in_ratings": "Yes" if include else "No",
+                    "pool": str(r.get("pool", "") or ""),
+                    "shootout": int(r["shootout"]) if pd.notna(r.get("shootout")) else 1,
                 }
             )
 
@@ -2918,6 +2920,20 @@ def main():
         eod_df = exclude_guest_players(eod_df)
     historical = exclude_guest_players(historical)
     player_log_trim = exclude_guest_players(player_log_trim)
+
+    # Merge no-history-drift ratings into player_log_trim so session viewer
+    # can show leaderboard-consistent ratings (not cumulative Elo).
+    # player_log is built from raw_recent (each player's last 60 games from 1000).
+    # Note: match_ids differ between player_log and full_player_log due to reset_index,
+    # so we join on posted_dt + player instead.
+    nhd_cols = player_log[["posted_dt", "player", "player_pre_rating", "player_post_rating"]].copy()
+    nhd_cols = nhd_cols.rename(columns={
+        "player_pre_rating": "nhd_pre_rating",
+        "player_post_rating": "nhd_post_rating",
+    })
+    player_log_trim = player_log_trim.merge(
+        nhd_cols, on=["posted_dt", "player"], how="left"
+    )
 
     if "session_effects" in locals():
         session_effects = exclude_guest_players(session_effects)

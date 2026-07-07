@@ -183,7 +183,6 @@ const readline = require('readline');
           `newInRange=${newCount}, totalInRange=${seen.size}`
         );
 
-        // Stop only after we've definitely scrolled past the start date.
         if (oldest && oldest < startDate) {
           console.log('Oldest visible shootout is older than start date. Stopping collection.');
           break;
@@ -200,7 +199,6 @@ const readline = require('readline');
         const gridMoved = nextTop !== currentTop && nextTop !== lastScrollTop;
         const datesChanged = oldestMs !== lastOldestMs || newestMs !== lastNewestMs;
 
-        // Only stale if the grid isn't moving AND the visible date band isn't changing.
         if (!gridMoved && !datesChanged) {
           stalePasses++;
           console.log(`No effective movement/date change on pass ${pass}. stalePasses=${stalePasses}`);
@@ -330,8 +328,7 @@ const readline = require('readline');
       if (idx >= 0 && idx + 1 < process.argv.length) return process.argv[idx + 1];
       return null;
     }
-
-    const startInput = getArg('--start') || await ask('Enter start date (MMDDYY), e.g. 010125: ');
+const startInput = getArg('--start') || await ask('Enter start date (MMDDYY), e.g. 010125: ');
     const endInput = getArg('--end') || await ask('Enter end date (MMDDYY), e.g. 040226: ');
     const outputArg = getArg('--output');
 
@@ -341,7 +338,6 @@ const readline = require('readline');
 
     console.log(`Using date window: ${startDate.toDateString()} through ${endDate.toDateString()}`);
 
-    // ── Load credentials if available ───────────────────────────────────
     const CREDS_FILE = `${__dirname}/den_credentials.json`;
     const creds = fs.existsSync(CREDS_FILE)
       ? JSON.parse(fs.readFileSync(CREDS_FILE, 'utf8'))
@@ -353,12 +349,9 @@ const readline = require('readline');
       await page.goto('https://app.pickleballden.com', { waitUntil: 'domcontentloaded' });
       await sleep(3000);
 
-      // Screenshot for debugging if something goes wrong
       const screenshotPath = 'output/login_debug.png';
 
       try {
-        // Vaadin apps use vaadin-text-field / vaadin-password-field with internal inputs
-        // Try multiple selector strategies in order
         const emailSelectors = [
           'vaadin-text-field input',
           'vaadin-email-field input',
@@ -366,7 +359,7 @@ const readline = require('readline');
           'input[name="email"]',
           'input[placeholder*="email" i]',
           'input[autocomplete*="email" i]',
-          'input',  // fallback: first input on page
+          'input',
         ];
 
         let emailField = null;
@@ -412,7 +405,6 @@ const readline = require('readline');
         await passField.fill(creds.password);
         await sleep(500);
 
-        // Submit — try button types then text match
         const submitSelectors = [
           'button[type="submit"]',
           'vaadin-button[theme*="primary"]',
@@ -434,7 +426,6 @@ const readline = require('readline');
         }
 
         if (!submitted) {
-          // Last resort: press Enter on the password field
           await passField.press('Enter');
         }
 
@@ -456,41 +447,45 @@ const readline = require('readline');
     async function autoNavigateToClubPlayList() {
       console.log('Attempting auto-navigation via Play → Shootout → List Shootouts...');
 
-      // Find all "Play" buttons on club cards and try each one
+      console.log('Resetting to app home page before searching for Play buttons...');
+      await page.goto('https://app.pickleballden.com', { waitUntil: 'domcontentloaded' });
+      await sleep(3000);
+
       const playButtons = page.getByText('Play', { exact: true });
       const count = await playButtons.count();
       console.log(`Found ${count} Play button(s) on page.`);
 
+      if (count === 0) {
+        try {
+          await page.screenshot({ path: 'output/autonav_debug.png' });
+          console.log('Saved debug screenshot to output/autonav_debug.png');
+        } catch {}
+      }
+
       for (let i = 0; i < count; i++) {
         try {
-          // Click the Play dropdown
           await playButtons.nth(i).click();
           await sleep(1000);
 
-          // Click Shootout submenu item
           const shootoutItem = page.getByText('Shootout', { exact: true }).first();
           if (!await shootoutItem.count()) continue;
           await shootoutItem.click();
           await sleep(1000);
 
-          // Click List Shootouts
           const listItem = page.getByText('List Shootouts', { exact: true }).first();
           if (!await listItem.count()) continue;
           await listItem.click();
           await sleep(3000);
 
-          // Check if we landed on the right page
           const bodyText = await page.locator('body').innerText().catch(() => '');
           if (bodyText.includes('Club Play List') || bodyText.includes('Group 1')) {
             console.log('Auto-navigated to Club Play List.');
             return true;
           }
 
-          // Wrong club — go back and try the next one
           await page.goBack({ waitUntil: 'domcontentloaded' });
           await sleep(2000);
         } catch {
-          // If anything fails on this card, try the next
           await page.goto('https://app.pickleballden.com', { waitUntil: 'domcontentloaded' });
           await sleep(2000);
         }
@@ -500,8 +495,6 @@ const readline = require('readline');
       return false;
     }
 
-    // ── Login & navigate to Club Play List ──────────────────────────────
-    // Navigate to app and determine state
     const startUrl = (hasSession && config.clubPlayListUrl)
       ? config.clubPlayListUrl
       : 'https://app.pickleballden.com';
@@ -543,7 +536,6 @@ const readline = require('readline');
       clubPlayListUrl = page.url();
     }
 
-    // Save session and URL for next run
     await context.storageState({ path: SESSION_FILE });
     const updatedConfig = { ...config, clubPlayListUrl };
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(updatedConfig, null, 2));

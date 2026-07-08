@@ -15,6 +15,7 @@ from typing import Optional
 BASE_DIR = Path(__file__).parent
 LOGS_DIR = BASE_DIR / "logs"
 OUTPUT = LOGS_DIR / "signup_viewer.html"
+DOCS_OUTPUT = BASE_DIR.parent / "docs" / "signup_viewer.html"
 
 
 def canonical(name: str) -> str:
@@ -411,6 +412,8 @@ def generate_viewer() -> Optional[Path]:
             .replace("%%JSON%%", json.dumps(all_data, separators=(",", ":"))))
 
     OUTPUT.write_text(html, encoding="utf-8")
+    DOCS_OUTPUT.write_text(html, encoding="utf-8")
+    print(f"Saved: {DOCS_OUTPUT}")
     print(f"Saved: {OUTPUT}")
     return OUTPUT
 

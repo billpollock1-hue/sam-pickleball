@@ -256,13 +256,18 @@ document.querySelectorAll('.tab-btn').forEach(b => {
 
 const sel = document.getElementById('date-select');
 
-// Filter dropdown to today and future dates only
+// Filter dropdown to today and future dates only, sorted nearest first
 const today = new Date();
 today.setHours(0, 0, 0, 0);
-Array.from(sel.options).forEach(opt => {
+const allOpts = Array.from(sel.options);
+allOpts.forEach(opt => {
   const d = new Date(opt.value + 'T00:00:00');
   if (d < today) opt.remove();
 });
+// Reverse remaining options so nearest date is first
+const remaining = Array.from(sel.options);
+sel.innerHTML = '';
+remaining.reverse().forEach(opt => sel.appendChild(opt));
 // Fallback: if all dates removed, restore the last one
 if (sel.options.length === 0 && DATES.length > 0) {
   const opt = document.createElement('option');

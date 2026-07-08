@@ -449,15 +449,12 @@ const startInput = getArg('--start') || await ask('Enter start date (MMDDYY), e.
 
       console.log('Resetting to app home page before searching for Play buttons...');
       await page.goto('https://app.pickleballden.com', { waitUntil: 'domcontentloaded' });
+      try {
+        await page.waitForSelector('text=Play', { timeout: 15000 });
+      } catch {}
 
-      let playButtons = page.getByText(/^play$/i);
-      let count = 0;
-      for (let attempt = 0; attempt < 8; attempt++) {
-        await sleep(1500);
-        count = await playButtons.count();
-        if (count > 0) break;
-        console.log(`Retry ${attempt + 1}/8: Found 0 Play button(s), waiting and rechecking...`);
-      }
+      const playButtons = page.getByText('Play', { exact: true });
+      const count = await playButtons.count();
       console.log(`Found ${count} Play button(s) on page.`);
 
       if (count === 0) {

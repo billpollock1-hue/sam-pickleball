@@ -450,7 +450,7 @@ const startInput = getArg('--start') || await ask('Enter start date (MMDDYY), e.
       console.log('Resetting to app home page before searching for Play buttons...');
       await page.goto('https://app.pickleballden.com', { waitUntil: 'domcontentloaded' });
 
-      let playButtons = page.getByText(/^play$/i);
+      let playButtons = page.getByText('Play', { exact: true });
       let count = 0;
       for (let attempt = 0; attempt < 8; attempt++) {
         await sleep(1500);

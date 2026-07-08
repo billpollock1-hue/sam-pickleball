@@ -20,3 +20,8 @@ signup_monitor_state.json
 
 # macOS
 .DS_Store
+data/backups/
+diag*.js
+scraper/*.bak
+scraper/*.bak2
+scraper/*.bak3

@@ -449,8 +449,13 @@ const startInput = getArg('--start') || await ask('Enter start date (MMDDYY), e.
 
       console.log('Resetting to app home page before searching for Play buttons...');
       await page.goto('https://app.pickleballden.com', { waitUntil: 'domcontentloaded' });
+      await sleep(2000);
 
-      let playButtons = page.getByText(/^play$/i);
+      // Target the actual CSS class confirmed from the live DOM
+      // (<vaadin-button class="pd-context-button">play</vaadin-button>)
+      // rather than a page-wide getByText search, which was unreliably
+      // matching (or not matching) this Vaadin custom element's text.
+      let playButtons = page.locator('vaadin-button.pd-context-button').filter({ hasText: /play/i });
       let count = 0;
       for (let attempt = 0; attempt < 8; attempt++) {
         await sleep(1500);
@@ -465,6 +470,18 @@ const startInput = getArg('--start') || await ask('Enter start date (MMDDYY), e.
           await page.screenshot({ path: 'output/autonav_debug.png' });
           console.log('Saved debug screenshot to output/autonav_debug.png');
         } catch {}
+
+        // Extra diagnostics: dump every pd-context-button's text and the
+        // total count of vaadin-button elements on the page, so a future
+        // failure is self-diagnosing instead of another blind guess.
+        try {
+          const allContextButtons = await page.locator('vaadin-button.pd-context-button').allTextContents();
+          const allVaadinButtons = await page.locator('vaadin-button').count();
+          console.log(`Diagnostic: vaadin-button.pd-context-button texts found: ${JSON.stringify(allContextButtons)}`);
+          console.log(`Diagnostic: total vaadin-button elements on page: ${allVaadinButtons}`);
+        } catch (diagErr) {
+          console.log(`Diagnostic logging failed: ${diagErr.message}`);
+        }
       }
 
       for (let i = 0; i < count; i++) {

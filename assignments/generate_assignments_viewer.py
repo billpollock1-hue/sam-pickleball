@@ -125,6 +125,7 @@ td { padding: 4px 9px; border: 1px solid #e4e4e4; overflow-wrap: break-word; }
 
 <script>
 const DATA = %%JSON%%;
+const DATES = %%DATES%%;
 
 function isPreliminary(dateStr, ratingsThrough) {
   if (!ratingsThrough) return false;
@@ -279,25 +280,49 @@ document.querySelectorAll('.tab-btn').forEach(b => {
 
 const sel = document.getElementById('date-select');
 
-// Filter dropdown to today and future dates only, sorted nearest first
-const today = new Date();
-today.setHours(0, 0, 0, 0);
+// Determine "today" and whether the 8:15 AM cutoff has passed, in Arizona
+// local time (America/Phoenix — no DST, matches the run_all.sh scrape cutoff).
+// Before 8:15 AM on a play date, that date's session hasn't been played yet,
+// so it still counts as the next play date. After 8:15 AM, it's considered
+// played and the default should roll forward to the following date.
+function arizonaNow() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Phoenix',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false
+  }).formatToParts(new Date());
+  const map = {};
+  parts.forEach(p => { map[p.type] = p.value; });
+  return {
+    dateStr: `${map.year}-${map.month}-${map.day}`,
+    hour: parseInt(map.hour, 10),
+    minute: parseInt(map.minute, 10)
+  };
+}
+
+const az = arizonaNow();
+const cutoffPassed = (az.hour > 8) || (az.hour === 8 && az.minute >= 15);
+
+// Filter dropdown to the true next play date and beyond, sorted nearest first
 const allOpts = Array.from(sel.options);
 allOpts.forEach(opt => {
-  const d = new Date(opt.value + 'T00:00:00');
-  if (d < today) opt.remove();
+  if (opt.value < az.dateStr) { opt.remove(); return; }
+  if (opt.value === az.dateStr && cutoffPassed) { opt.remove(); return; }
 });
 // Reverse remaining options so nearest date is first
 const remaining = Array.from(sel.options);
 sel.innerHTML = '';
 remaining.reverse().forEach(opt => sel.appendChild(opt));
-// Fallback: if all dates removed, restore the last one
+// Fallback: if all dates removed, restore the last (most recent past) one
 if (sel.options.length === 0 && DATES.length > 0) {
   const opt = document.createElement('option');
   opt.value = DATES[DATES.length - 1];
   opt.text = DATES[DATES.length - 1];
   sel.appendChild(opt);
 }
+// Ensure the first (nearest upcoming) date is the one actually selected —
+// reordering options in the DOM does not change which one is marked selected.
+sel.selectedIndex = 0;
 
 sel.addEventListener('change', () => render(sel.value));
 
@@ -330,7 +355,8 @@ def generate_viewer() -> Optional[Path]:
         options.append(f'<option value="{d}">{label}</option>')
 
     html = (HTML_TEMPLATE
-            .replace("%%JSON%%", json.dumps(all_data, separators=(",", ":"))))
+            .replace("%%JSON%%", json.dumps(all_data, separators=(",", ":")))
+            .replace("%%DATES%%", json.dumps(dates)))
 
     # Inject dropdown options via the empty <select> the JS fills at runtime —
     # simplest to just set them server-side too so the first render has a value.

@@ -52,7 +52,11 @@ else:                                          # weekend — use prior Friday
     while required_date.weekday() >= 5:
         required_date -= timedelta(days=1)
 
-if latest_date > required_date:
+# Use >= rather than > so that master history being caught up EXACTLY
+# through the required date (not just ahead of it) also triggers a skip.
+# Without this, latest_date == required_date fell through to "NO", which
+# proceeded to scrape with an inverted START_DATE > END_DATE window.
+if latest_date >= required_date:
     print("YES")
 else:
     print("NO")

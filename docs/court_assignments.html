@@ -257,8 +257,8 @@ document.querySelectorAll('.tab-btn').forEach(b => {
 
 const sel = document.getElementById('date-select');
 
-// Determine "today" and whether the 8:15 AM cutoff has passed, in Arizona
-// local time (America/Phoenix — no DST, matches the run_all.sh scrape cutoff).
+// Determine "today" and whether the 8:15 AM cutoff has passed, in Mountain
+// Standard Time (MST — America/Phoenix, no DST, matches the run_all.sh scrape cutoff).
 // Before 8:15 AM on a play date, that date's session hasn't been played yet,
 // so it still counts as the next play date. After 8:15 AM, it's considered
 // played and the default should roll forward to the following date.

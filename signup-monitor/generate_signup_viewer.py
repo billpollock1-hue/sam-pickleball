@@ -333,6 +333,7 @@ tr.wd td.name  { text-decoration: line-through; }
 
 <script>
 const DATA = %%JSON%%;
+const DATES = %%DATES%%;
 
 function isWL(v) { return typeof v === 'string' && v.startsWith('WL'); }
 
@@ -376,6 +377,52 @@ function render(dateStr) {
 }
 
 const sel = document.getElementById('date-select');
+
+// Determine "today" and whether the 8:15 AM cutoff has passed, in Mountain
+// Standard Time (MST — America/Phoenix, no DST, matches the run_all.sh scrape
+// cutoff). Before 8:15 AM on a play date, that date's session hasn't been
+// played yet, so it still counts as the next play date. After 8:15 AM,
+// it's considered played and the default should roll forward to the next
+// date that actually has a signup sheet.
+function arizonaNow() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Phoenix',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false
+  }).formatToParts(new Date());
+  const map = {};
+  parts.forEach(p => { map[p.type] = p.value; });
+  return {
+    dateStr: `${map.year}-${map.month}-${map.day}`,
+    hour: parseInt(map.hour, 10),
+    minute: parseInt(map.minute, 10)
+  };
+}
+
+const az = arizonaNow();
+const cutoffPassed = (az.hour > 8) || (az.hour === 8 && az.minute >= 15);
+
+// Filter dropdown to the true next play date and beyond, sorted nearest first
+const allOpts = Array.from(sel.options);
+allOpts.forEach(opt => {
+  if (opt.value < az.dateStr) { opt.remove(); return; }
+  if (opt.value === az.dateStr && cutoffPassed) { opt.remove(); return; }
+});
+// Reverse remaining options so nearest date is first
+const remaining = Array.from(sel.options);
+sel.innerHTML = '';
+remaining.reverse().forEach(opt => sel.appendChild(opt));
+// Fallback: if all dates removed, restore the most recent past one
+if (sel.options.length === 0 && DATES.length > 0) {
+  const opt = document.createElement('option');
+  opt.value = DATES[DATES.length - 1];
+  opt.text = DATES[DATES.length - 1];
+  sel.appendChild(opt);
+}
+// Ensure the first (nearest upcoming) date is the one actually selected —
+// reordering options in the DOM does not change which one is marked selected.
+sel.selectedIndex = 0;
+
 sel.addEventListener('change', () => render(sel.value));
 render(sel.value);
 </script>
@@ -409,7 +456,8 @@ def generate_viewer() -> Optional[Path]:
 
     html = (HTML_TEMPLATE
             .replace("%%OPTIONS%%", "\n    ".join(options))
-            .replace("%%JSON%%", json.dumps(all_data, separators=(",", ":"))))
+            .replace("%%JSON%%", json.dumps(all_data, separators=(",", ":")))
+            .replace("%%DATES%%", json.dumps(dates)))
 
     OUTPUT.write_text(html, encoding="utf-8")
     DOCS_OUTPUT.write_text(html, encoding="utf-8")

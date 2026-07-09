@@ -42,7 +42,7 @@ CUTOFF   = time(8, 15)
 
 if today.weekday() < 5:                        # weekday
     if now_mtn.time() >= CUTOFF:
-        required_date = today                  # session data should be available by 8:15 AM MT
+        required_date = today                  # session data should be available by 8:15 AM MST
     else:
         required_date = today - timedelta(days=1)
         while required_date.weekday() >= 5:    # walk back over any weekend
@@ -148,7 +148,7 @@ echo ""
 echo "7. Committing and pushing docs/ to GitHub Pages..."
 if [ -n "$(git status --porcelain docs/)" ]; then
   git add docs/
-  git commit -m "Auto-update GitHub Pages docs ($(TZ=America/Phoenix date '+%Y-%m-%d %H:%M') AZ)"
+  git commit -m "Auto-update GitHub Pages docs ($(TZ=America/Phoenix date '+%Y-%m-%d %H:%M') MST)"
   if git push origin main; then
     echo "Pushed docs/ updates to GitHub."
   else

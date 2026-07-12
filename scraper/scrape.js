@@ -573,6 +573,22 @@ const startInput = getArg('--start') || await ask('Enter start date (MMDDYY), e.
       return;
     }
 
+    // DEN's score page has no real session-number label -- the "Shootout "
+    // text there is just a date header, not a 1-vs-2 indicator. The only
+    // reliable way to tell sessions apart is by comparing each date's
+    // shootout instances' own start times: group by calendar date, sort
+    // chronologically, and number them 1, 2, 3... within that date.
+    const shootoutsByDate = {};
+    for (const s of allShootouts) {
+      const dateKey = new Date(s.started).toDateString();
+      if (!shootoutsByDate[dateKey]) shootoutsByDate[dateKey] = [];
+      shootoutsByDate[dateKey].push(s);
+    }
+    for (const dateKey in shootoutsByDate) {
+      shootoutsByDate[dateKey].sort((a, b) => new Date(a.started) - new Date(b.started));
+      shootoutsByDate[dateKey].forEach((s, idx) => { s.sessionNumber = idx + 1; });
+    }
+
     const results = [];
 
     for (let i = 0; i < allShootouts.length; i++) {
@@ -594,7 +610,10 @@ const startInput = getArg('--start') || await ask('Enter start date (MMDDYY), e.
         await clickAllScores();
 
         const rows = await extractCurrentScorePage();
-        console.log(`✅ Extracted ${rows.length} rows from ${s.started}`);
+        // Override whatever (unreliable) shootout label the page scrape
+        // produced with the correct chronologically-derived session number.
+        rows.forEach(r => { r.shootout = s.sessionNumber; });
+        console.log(`✅ Extracted ${rows.length} rows from ${s.started} (Session ${s.sessionNumber})`);
         results.push(...rows);
 
       } catch (err) {

@@ -645,7 +645,7 @@ html = f"""<!DOCTYPE html>
     <!-- s6.7: p18 court-count blind chart | p19 narrative -->
     <div class="sheet">
       <div class="face front">
-        <div class="kicker">Court-Count Blind &mdash; In Practice</div>
+        <div class="kicker">Chapter Seven, Continued &mdash; Court-Count Blind in Practice</div>
         <div style="margin-top:10%;">
           <div style="margin-bottom:9%;">
             <div style="font-family:'Trebuchet MS',sans-serif;font-size:clamp(9px,1.05vw,12px);color:var(--ink);margin-bottom:2.5%;">2 courts &mdash; Oct 9, 2025</div>

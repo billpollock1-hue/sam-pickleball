@@ -42,7 +42,7 @@ CUTOFF   = time(8, 15)
 
 if today.weekday() < 5:                        # weekday
     if now_mtn.time() >= CUTOFF:
-        required_date = today                  # session data should be available by 8:15 AM MST
+        required_date = today                  # session data should be available by 8:15 AM MT
     else:
         required_date = today - timedelta(days=1)
         while required_date.weekday() >= 5:    # walk back over any weekend
@@ -73,8 +73,15 @@ else
   echo "Date window: $START_DATE through $END_DATE"
   echo "Update rule: scrape only when master history is behind the most recent possible play date."
 
+  set +e
   SCRAPE_OUTPUT=$(node scraper/scrape.js --start "$START_DATE" --end "$END_DATE" --output "$LATEST_FILE" 2>&1)
+  SCRAPE_EXIT=$?
+  set -e
   echo "$SCRAPE_OUTPUT"
+  if [ $SCRAPE_EXIT -ne 0 ]; then
+    echo "⚠ Scraper exited with code $SCRAPE_EXIT — see output above for the actual error."
+    exit $SCRAPE_EXIT
+  fi
 
   SHOOTOUT_COUNT=$(echo "$SCRAPE_OUTPUT" | grep -o "Collected [0-9]* shootout" | grep -o "[0-9]*" || echo "0")
 

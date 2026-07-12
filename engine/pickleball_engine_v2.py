@@ -1013,7 +1013,7 @@ def build_session_effects(player_log, leaderboard_players):
     return df.sort_values(["G1 Effect", "G6 Effect", "Player"], ascending=[True, True, True]).reset_index(drop=True)
 
 
-def build_recent_trends(player_log, leaderboard):
+def build_recent_trends(player_log, leaderboard, as_of):
     leaderboard_players = set(leaderboard["Player"])
     rating_map = dict(zip(leaderboard["Player"], leaderboard["Player Rating"]))
     games_map = dict(zip(leaderboard["Player"], leaderboard["Games Used"]))
@@ -1033,20 +1033,43 @@ def build_recent_trends(player_log, leaderboard):
     for player in sorted(leaderboard_players):
         sub = log[log["player"] == player].sort_values(["posted_dt", "match_id"]).copy()
 
-        last15 = sub.tail(15)
-        last60 = sub.tail(LAST_N_GAMES)
-
-        last15_gap = gap_for(last15)
-        last60_gap = gap_for(last60)
-
-        trend = (
-            last15_gap - last60_gap
-            if last15_gap is not None and last60_gap is not None
-            else None
+        # Rating Delta (Last 15) uses a plain trailing-15 window, independent
+        # of the trend-gap logic below — do not gate this on the 60-game
+        # requirement, or players with <60 total games lose a valid,
+        # unrelated metric used elsewhere (Recent Trends bar chart).
+        raw_last15 = sub.tail(15)
+        rating_delta = (
+            float(raw_last15["rating_change"].sum()) if len(raw_last15) == 15 else None
         )
 
-        rating_delta = (
-            float(last15["rating_change"].sum()) if len(last15) == 15 else None
+        # Trend gap: non-overlapping windows only. The most recent 15 games
+        # compared against the 45 games immediately BEFORE them (not "last
+        # 60" as a whole, which would let a real streak inflate its own
+        # baseline by including itself in the comparison). Requires a full
+        # 60-game history to compute a trend at all; otherwise N/A.
+        last60 = sub.tail(LAST_N_GAMES)
+        has_full_60 = len(last60) == LAST_N_GAMES
+
+        # A trend badge implies CURRENT form — a player who hasn't played
+        # in weeks shouldn't be labeled hot/cold based on a stale streak.
+        # Require their most recent rated game within 14 days of as_of.
+        last_game_date = sub["posted_dt"].max() if len(sub) > 0 else None
+        is_recent = (
+            has_full_60
+            and last_game_date is not None
+            and (as_of - last_game_date).days <= 14
+        )
+
+        trend_last15 = last60.tail(15) if is_recent else pd.DataFrame()
+        prior45 = last60.head(45) if is_recent else pd.DataFrame()
+
+        last15_gap = gap_for(trend_last15) if is_recent else None
+        prior45_gap = gap_for(prior45) if is_recent else None
+
+        trend = (
+            last15_gap - prior45_gap
+            if last15_gap is not None and prior45_gap is not None
+            else None
         )
 
         rows.append(
@@ -1055,7 +1078,7 @@ def build_recent_trends(player_log, leaderboard):
                 "Current Rating": rating_map.get(player),
                 "Games Used": games_map.get(player),
                 "Last 15 Gap": last15_gap,
-                "Last 60 Gap": last60_gap,
+                "Prior 45 Gap": prior45_gap,
                 "Trend": trend,
                 "Rating Delta (Last 15)": rating_delta,
             }
@@ -2739,7 +2762,7 @@ def main():
     competitive_balance_by_quarter = build_competitive_balance_by_quarter(full_player_log)
     player_pool_by_quarter = build_player_pool_by_quarter(full_player_log)
     session_effects = build_session_effects(player_log, set(leaderboard["Player"]))
-    recent_trends = build_recent_trends(player_log, leaderboard)
+    recent_trends = build_recent_trends(player_log, leaderboard, as_of)
 
     if not recent_trends.empty and not leaderboard.empty:
         trend_map = dict(zip(recent_trends["Player"], recent_trends["Trend"]))
@@ -2914,7 +2937,17 @@ def main():
     # Guest/special-case players should appear only on Raw_Data and Quarterly Participation.
     # Their games remain in rating calculations so partners/opponents are handled correctly.
     leaderboard = exclude_guest_players(leaderboard)
+    # Re-close any gap left in Rank by a guest player being excluded above —
+    # Rank was originally assigned before this filter ran, so a removed
+    # guest row leaves a stale skipped number (e.g. 15, 17, 18... with no
+    # 16) unless renumbered fresh against the final row count.
+    if not leaderboard.empty:
+        leaderboard = leaderboard.sort_values("Rank").reset_index(drop=True)
+        leaderboard["Rank"] = range(1, len(leaderboard) + 1)
     inactive_players = exclude_guest_players(inactive_players)
+    if not inactive_players.empty:
+        inactive_players = inactive_players.sort_values("Rank").reset_index(drop=True)
+        inactive_players["Rank"] = range(1, len(inactive_players) + 1)
     performance_vs_expectation = exclude_guest_players(performance_vs_expectation)
     if args.with_history:
         eod_df = exclude_guest_players(eod_df)
@@ -4376,6 +4409,18 @@ def main():
     build_consistency_html(game_consistency, output_path.parent / "consistency.html")
 
 
+def _inject_back_to_menu(output_path):
+    """Insert a floating back-to-menu badge into an auto-generated
+    Plotly HTML file, right after the opening <body> tag."""
+    try:
+        html = output_path.read_text(encoding="utf-8")
+        nav = '<a href="index.html" style="position:fixed;top:10px;left:10px;z-index:1000;background:#1F4E79;color:#fff;font-size:12px;padding:6px 12px;border-radius:6px;text-decoration:none;box-shadow:0 1px 4px rgba(0,0,0,0.2);">&larr; Menu</a>'
+        html = html.replace("<body>", f"<body>\n{nav}", 1)
+        output_path.write_text(html, encoding="utf-8")
+    except Exception as e:
+        print(f"Could not inject back-to-menu link into {output_path}: {e}")
+
+
 def build_competitive_balance_html(cb, pool, output_path):
     try:
         import plotly.graph_objects as go
@@ -4458,6 +4503,7 @@ def build_competitive_balance_html(cb, pool, output_path):
     fig.update_xaxes(tickangle=-45, row=2, col=1)
 
     fig.write_html(output_path, include_plotlyjs="cdn")
+    _inject_back_to_menu(output_path)
     print(f"Competitive balance chart: {output_path}")
 
 
@@ -4500,6 +4546,7 @@ def build_recent_trends_html(recent_trends, output_path):
     )
 
     fig.write_html(output_path, include_plotlyjs="cdn")
+    _inject_back_to_menu(output_path)
     print(f"Recent trends chart: {output_path}")
 
 
@@ -4547,6 +4594,7 @@ def build_consistency_html(game_consistency, output_path):
     )
 
     fig.write_html(output_path, include_plotlyjs="cdn")
+    _inject_back_to_menu(output_path)
     print(f"Consistency chart: {output_path}")
 
 
@@ -4646,6 +4694,7 @@ def build_rating_history_html(eod_df, output_path):
   </style>
 </head>
 <body>
+  <a href="index.html" style="position:fixed;top:10px;left:10px;z-index:1000;background:#1F4E79;color:#fff;font-size:12px;padding:6px 12px;border-radius:6px;text-decoration:none;box-shadow:0 1px 4px rgba(0,0,0,0.2);">&larr; Menu</a>
   <div id="sidebar">
     <h3>SAM Rating History</h3>
 

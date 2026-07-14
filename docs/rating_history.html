@@ -7,7 +7,7 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Arial, sans-serif; display: flex; height: 100vh; overflow: hidden; }
     #sidebar {
-      width: 210px; min-width: 210px; padding: 14px 12px;
+      width: 210px; min-width: 210px; padding: 46px 12px 14px;
       background: #f7f7f7; border-right: 1px solid #ddd;
       display: flex; flex-direction: column; gap: 8px; overflow-y: auto;
     }
@@ -33,10 +33,10 @@
 
     <div class="section-label">Time Range</div>
     <div class="btn-row">
-      <button class="btn" id="btn-1q" onclick="setRange('1Q')">1Q</button>
-      <button class="btn" id="btn-2q" onclick="setRange('2Q')">2Q</button>
-      <button class="btn" id="btn-3q" onclick="setRange('3Q')">3Q</button>
-      <button class="btn" id="btn-4q" onclick="setRange('4Q')">4Q</button>
+      <button class="btn" id="btn-1m" onclick="setRange('1M')">1M</button>
+      <button class="btn" id="btn-3m" onclick="setRange('3M')">3M</button>
+      <button class="btn" id="btn-6m" onclick="setRange('6M')">6M</button>
+      <button class="btn" id="btn-all" onclick="setRange('ALL')">All</button>
     </div>
 
     <div class="section-label">Players</div>
@@ -102,10 +102,10 @@
   <script>
     var chartDiv = document.getElementById('ratingChart');
     var ranges = {
-      '1Q': ['2026-04-10T00:00:00', '2026-07-10T00:00:00'],
-      '2Q': ['2026-01-10T00:00:00', '2026-07-10T00:00:00'],
-      '3Q': ['2025-10-10T00:00:00', '2026-07-10T00:00:00'],
-      '4Q': ['2025-07-10T00:00:00', '2026-07-10T00:00:00'],
+      '1M': ['2026-06-10T00:00:00', '2026-07-10T00:00:00'],
+      '3M': ['2026-04-10T00:00:00', '2026-07-10T00:00:00'],
+      '6M': ['2026-01-10T00:00:00', '2026-07-10T00:00:00'],
+      'ALL': ['2026-01-05T00:00:00', '2026-07-10T00:00:00'],
     };
 
     function setRange(q) {
@@ -147,7 +147,7 @@
     });
 
     // Default to 2Q view
-    setRange('2Q');
+    setRange('6M');
   </script>
 </body>
 </html>

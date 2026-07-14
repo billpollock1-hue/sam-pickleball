@@ -39,6 +39,15 @@
       <button class="btn" id="btn-all" onclick="setRange('ALL')">All</button>
     </div>
 
+    <div class="section-label">Rating Tier</div>
+    <p class="note">Quartiles by current rating (leaderboard-qualified players only).</p>
+    <div class="btn-row">
+      <button class="btn" onclick="selectQuartile(1)" title="Top 25% by current rating">Q1</button>
+      <button class="btn" onclick="selectQuartile(2)" title="2nd 25% by current rating">Q2</button>
+      <button class="btn" onclick="selectQuartile(3)" title="3rd 25% by current rating">Q3</button>
+      <button class="btn" onclick="selectQuartile(4)" title="Bottom 25% by current rating">Q4</button>
+    </div>
+
     <div class="section-label">Players</div>
     <p class="note">Click to show/hide. Double-click a legend item to isolate.</p>
     <div class="btn-row">
@@ -46,54 +55,54 @@
       <button class="btn" onclick="clearAll()">Clear</button>
     </div>
     <div id="player-list">
-      <label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="0" onchange="toggleTrace(0,this.checked)" style="margin-right:6px;">Alena Nagyova</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="1" onchange="toggleTrace(1,this.checked)" style="margin-right:6px;">Amber Tinstman</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="2" onchange="toggleTrace(2,this.checked)" style="margin-right:6px;">Bill Pollock</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="3" onchange="toggleTrace(3,this.checked)" style="margin-right:6px;">Brad Caskey</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="4" onchange="toggleTrace(4,this.checked)" style="margin-right:6px;">Camie Smith</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="5" onchange="toggleTrace(5,this.checked)" style="margin-right:6px;">Cary McCormick</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="6" onchange="toggleTrace(6,this.checked)" style="margin-right:6px;">Colin Smith</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="7" onchange="toggleTrace(7,this.checked)" style="margin-right:6px;">Dave Grubb</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="8" onchange="toggleTrace(8,this.checked)" style="margin-right:6px;">Debbie Lacey</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="9" onchange="toggleTrace(9,this.checked)" style="margin-right:6px;">Debbie Witulski</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="10" onchange="toggleTrace(10,this.checked)" style="margin-right:6px;">Dirk Olsen</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="11" onchange="toggleTrace(11,this.checked)" style="margin-right:6px;">Donna Cantrell</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="12" onchange="toggleTrace(12,this.checked)" style="margin-right:6px;">Dwight Christensen</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="13" onchange="toggleTrace(13,this.checked)" style="margin-right:6px;">Elizabeth Flynn</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="14" onchange="toggleTrace(14,this.checked)" style="margin-right:6px;">Eric Kramer</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="15" onchange="toggleTrace(15,this.checked)" style="margin-right:6px;">Frank DAngelo</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="16" onchange="toggleTrace(16,this.checked)" style="margin-right:6px;">Greg Egli</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="17" onchange="toggleTrace(17,this.checked)" style="margin-right:6px;">Heidi Berg</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="18" onchange="toggleTrace(18,this.checked)" style="margin-right:6px;">Helena Niblett</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="19" onchange="toggleTrace(19,this.checked)" style="margin-right:6px;">Jackie Maniaci</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="20" onchange="toggleTrace(20,this.checked)" style="margin-right:6px;">Jill Peterson</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="21" onchange="toggleTrace(21,this.checked)" style="margin-right:6px;">Jim Pearson</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="22" onchange="toggleTrace(22,this.checked)" style="margin-right:6px;">Joe McKamey</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="23" onchange="toggleTrace(23,this.checked)" style="margin-right:6px;">John Entreken</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="24" onchange="toggleTrace(24,this.checked)" style="margin-right:6px;">Jorge Barroso</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="25" onchange="toggleTrace(25,this.checked)" style="margin-right:6px;">Jose L Valdez R</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="26" onchange="toggleTrace(26,this.checked)" style="margin-right:6px;">Kara Rice</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="27" onchange="toggleTrace(27,this.checked)" style="margin-right:6px;">Kasia Misiura</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="28" onchange="toggleTrace(28,this.checked)" style="margin-right:6px;">Kindi Backstrom</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="29" onchange="toggleTrace(29,this.checked)" style="margin-right:6px;">Lidia Zolnierczyk</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="30" onchange="toggleTrace(30,this.checked)" style="margin-right:6px;">Lynnie McKee</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="31" onchange="toggleTrace(31,this.checked)" style="margin-right:6px;">Michael McSharry</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="32" onchange="toggleTrace(32,this.checked)" style="margin-right:6px;">Mike LoPorto</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="33" onchange="toggleTrace(33,this.checked)" style="margin-right:6px;">Pam Olson</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="34" onchange="toggleTrace(34,this.checked)" style="margin-right:6px;">Paul Batie</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="35" onchange="toggleTrace(35,this.checked)" style="margin-right:6px;">Paula Pearson</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="36" onchange="toggleTrace(36,this.checked)" style="margin-right:6px;">Peter Barnett</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="37" onchange="toggleTrace(37,this.checked)" style="margin-right:6px;">Peter Rillero</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="38" onchange="toggleTrace(38,this.checked)" style="margin-right:6px;">Ron Kelly</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="39" onchange="toggleTrace(39,this.checked)" style="margin-right:6px;">Russ Brannon</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="40" onchange="toggleTrace(40,this.checked)" style="margin-right:6px;">Russell Matros</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="41" onchange="toggleTrace(41,this.checked)" style="margin-right:6px;">Stacy Kramer</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="42" onchange="toggleTrace(42,this.checked)" style="margin-right:6px;">Steve Ludick</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="43" onchange="toggleTrace(43,this.checked)" style="margin-right:6px;">Steve Terpstra</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="44" onchange="toggleTrace(44,this.checked)" style="margin-right:6px;">Toby Orr</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="45" onchange="toggleTrace(45,this.checked)" style="margin-right:6px;">Todd Park</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="46" onchange="toggleTrace(46,this.checked)" style="margin-right:6px;">Tonya Carroll</label>
-<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="47" onchange="toggleTrace(47,this.checked)" style="margin-right:6px;">Wayne Carroll</label>
+      <label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="0" data-quartile="2" onchange="toggleTrace(0,this.checked)" style="margin-right:6px;">Alena Nagyova</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="1" data-quartile="2" onchange="toggleTrace(1,this.checked)" style="margin-right:6px;">Amber Tinstman</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="2" data-quartile="1" onchange="toggleTrace(2,this.checked)" style="margin-right:6px;">Bill Pollock</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="3" data-quartile="2" onchange="toggleTrace(3,this.checked)" style="margin-right:6px;">Brad Caskey</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="4" data-quartile="4" onchange="toggleTrace(4,this.checked)" style="margin-right:6px;">Camie Smith</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="5" data-quartile="3" onchange="toggleTrace(5,this.checked)" style="margin-right:6px;">Cary McCormick</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="6" data-quartile="3" onchange="toggleTrace(6,this.checked)" style="margin-right:6px;">Colin Smith</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="7" data-quartile="1" onchange="toggleTrace(7,this.checked)" style="margin-right:6px;">Dave Grubb</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="8" data-quartile="2" onchange="toggleTrace(8,this.checked)" style="margin-right:6px;">Debbie Lacey</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="9" data-quartile="3" onchange="toggleTrace(9,this.checked)" style="margin-right:6px;">Debbie Witulski</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="10" data-quartile="2" onchange="toggleTrace(10,this.checked)" style="margin-right:6px;">Dirk Olsen</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="11" data-quartile="3" onchange="toggleTrace(11,this.checked)" style="margin-right:6px;">Donna Cantrell</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="12" data-quartile="3" onchange="toggleTrace(12,this.checked)" style="margin-right:6px;">Dwight Christensen</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="13" data-quartile="4" onchange="toggleTrace(13,this.checked)" style="margin-right:6px;">Elizabeth Flynn</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="14" data-quartile="1" onchange="toggleTrace(14,this.checked)" style="margin-right:6px;">Eric Kramer</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="15" data-quartile="2" onchange="toggleTrace(15,this.checked)" style="margin-right:6px;">Frank DAngelo</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="16" data-quartile="2" onchange="toggleTrace(16,this.checked)" style="margin-right:6px;">Greg Egli</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="17" data-quartile="3" onchange="toggleTrace(17,this.checked)" style="margin-right:6px;">Heidi Berg</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="18" data-quartile="3" onchange="toggleTrace(18,this.checked)" style="margin-right:6px;">Helena Niblett</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="19" data-quartile="4" onchange="toggleTrace(19,this.checked)" style="margin-right:6px;">Jackie Maniaci</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="20" data-quartile="4" onchange="toggleTrace(20,this.checked)" style="margin-right:6px;">Jill Peterson</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="21" data-quartile="3" onchange="toggleTrace(21,this.checked)" style="margin-right:6px;">Jim Pearson</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="22" data-quartile="1" onchange="toggleTrace(22,this.checked)" style="margin-right:6px;">Joe McKamey</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="23" data-quartile="3" onchange="toggleTrace(23,this.checked)" style="margin-right:6px;">John Entreken</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="24" data-quartile="1" onchange="toggleTrace(24,this.checked)" style="margin-right:6px;">Jorge Barroso</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="25" data-quartile="2" onchange="toggleTrace(25,this.checked)" style="margin-right:6px;">Jose L Valdez R</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="26" data-quartile="1" onchange="toggleTrace(26,this.checked)" style="margin-right:6px;">Kara Rice</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="27" data-quartile="4" onchange="toggleTrace(27,this.checked)" style="margin-right:6px;">Kasia Misiura</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="28" data-quartile="2" onchange="toggleTrace(28,this.checked)" style="margin-right:6px;">Kindi Backstrom</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="29" data-quartile="3" onchange="toggleTrace(29,this.checked)" style="margin-right:6px;">Lidia Zolnierczyk</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="30" data-quartile="4" onchange="toggleTrace(30,this.checked)" style="margin-right:6px;">Lynnie McKee</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="31" data-quartile="2" onchange="toggleTrace(31,this.checked)" style="margin-right:6px;">Michael McSharry</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="32" data-quartile="3" onchange="toggleTrace(32,this.checked)" style="margin-right:6px;">Mike LoPorto</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="33" data-quartile="4" onchange="toggleTrace(33,this.checked)" style="margin-right:6px;">Pam Olson</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="34" data-quartile="4" onchange="toggleTrace(34,this.checked)" style="margin-right:6px;">Paul Batie</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="35" data-quartile="4" onchange="toggleTrace(35,this.checked)" style="margin-right:6px;">Paula Pearson</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="36" data-quartile="1" onchange="toggleTrace(36,this.checked)" style="margin-right:6px;">Peter Barnett</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="37" data-quartile="1" onchange="toggleTrace(37,this.checked)" style="margin-right:6px;">Peter Rillero</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="38" data-quartile="2" onchange="toggleTrace(38,this.checked)" style="margin-right:6px;">Ron Kelly</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="39" data-quartile="1" onchange="toggleTrace(39,this.checked)" style="margin-right:6px;">Russ Brannon</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="40" data-quartile="1" onchange="toggleTrace(40,this.checked)" style="margin-right:6px;">Russell Matros</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="41" data-quartile="4" onchange="toggleTrace(41,this.checked)" style="margin-right:6px;">Stacy Kramer</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="42" data-quartile="1" onchange="toggleTrace(42,this.checked)" style="margin-right:6px;">Steve Ludick</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="43" data-quartile="4" onchange="toggleTrace(43,this.checked)" style="margin-right:6px;">Steve Terpstra</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="44" data-quartile="1" onchange="toggleTrace(44,this.checked)" style="margin-right:6px;">Toby Orr</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="45" data-quartile="2" onchange="toggleTrace(45,this.checked)" style="margin-right:6px;">Todd Park</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="46" data-quartile="4" onchange="toggleTrace(46,this.checked)" style="margin-right:6px;">Tonya Carroll</label>
+<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-idx="47" data-quartile="3" onchange="toggleTrace(47,this.checked)" style="margin-right:6px;">Wayne Carroll</label>
 
     </div>
   </div>
@@ -131,6 +140,14 @@
       document.querySelectorAll('#player-list input').forEach(function(b) {
         b.checked = false;
         Plotly.restyle(chartDiv, {'visible': false}, [parseInt(b.dataset.idx)]);
+      });
+    }
+
+    function selectQuartile(q) {
+      document.querySelectorAll('#player-list input').forEach(function(b) {
+        var show = parseInt(b.dataset.quartile) === q;
+        b.checked = show;
+        Plotly.restyle(chartDiv, {'visible': show}, [parseInt(b.dataset.idx)]);
       });
     }
 

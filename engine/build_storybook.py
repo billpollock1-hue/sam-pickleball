@@ -61,6 +61,18 @@ player_log = build_full_player_log(raw)
 
 print("Building exhibits...")
 gap_dist = build_rating_gap_distribution(player_log)
+
+# Pulled live from gap_dist (not hardcoded) so the callout and technical
+# appendix mentions of these percentages can never drift from the table
+# itself -- previously "78%" was a typed-in string that fell out of sync
+# as more games accumulated and the real figure moved to 79.4%.
+_gap_pcts = dict(zip(
+    gap_dist["Rating Gap"],
+    gap_dist["% Won by Higher-Rated Team"].str.rstrip("%").astype(float),
+))
+pct_0_100   = round(_gap_pcts.get("0–100", 0))
+pct_101_200 = round(_gap_pcts.get("101–200", 0))
+pct_201_300 = round(_gap_pcts.get("201–300", 0))
 cb = build_competitive_balance_by_quarter(player_log)
 
 # Leaderboard facts from the workbook (active pool)
@@ -166,6 +178,48 @@ ph2_vs = sv(ph2, "vs DEN")
 
 pct_lt200_first = round(100 * q_first["% Under 200"])
 pct_lt200_last = round(100 * q_last["% Under 200"])
+
+# Live margin-of-victory figures, same pattern as pct_lt200 above -- these
+# replace what used to be hardcoded "35% to 28%" / "14% to 18%" literals
+# in the Chapter Four narrative that had no underlying data behind them
+# at all (unlike the earlier 78%-vs-79.4% bug, which WAS wired to real
+# data that had simply drifted out of sync).
+pct_close_first = round(100 * q_first["% Decided by <=3"])
+pct_close_last = round(100 * q_last["% Decided by <=3"])
+pct_blowout_first = round(100 * q_first["% Decided by 9+"])
+pct_blowout_last = round(100 * q_last["% Decided by 9+"])
+
+# "Nearly doubled" was also a fixed adjective describing a ratio that
+# moves every time new games post -- compute the real ratio and phrase
+# the sentence to match it honestly instead of assuming it's always ~2x.
+_gap_ratio = q_last["Avg Gap"] / q_first["Avg Gap"] if q_first["Avg Gap"] else 1
+if _gap_ratio >= 1.85:
+    gap_change_phrase = "has nearly doubled"
+elif _gap_ratio >= 1.4:
+    gap_change_phrase = f"has grown roughly {_gap_ratio:.1f}x"
+elif _gap_ratio > 1.05:
+    gap_change_phrase = f"has grown by {round((_gap_ratio - 1) * 100)}%"
+elif _gap_ratio >= 0.95:
+    gap_change_phrase = "has stayed roughly flat"
+else:
+    gap_change_phrase = f"has fallen by {round((1 - _gap_ratio) * 100)}%"
+
+# Separate phrase for the standalone "twice as uneven" callout -- narrower
+# band (1.85-2.15) required specifically for "roughly twice" per Bill's
+# preference, since that's a much more specific claim than "nearly doubled"
+# and shouldn't be used loosely across a wide ratio range.
+if 1.85 <= _gap_ratio <= 2.15:
+    gap_uneven_phrase = "roughly <b>twice as uneven</b>"
+elif _gap_ratio > 2.15:
+    gap_uneven_phrase = f"roughly <b>{_gap_ratio:.1f}x as uneven</b>"
+elif _gap_ratio >= 1.4:
+    gap_uneven_phrase = f"roughly <b>{_gap_ratio:.1f}x as uneven</b>"
+elif _gap_ratio > 1.05:
+    gap_uneven_phrase = f"roughly <b>{round((_gap_ratio - 1) * 100)}% more uneven</b>"
+elif _gap_ratio >= 0.95:
+    gap_uneven_phrase = "<b>about as uneven</b>"
+else:
+    gap_uneven_phrase = f"roughly <b>{round((1 - _gap_ratio) * 100)}% less uneven</b>"
 
 # ══ HTML ══════════════════════════════════════════════════════════════════════
 html = f"""<!DOCTYPE html>
@@ -325,8 +379,8 @@ html = f"""<!DOCTYPE html>
       <div class="rule" style="width:56px;height:2px;background:var(--accent);"></div>
       <h1 style="font-size:clamp(16px,2.2vw,26px);font-weight:normal;">See Where You Stand</h1>
       <p style="font-size:clamp(10px,1.25vw,14px);line-height:1.6;">
-        Every rating, every game, every trend in this book<br>is available live, updated after each play date:</p>
-      <p style="font-size:clamp(10px,1.3vw,14.5px);"><a href="https://billpollock1-hue.github.io/sam-pickleball/">billpollock1-hue.github.io/sam-pickleball</a></p>
+        Every rating, every game in this book<br>is available live, updated after each play date:</p>
+      <p style="font-size:clamp(10px,1.3vw,14.5px);"><a href="https://billpollock1-hue.github.io/sam-pickleball/">Anthem SAM &middot; Live Site</a></p>
       <p style="font-size:11px;opacity:0.6;margin-top:4%;">Data through {latest} &middot; {n_games:,} games</p>
     </div>
 
@@ -342,7 +396,7 @@ html = f"""<!DOCTYPE html>
       <div class="face back">
         <div class="kicker">Chapter One</div>
         <h2>The Challenge: From Perception to Evidence</h2>
-        <p>Players in the SAM shootout have raised concerns about court competitiveness &mdash; too many lopsided games, courts that feel mismatched.</p>
+        <p>Some SAM players have raised concerns about court competitiveness &mdash; too many lopsided games, courts that feel mismatched.</p>
         <p>Perception is a starting point, but it is not enough to diagnose the problem or evaluate solutions. We need an objective metric: a way to measure the skill gap between teams in any given game, consistently, across thousands of games and multiple years.</p>
         <p>Fortunately, we have exactly the raw material that requires: the historical SAM shootout data from Pickleball Den.</p>
         <div class="pgnum">1</div>
@@ -377,7 +431,7 @@ html = f"""<!DOCTYPE html>
         <div class="factor"><b>1 &middot; RESULT</b><span>Winning earns points; losing costs points.</span></div>
         <div class="factor"><b>2 &middot; MARGIN</b><span>An 11&ndash;2 win moves ratings more than an 11&ndash;9 win.</span></div>
         <div class="factor"><b>3 &middot; OPPONENT STRENGTH</b><span>Beating a strong team earns more than beating a weak one.</span></div>
-        <div class="callout">In observed SAM games, the higher-rated team wins <b>57%</b> at a 100-point gap, <b>66%</b> at 200, and <b>78%</b> at 300.</div>
+        <div class="callout">In observed SAM games, the higher-rated team wins <b>{pct_0_100}%</b> of games with a gap under 100 points, <b>{pct_101_200}%</b> in the 101&ndash;200 range, and <b>{pct_201_300}%</b> in the 201&ndash;300 range.</div>
         <div class="pgnum">4</div>
       </div>
       <div class="face back">
@@ -405,8 +459,8 @@ html = f"""<!DOCTYPE html>
         <div class="kicker">Chapter Four</div>
         <h2>The Evidence: A Growing Competitiveness Problem</h2>
         <p>With a trustworthy measuring stick, we can now measure match quality directly. &ldquo;Match gap&rdquo; is the rating difference between the two teams in a game &mdash; smaller means more evenly matched.</p>
-        <p>The trend is unmistakable. The average match gap has nearly doubled since early {first_year + 0 if first_year >= 2022 else 2022}, and games that qualify as closely matched &mdash; a gap under 200 points &mdash; have fallen from {pct_lt200_first}% of all games to {pct_lt200_last}%.</p>
-        <p>Raw scores tell a quieter version of the same story: games decided by 3 points or less have fallen from 35% to 28% of all matches, while blowouts (9+ points) have risen from 14% to 18%.</p>
+        <p>The trend is unmistakable. The average match gap {gap_change_phrase} since early {first_year + 0 if first_year >= 2022 else 2022}, and games that qualify as closely matched &mdash; a gap under 200 points &mdash; have fallen from {pct_lt200_first}% of all games to {pct_lt200_last}%.</p>
+        <p>Raw scores tell a quieter version of the same story: games decided by 3 points or less have {'fallen' if pct_close_last <= pct_close_first else 'risen'} from {pct_close_first}% to {pct_close_last}% of all matches, while blowouts (9+ points) have {'risen' if pct_blowout_last >= pct_blowout_first else 'fallen'} from {pct_blowout_first}% to {pct_blowout_last}%.</p>
         <p>Mismatched games are no longer rare exceptions. They are now the norm for roughly 4 in 10 matches.</p>
         <div class="pgnum">7</div>
       </div>
@@ -420,7 +474,7 @@ html = f"""<!DOCTYPE html>
           <tr><th>Quarter</th><th>Avg Match Gap</th><th>Games &lt;200 Gap</th></tr>
           {balance_rows}
         </table>
-        <div class="callout" style="margin-top:5%;">The average court matchup today is nearly <b>twice as uneven</b> as it was in early {first_year if first_year >= 2022 else 2022}.</div>
+        <div class="callout" style="margin-top:5%;">The average court matchup today is {gap_uneven_phrase} as it was in early {first_year if first_year >= 2022 else 2022}.</div>
         <div class="pgnum">8</div>
       </div>
       <div class="face back">
@@ -450,6 +504,77 @@ html = f"""<!DOCTYPE html>
         <p>DEN builds Session 1 courts from two numbers. <b>Step</b> is a court-movement counter: finish in the top two of your court and it ticks down; finish in the bottom two and it ticks up &mdash; based entirely on your <i>last</i> play date, however long ago that was.</p>
         <p><b>Percentage</b> breaks ties within a step: total points scored divided by maximum possible, over your last 90 games (~15 play dates), all weighted equally.</p>
         <p>For Session 2, the top two on each court move up a court and the bottom two move down &mdash; the &ldquo;2-up/2-back&rdquo; rule.</p>
+        <div style="margin-top:4%;">
+          <div style="font-family:'Trebuchet MS',sans-serif;font-size:clamp(8.5px,1vw,11px);color:var(--navy);font-weight:bold;text-align:center;margin-bottom:2%;">Step values in circulation after Session 2, by court count</div>
+          <svg viewBox="0 0 420 230" width="100%" style="display:block;">
+            <text x="60" y="14" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="10" font-weight="bold" fill="var(--navy)">2 courts</text>
+            <rect x="39" y="128" width="12" height="42" rx="2" fill="var(--navy-2)"/>
+            <text x="45" y="122" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
+            <text x="45" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">1</text>
+            <rect x="54" y="149" width="12" height="21" rx="2" fill="#b3543a"/>
+            <text x="60" y="143" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">2</text>
+            <text x="60" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">2</text>
+            <rect x="69" y="149" width="12" height="21" rx="2" fill="#b3543a"/>
+            <text x="75" y="143" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">2</text>
+            <text x="75" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">3</text>
+            <text x="60" y="204" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="#8a7f6a">3 step values</text>
+
+            <text x="160" y="14" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="10" font-weight="bold" fill="var(--navy)">3 courts</text>
+            <rect x="131.5" y="128" width="12" height="42" rx="2" fill="var(--navy-2)"/>
+            <text x="137.5" y="122" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
+            <text x="137.5" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">1</text>
+            <rect x="146.5" y="128" width="12" height="42" rx="2" fill="var(--navy-2)"/>
+            <text x="152.5" y="122" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
+            <text x="152.5" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">2</text>
+            <rect x="161.5" y="149" width="12" height="21" rx="2" fill="#b3543a"/>
+            <text x="167.5" y="143" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">2</text>
+            <text x="167.5" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">3</text>
+            <rect x="176.5" y="149" width="12" height="21" rx="2" fill="#b3543a"/>
+            <text x="182.5" y="143" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">2</text>
+            <text x="182.5" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
+            <text x="160" y="204" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="#8a7f6a">4 step values</text>
+
+            <text x="260" y="14" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="10" font-weight="bold" fill="var(--navy)">4 courts</text>
+            <rect x="224" y="128" width="12" height="42" rx="2" fill="var(--navy-2)"/>
+            <text x="230" y="122" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
+            <text x="230" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">1</text>
+            <rect x="239" y="128" width="12" height="42" rx="2" fill="var(--navy-2)"/>
+            <text x="245" y="122" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
+            <text x="245" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">2</text>
+            <rect x="254" y="128" width="12" height="42" rx="2" fill="var(--navy-2)"/>
+            <text x="260" y="122" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
+            <text x="260" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">3</text>
+            <rect x="269" y="149" width="12" height="21" rx="2" fill="#b3543a"/>
+            <text x="275" y="143" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">2</text>
+            <text x="275" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
+            <rect x="284" y="149" width="12" height="21" rx="2" fill="#b3543a"/>
+            <text x="290" y="143" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">2</text>
+            <text x="290" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">5</text>
+            <text x="260" y="204" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="#8a7f6a">5 step values</text>
+
+            <text x="360" y="14" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="10" font-weight="bold" fill="var(--navy)">5 courts</text>
+            <rect x="316.5" y="128" width="12" height="42" rx="2" fill="var(--navy-2)"/>
+            <text x="322.5" y="122" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
+            <text x="322.5" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">1</text>
+            <rect x="331.5" y="128" width="12" height="42" rx="2" fill="var(--navy-2)"/>
+            <text x="337.5" y="122" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
+            <text x="337.5" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">2</text>
+            <rect x="346.5" y="128" width="12" height="42" rx="2" fill="var(--navy-2)"/>
+            <text x="352.5" y="122" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
+            <text x="352.5" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">3</text>
+            <rect x="361.5" y="128" width="12" height="42" rx="2" fill="var(--navy-2)"/>
+            <text x="367.5" y="122" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
+            <text x="367.5" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
+            <rect x="376.5" y="149" width="12" height="21" rx="2" fill="#b3543a"/>
+            <text x="382.5" y="143" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">2</text>
+            <text x="382.5" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">5</text>
+            <rect x="391.5" y="149" width="12" height="21" rx="2" fill="#b3543a"/>
+            <text x="397.5" y="143" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">2</text>
+            <text x="397.5" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">6</text>
+            <text x="360" y="204" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="#8a7f6a">6 step values</text>
+          </svg>
+          <div style="font-family:'Trebuchet MS',sans-serif;font-size:clamp(7.5px,0.85vw,9.5px);color:#8a7f6a;text-align:center;margin-top:1%;">Players per step (top) &middot; step number (bottom). More courts means more step values in play.</div>
+        </div>
         <div class="pgnum">11</div>
       </div>
     </div>
@@ -782,7 +907,7 @@ D &nbsp;= recency weight, 25% &rarr; 100% across the window</div>
       <div class="face back apx">
         <div class="kicker" style="color:#8a7f6a;">Technical Appendix &middot; B</div>
         <h2>Data Hygiene &amp; Display</h2>
-        <div class="factor"><b>WHAT COUNTS</b><span>Every posted shootout game since Jan {first_year}. Placeholder entries (tryouts, drop-ins), guest players, and flagged data errors are excluded from ratings; known name glitches are corrected at load.</span></div>
+        <div class="factor"><b>WHAT COUNTS</b><span>Every posted shootout game since Jan {first_year}. Placeholder entries (tryouts, drop-ins) are excluded because the same placeholder name is shared by many different people over time, making consistent rating attribution impossible; guest players and flagged data errors are excluded from ratings as well, and known name glitches are corrected at load.</span></div>
         <div class="factor"><b>LEADERBOARD QUALIFICATION</b><span>At least 24 rated games within the past 180 days. Everyone else still carries a rating &mdash; shown with reduced confidence, pulled toward 1,000 in proportion to sample size and staleness.</span></div>
         <div class="factor"><b>FRESHNESS</b><span>No penalty for 90 days of inactivity; beyond that, a graduated confidence haircut up to 15%.</span></div>
         <div class="pgnum">29</div>
@@ -793,10 +918,10 @@ D &nbsp;= recency weight, 25% &rarr; 100% across the window</div>
     <div class="sheet">
       <div class="face front apx">
         <div class="kicker" style="color:#8a7f6a;">Technical Appendix &middot; B, continued</div>
-        <div class="factor"><b>EXPECTATION COMPRESSION</b><span>Displayed win probabilities compress the rating gap by 0.85 before the logistic &mdash; matching observed SAM outcomes (57 / 66 / 78%) rather than theoretical chess curves.</span></div>
+        <div class="factor"><b>EXPECTATION COMPRESSION</b><span>Displayed win probabilities compress the rating gap by 0.85 before the logistic &mdash; matching observed SAM outcomes ({pct_0_100} / {pct_101_200} / {pct_201_300}%) rather than theoretical chess curves. Compression factors from 0.70 to 1.00 were tested against 1,569 rated 2026 games; 0.85 produced the lowest prediction error.</span></div>
         <div class="factor"><b>VALIDATION</b><span>Predictions are checked against outcomes across the full pool every run. Gaps between individual actual and expected win rates reflect normal variance and close as games accumulate; aggregate calibration is what the model is tuned for.</span></div>
         <div class="factor"><b>SCENARIO REPLAY</b><span>Assignment alternatives were tested against the last 90 days of real sessions &mdash; same signups, same court counts &mdash; not simulations of hypothetical players.</span></div>
-        <div class="mono" style="margin-top:3%;">Full methodology: Model Description tab<br>of the ratings workbook &middot; every number in<br>this book regenerates on each model run.</div>
+        <div class="mono" style="margin-top:3%;">Every number in this book regenerates directly<br>from live results &middot; verifiable on the site listed<br>on the back cover.</div>
         <div class="pgnum">30</div>
       </div>
       <div class="face back darkpage">

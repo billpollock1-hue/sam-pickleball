@@ -97,11 +97,7 @@ def refresh_date(date_str, den_ratings, player_ratings, ratings_through):
         print(f"{date_str}: only {len(signups)} signups — skipping (need {da.PLAYERS_PER_COURT}).")
         return False
 
-    if den_ratings.empty:
-        assignments = pd.DataFrame()
-        waitlist = pd.DataFrame()
-    else:
-        den_current = not den_ratings.empty
+    den_current = not den_ratings.empty
     if den_ratings.empty:
         assignments = pd.DataFrame()
         waitlist = pd.DataFrame()
@@ -168,8 +164,97 @@ def main():
         os.chdir(Path(os.environ.get("PB_RUNTIME", Path(__file__).resolve().parent)))
         generate_assignments_viewer.generate_viewer()
         print("Viewer regenerated.")
+        sync_to_live_site()
 
     return 0 if any_ok else 1
+
+
+def sync_to_live_site():
+    """
+    Copy the freshly-regenerated viewer into the real repo's docs/ folder
+    and push it live, so signup changes detected by monitor_signups.py's
+    15-minute cycle actually reach the live site -- not just the local
+    output/ file.
+
+    Without this, refresh_assignments.py only ever updated a LOCAL HTML
+    file; nothing copied it into docs/ or pushed it to GitHub on this
+    15-minute path. Only the separate, coarser run_all.sh schedule
+    (8:15 AM / Noon / 5 PM) did that sync -- which is exactly why the
+    court assignments page lagged behind real signup changes for hours
+    at a time, even though this refresh was firing correctly underneath.
+
+    Absolute path to the real repo -- NOT derived from cwd/PB_RUNTIME --
+    since this script runs from two different locations (git-tracked
+    source and the deployed PBMonitor runtime), same reasoning as the
+    generate_signup_viewer.py DOCS_OUTPUT fix earlier.
+    """
+    import shutil
+    import subprocess
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    repo_root = Path("/Users/billpollock/Documents/SAM Pickleball/sam-pickleball")
+    local_viewer = Path("output") / "court_assignments_viewer.html"
+    docs_target = repo_root / "docs" / "court_assignments.html"
+
+    # --- Self-expiring 3-hour trial -------------------------------------
+    # Unattended auto-push is new and untested in production; rather than
+    # running indefinitely, this stamps its own start time on first call
+    # and stops pushing on its own once 3 hours have elapsed -- no manual
+    # step required to turn it back off after the trial window.
+    trial_marker = repo_root / "data" / "sync_to_live_site_trial_start.txt"
+    now_mt = datetime.now(ZoneInfo("America/Phoenix"))
+    try:
+        if trial_marker.exists():
+            trial_start = datetime.fromisoformat(trial_marker.read_text().strip())
+        else:
+            trial_marker.parent.mkdir(parents=True, exist_ok=True)
+            trial_marker.write_text(now_mt.isoformat())
+            trial_start = now_mt
+            print(f"  sync_to_live_site: starting 3-hour auto-push trial at "
+                  f"{now_mt.strftime('%Y-%m-%d %I:%M %p')} MST.")
+    except Exception as e:
+        print(f"  ⚠ sync_to_live_site: couldn't read/write trial marker ({e}) -- skipping push.")
+        return
+
+    if now_mt - trial_start > timedelta(hours=3):
+        print(f"  sync_to_live_site: 3-hour trial window has ended "
+              f"(started {trial_start.strftime('%Y-%m-%d %I:%M %p')} MST) -- skipping push. "
+              f"Delete {trial_marker} to start a new trial window.")
+        return
+
+    try:
+        if not local_viewer.exists():
+            print(f"  ⚠ sync_to_live_site: {local_viewer} not found -- skipping.")
+            return
+
+        docs_target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(local_viewer, docs_target)
+
+        status = subprocess.run(
+            ["git", "status", "--porcelain", "docs/court_assignments.html"],
+            cwd=str(repo_root), capture_output=True, text=True, timeout=30,
+        )
+        if not status.stdout.strip():
+            print("  No change in docs/court_assignments.html — skipping git push.")
+            return
+
+        subprocess.run(["git", "add", "docs/court_assignments.html"],
+                        cwd=str(repo_root), check=True, timeout=30)
+        now = datetime.now(ZoneInfo("America/Phoenix")).strftime("%Y-%m-%d %H:%M")
+        subprocess.run(
+            ["git", "commit", "-m", f"Auto-refresh court assignments ({now} MST)"],
+            cwd=str(repo_root), check=True, timeout=30,
+        )
+        push = subprocess.run(["git", "push", "origin", "main"],
+                               cwd=str(repo_root), capture_output=True, text=True, timeout=60)
+        if push.returncode == 0:
+            print("  ✓ Pushed updated court assignments to live site.")
+        else:
+            print(f"  ⚠ git push failed (committed locally, not pushed): "
+                  f"{push.stderr[-300:]}")
+    except Exception as e:
+        print(f"  ⚠ sync_to_live_site failed: {e}")
 
 
 if __name__ == "__main__":

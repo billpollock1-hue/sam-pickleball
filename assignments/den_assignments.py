@@ -372,23 +372,31 @@ def shorten_name(name, max_len=22):
 
 
 def _courts_to_json(assignments, waitlist, is_rating):
-    """Convert an assignments/waitlist DataFrame pair into JSON-friendly lists."""
+    """Convert an assignments/waitlist DataFrame pair into JSON-friendly lists.
+
+    Guarded for the empty-DEN-ratings fallback case: when the DEN session is
+    expired, refresh_assignments.py passes an empty, columnless DataFrame for
+    `assignments` here. Without this guard, `.groupby("Court")` raises
+    KeyError: 'Court' since the column doesn't exist on an empty DataFrame
+    with no columns at all.
+    """
     courts = []
-    for court, group in assignments.groupby("Court"):
-        players = []
-        for _, r in group.sort_values("CourtPosition").iterrows():
-            entry = {
-                "pos": int(r["CourtPosition"]),
-                "su": int(r["SignupOrder"]),
-                "name": shorten_name(r["Player"], 22),
-            }
-            if is_rating:
-                entry["rating"] = None if pd.isna(r.get("Rating")) else int(round(r["Rating"]))
-            else:
-                entry["step"] = None if pd.isna(r["Step"]) else int(r["Step"])
-                entry["pct"] = None if pd.isna(r["Percent"]) else round(float(r["Percent"]), 1)
-            players.append(entry)
-        courts.append({"court": int(court), "players": players})
+    if not assignments.empty and "Court" in assignments.columns:
+        for court, group in assignments.groupby("Court"):
+            players = []
+            for _, r in group.sort_values("CourtPosition").iterrows():
+                entry = {
+                    "pos": int(r["CourtPosition"]),
+                    "su": int(r["SignupOrder"]),
+                    "name": shorten_name(r["Player"], 22),
+                }
+                if is_rating:
+                    entry["rating"] = None if pd.isna(r.get("Rating")) else int(round(r["Rating"]))
+                else:
+                    entry["step"] = None if pd.isna(r["Step"]) else int(r["Step"])
+                    entry["pct"] = None if pd.isna(r["Percent"]) else round(float(r["Percent"]), 1)
+                players.append(entry)
+            courts.append({"court": int(court), "players": players})
 
     wl = []
     if not waitlist.empty:
@@ -409,6 +417,19 @@ def _courts_to_json(assignments, waitlist, is_rating):
 
 
 def _comparison_to_json(den_assignments, rating_assignments):
+    """Guarded the same way as _courts_to_json above: when DEN ratings are
+    unavailable, `den_assignments` is an empty, columnless DataFrame, and
+    `.iterrows()` over `r["Player"]`/`r["Court"]` would raise a KeyError.
+    In that case there's nothing to compare against, so return an empty
+    comparison rather than crashing the whole refresh.
+    """
+    if (
+        den_assignments.empty
+        or "Player" not in den_assignments.columns
+        or "Court" not in den_assignments.columns
+    ):
+        return {"rows": [], "moved": 0, "total": 0}
+
     den_map = {r["Player"]: int(r["Court"]) for _, r in den_assignments.iterrows()}
     rat_map = {r["Player"]: int(r["Court"]) for _, r in rating_assignments.iterrows()}
 
@@ -652,13 +673,13 @@ def ensure_model_current():
     raw.columns = [c.strip() for c in raw.columns]
     raw_latest = pd.to_datetime(raw["posted"], errors="coerce").max().date()
 
-    now_mt = datetime.now(ZoneInfo("America/Denver"))
+    now_mt = datetime.now(ZoneInfo("America/Phoenix"))
     today = now_mt.date()
 
     too_early = (now_mt.hour, now_mt.minute) < (EARLIEST_RESULTS_HOUR_MT, EARLIEST_RESULTS_MINUTE_MT)
     if today > raw_latest and too_early:
         print(f"\nToday is {today}; latest data in CSV is {raw_latest}, but it's only "
-              f"{now_mt.strftime('%I:%M %p')} MT — too early for results to be posted. Skipping scrape.")
+              f"{now_mt.strftime('%I:%M %p')} MST — too early for results to be posted. Skipping scrape.")
     elif today > raw_latest:
         print(f"\nToday is {today}; latest data in CSV is {raw_latest}. Scraping today's results...")
         scrape_script = MODEL_DIR / "scraper" / "scrape.js"

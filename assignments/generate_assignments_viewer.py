@@ -10,6 +10,7 @@ Usage:
   python3 generate_assignments_viewer.py   # from the assignments/ directory
 """
 
+import csv
 import json
 from datetime import datetime
 from pathlib import Path
@@ -18,6 +19,12 @@ from typing import Optional
 OUT_DIR = Path("output")
 HISTORY_DIR = OUT_DIR / "assignments_history"
 OUTPUT = OUT_DIR / "court_assignments_viewer.html"
+
+# Anchored to this script's own location, not the current working directory --
+# run_all.sh invokes this via `(cd assignments && python3 generate_assignments_viewer.py)`,
+# so a cwd-relative path would silently miss the repo-root data/ directory
+# (the same bug already fixed in check_no_shootout.py).
+NO_SHOOTOUT_LOG = Path(__file__).resolve().parent.parent / "data" / "no_shootout_dates.csv"
 
 
 HTML_TEMPLATE = """\
@@ -126,6 +133,35 @@ td { padding: 4px 9px; border: 1px solid #e4e4e4; overflow-wrap: break-word; }
 <script>
 const DATA = %%JSON%%;
 const DATES = %%DATES%%;
+const NO_SHOOTOUT_DATES = new Set(%%NO_SHOOTOUT_DATES%%);
+const MIN_PLAYERS_FOR_SHOOTOUT = 8;
+
+function isWeekend(dateObj) {
+  const day = dateObj.getDay(); // 0 = Sunday, 6 = Saturday
+  return day === 0 || day === 6;
+}
+
+// Shared by isPreliminary() and the "RATINGS MAY BE STALE" check below --
+// both need the same underlying fact: is there at least one calendar day,
+// strictly between ratingsThroughStr and sessionDateStr, that was (or still
+// could be) a real play day? A raw day-count gap isn't enough, since
+// weekends and confirmed no-shootout days (logged in data/no_shootout_dates.csv)
+// can make a multi-day gap contain zero actual opportunities for the
+// ratings to have changed.
+function hasRemainingPlayOpportunity(ratingsThroughDate, sessionDate) {
+  const cursor = new Date(ratingsThroughDate);
+  cursor.setDate(cursor.getDate() + 1);
+
+  while (cursor < sessionDate) {
+    const cursorStr = cursor.toISOString().slice(0, 10);
+    if (!isWeekend(cursor) && !NO_SHOOTOUT_DATES.has(cursorStr)) {
+      return true;
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return false;
+}
 
 function isPreliminary(dateStr, ratingsThrough) {
   if (!ratingsThrough) return false;
@@ -133,9 +169,11 @@ function isPreliminary(dateStr, ratingsThrough) {
   if (parts.length !== 3) return false;
   const rDate = new Date('20' + parts[2] + '-' + parts[0].padStart(2,'0') + '-' + parts[1].padStart(2,'0') + 'T00:00:00');
   const sDate = new Date(dateStr + 'T00:00:00');
-  const dayBefore = new Date(sDate);
-  dayBefore.setDate(dayBefore.getDate() - 1);
-  return rDate < dayBefore;
+
+  // PRELIMINARY is only meaningful if at least one in-between day is a
+  // genuine remaining play opportunity -- otherwise "will update as more
+  // sessions are played before this date" is a promise that can't be kept.
+  return hasRemainingPlayOpportunity(rDate, sDate);
 }
 
 function pageHeader(d, extra, dateStr) {
@@ -147,7 +185,13 @@ function pageHeader(d, extra, dateStr) {
     h += `<div class="pg-sub">Last signup change: ${d.last_signup_change} MST</div>`;
   }
 
-  if (dateStr && isPreliminary(dateStr, d.ratings_through)) {
+  if (d.total_signups < MIN_PLAYERS_FOR_SHOOTOUT) {
+    // Below DEN's minimum for a shootout to run at all -- this takes
+    // priority over PRELIMINARY, since "assignments will update as more
+    // sessions are played" is misleading when there's a real chance no
+    // session happens on this date at all.
+    h += `<div class="pg-warn">⚠ Only ${d.total_signups} players signed up — below the 8-player minimum for a shootout.</div>`;
+  } else if (dateStr && isPreliminary(dateStr, d.ratings_through)) {
     h += `<div class="pg-preliminary">📋 PRELIMINARY — Court assignments and ratings will update as more sessions are played before this date.</div>`;
   } else {
     if (d.den_current === false) {
@@ -156,12 +200,18 @@ function pageHeader(d, extra, dateStr) {
     if (d.ratings_through) {
       const ratingsDate = new Date(d.ratings_through.replace(/(\d+)\/(\d+)\/(\d+)/, '20$3-$1-$2'));
       const sessionDate = dateStr ? new Date(dateStr + 'T00:00:00') : new Date();
-      const daysDiff = Math.floor((sessionDate - ratingsDate) / (1000 * 60 * 60 * 24));
-      if (daysDiff > 1) {
+      // Same day-walking rule as isPreliminary() -- a raw day-count gap
+      // (the old "daysDiff > 1" check) fired even when the intervening
+      // days were all weekends/confirmed no-shootout days and nothing
+      // could actually have updated. See July 13, 2026 case: 7/10 ratings
+      // vs a 7/14 session spans 4 calendar days but zero real play days
+      // (7/11 Sat, 7/12 Sun, 7/13 confirmed no-shootout).
+      if (hasRemainingPlayOpportunity(ratingsDate, sessionDate)) {
         h += `<div class="pg-warn">⚠ RATINGS MAY BE STALE — Based on results through ${d.ratings_through}. Updated ratings will appear automatically after the next scheduled refresh.</div>`;
       }
     }
   }
+
 
   h += '</div>';
   return h;
@@ -357,6 +407,14 @@ def generate_viewer() -> Optional[Path]:
     html = (HTML_TEMPLATE
             .replace("%%JSON%%", json.dumps(all_data, separators=(",", ":")))
             .replace("%%DATES%%", json.dumps(dates)))
+
+    no_shootout_dates = []
+    if NO_SHOOTOUT_LOG.exists():
+        with NO_SHOOTOUT_LOG.open(newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            no_shootout_dates = [row["date"] for row in reader if row.get("date")]
+
+    html = html.replace("%%NO_SHOOTOUT_DATES%%", json.dumps(no_shootout_dates))
 
     # Inject dropdown options via the empty <select> the JS fills at runtime —
     # simplest to just set them server-side too so the first render has a value.

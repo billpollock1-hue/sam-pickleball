@@ -23,11 +23,27 @@ pgl["posted_dt"] = pd.to_datetime(pgl["posted_dt"])
 pgl["date_str"]  = pgl["posted_dt"].dt.strftime("%Y-%m-%d")
 pgl["time_str"]  = pgl["posted_dt"].dt.strftime("%H:%M")
 
-# Only include rated games
-pgl = pgl[
-    (pgl["include_in_ratings"] == "Yes") &
-    pgl["nhd_pre_rating"].notna()
-].copy()
+# Show every game that was actually played -- including matches involving
+# a placeholder ("Den New Player Tryout" or similar) and games that fell
+# outside a player's own no-history-drift window but stayed in because a
+# different participant's shorter window still carried the match (see the
+# July 13, 2026 Cary McCormick / Peter Barnett investigation: a match is
+# only pulled into the "recent" replay if ANY of its 4 players still has
+# it in their own last-60-games window, which silently showed some
+# players' games on a date but not their partners'/opponents' on the
+# exact same match).
+#
+# Per-row rating display now falls back in two steps rather than a hard
+# filter:
+#   1. include_in_ratings == "Yes" and nhd_pre/post present -> use those
+#      (leaderboard-consistent, last-60-games basis).
+#   2. include_in_ratings == "Yes" but nhd is NaN (aged out of this
+#      player's own window, but the match still counted) -> fall back to
+#      the full cumulative player_pre/post_rating rather than hiding the
+#      game.
+#   3. include_in_ratings == "No" (placeholder/tryout match) -> show the
+#      game itself, but with no rating figures -- flagged "adjusted": false
+#      so the front end can label it "Unadjusted" instead of a number.
 
 # ── Build date_games dict ─────────────────────────────────────────────────────
 date_games = defaultdict(list)
@@ -36,9 +52,23 @@ for _, r in pgl.sort_values("posted_dt").iterrows():
     is_win  = bool(r["is_win"])
     pf      = int(r["pf"]) if pd.notna(r.get("pf")) else 0
     pa      = int(r["pa"]) if pd.notna(r.get("pa")) else 0
-    pre     = round(float(r["nhd_pre_rating"]))
-    post    = round(float(r["nhd_post_rating"]))
-    change  = round(float(r["nhd_post_rating"]) - float(r["nhd_pre_rating"]), 1)
+    adjusted = str(r.get("include_in_ratings", "No")).strip() == "Yes"
+
+    if adjusted and pd.notna(r.get("nhd_pre_rating")):
+        pre    = round(float(r["nhd_pre_rating"]))
+        post   = round(float(r["nhd_post_rating"]))
+        change = round(float(r["nhd_post_rating"]) - float(r["nhd_pre_rating"]), 1)
+    elif adjusted:
+        # Counted toward ratings, but this date has aged out of this
+        # player's own last-60-games window -- fall back to the full
+        # cumulative rating rather than hiding a game that genuinely
+        # affected their rating.
+        pre    = round(float(r["player_pre_rating"]))
+        post   = round(float(r["player_post_rating"]))
+        change = round(float(r["player_post_rating"]) - float(r["player_pre_rating"]), 1)
+    else:
+        # Placeholder/tryout match -- ratings intentionally not adjusted.
+        pre = post = change = None
     team    = round(float(r["team_pre_rating"]))
     opp     = round(float(r["opp_team_pre_rating"]))
     gap     = round(team - opp)
@@ -63,9 +93,18 @@ for _, r in pgl.sort_values("posted_dt").iterrows():
         "teamRating": int(team),
         "oppRating":  int(opp),
         "gap":        int(gap),
-        "pre":        int(pre),
+        "pre":        pre,
         "change":     change,
-        "post":       int(post),
+        "post":       post,
+        "adjusted":   adjusted,
+        # Always populated, even on unadjusted (tryout) games, since the
+        # engine snapshots player_pre_rating before checking whether the
+        # match counts -- this is a player's real rating walking into this
+        # specific game. Used as a fallback in the summary table when a
+        # player had NO adjusted games that day (e.g. every one of their
+        # matches involved a placeholder), so the viewer can still show
+        # what rating they actually had, rather than a blank dash.
+        "cumPre":     round(float(r["player_pre_rating"])),
     })
 
 dates_sorted = sorted(date_games.keys())
@@ -96,6 +135,12 @@ html = f"""<!DOCTYPE html>
   }}
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{ font-family: Calibri, Arial, sans-serif; font-size: 14px; color: var(--text); background: #fff; }}
+
+  .back-badge {{ position: fixed; top: 10px; left: 10px; z-index: 1000;
+                 background: #1F4E79; color: #fff; font-size: 12px;
+                 padding: 6px 12px; border-radius: 6px; text-decoration: none;
+                 box-shadow: 0 1px 4px rgba(0,0,0,0.2); }}
+  .back-badge:hover {{ background: #163a5c; }}
 
   header {{
     background: var(--blue-dark);
@@ -186,6 +231,8 @@ html = f"""<!DOCTYPE html>
   .pos {{ background: var(--green) !important; font-weight: bold; color: #276221; }}
   .neg {{ background: var(--red)   !important; font-weight: bold; color: #9C3B1B; }}
   .zero {{ color: #888; }}
+  .unadj-note {{ color: #b8860b; font-weight: bold; cursor: help; }}
+  .unadj-cell {{ color: #999; font-style: italic; }}
   .win-badge  {{ color: #276221; font-weight: bold; }}
   .loss-badge {{ color: #9C3B1B; font-weight: bold; }}
 
@@ -193,6 +240,8 @@ html = f"""<!DOCTYPE html>
 </style>
 </head>
 <body>
+
+<a href="index.html" class="back-badge">&larr; Menu</a>
 
 <header>
   <div>
@@ -253,6 +302,7 @@ function formatDate(d) {{
 }}
 
 function fmt(n) {{
+  if (n === null || n === undefined) return '<span class="zero">—</span>';
   if (n === 0) return '<span class="zero">0</span>';
   return n > 0
     ? `<span class="pos">+${{n}}</span>`
@@ -264,17 +314,33 @@ function render() {{
   const games  = DATA[date] || [];
 
   // ── Player summary ──────────────────────────────────────────────────────
+  // Games/Wins/Losses count every game played, including matches involving
+  // a placeholder (e.g. "Den New Player Tryout"). Rating figures (Start/End/
+  // Total Change) only ever come from adjusted games -- an unadjusted game
+  // contributes to the box score but not to the rating tally, since it
+  // never affected ratings in the first place.
   const players = {{}};
   games.forEach(g => {{
     if (!players[g.player]) players[g.player] = {{
       player: g.player, games: 0, wins: 0, losses: 0,
-      startPre: g.pre, endPost: g.post, totalChange: 0, oppRatings: []
+      startPre: null, endPost: null, totalChange: 0, oppRatings: [],
+      hasUnadjusted: false, enteringRating: null
     }};
     const p = players[g.player];
     p.games++;
     g.win ? p.wins++ : p.losses++;
-    p.endPost     = g.post;
-    p.totalChange = Math.round(p.totalChange + g.change);
+    // cumPre is populated on every game (adjusted or not) -- capture the
+    // first one seen for this player today as their real rating walking
+    // into the day, for use as a fallback if none of today's games ended
+    // up counting toward ratings.
+    if (p.enteringRating === null) p.enteringRating = g.cumPre;
+    if (g.adjusted) {{
+      if (p.startPre === null) p.startPre = g.pre;
+      p.endPost     = g.post;
+      p.totalChange = Math.round(p.totalChange + g.change);
+    }} else {{
+      p.hasUnadjusted = true;
+    }}
     p.oppRatings.push(g.oppRating);
   }});
 
@@ -298,13 +364,25 @@ function render() {{
     </tr></thead><tbody>`;
   summaryRows.forEach(p => {{
     const avgOpp = Math.round(p.oppRatings.reduce((a,b)=>a+b,0)/p.oppRatings.length);
+    const nameCell = p.hasUnadjusted
+      ? `${{p.player}} <span class="unadj-note" title="Includes a game with a placeholder (e.g. Den New Player Tryout) -- not counted toward ratings">*</span>`
+      : p.player;
+    // If no game today counted toward ratings, fall back to the player's
+    // real entering rating (unchanged all day) instead of a blank dash --
+    // tagged distinctly since it reflects no games affecting it today.
+    const startCell = p.startPre !== null
+      ? p.startPre
+      : `<span class="unadj-cell" title="Entering rating -- no games today counted toward ratings">~${{p.enteringRating}}</span>`;
+    const endCell = p.endPost !== null
+      ? p.endPost
+      : `<span class="unadj-cell" title="Unchanged -- no games today counted toward ratings">~${{p.enteringRating}}</span>`;
     sh += `<tr>
-      <td class="left">${{p.player}}</td>
+      <td class="left">${{nameCell}}</td>
       <td>${{p.games}}</td>
       <td class="win-badge">${{p.wins}}</td>
       <td class="loss-badge">${{p.losses}}</td>
-      <td>${{p.startPre}}</td>
-      <td>${{p.endPost}}</td>
+      <td>${{startCell}}</td>
+      <td>${{endCell}}</td>
       <td>${{fmt(p.totalChange)}}</td>
       <td>${{avgOpp}}</td>
     </tr>`;
@@ -389,6 +467,9 @@ function renderGames() {{
       <th>Pre-Game</th><th>Change</th><th>Post-Game</th>
     </tr></thead><tbody>`;
   sorted.forEach(g => {{
+    const ratingCells = g.adjusted
+      ? `<td>${{g.pre}}</td><td>${{fmt(g.change)}}</td><td>${{g.post}}</td>`
+      : `<td class="unadj-cell" colspan="3" title="Match involved a placeholder (e.g. Den New Player Tryout) -- not counted toward ratings">Unadjusted</td>`;
     gh += `<tr>
       <td>${{g.time}}</td>
       <td>${{g.pool}}</td>
@@ -401,9 +482,7 @@ function renderGames() {{
       <td>${{g.teamRating}}</td>
       <td>${{g.oppRating}}</td>
       <td>${{fmt(g.gap)}}</td>
-      <td>${{g.pre}}</td>
-      <td>${{fmt(g.change)}}</td>
-      <td>${{g.post}}</td>
+      ${{ratingCells}}
     </tr>`;
   }});
   gh += "</tbody></table>";

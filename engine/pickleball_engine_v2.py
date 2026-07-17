@@ -2031,11 +2031,14 @@ def build_competitive_balance_by_quarter(player_log):
             float(r["opp_team_pre_rating"])
         )
 
+        margin = abs(float(r["margin"]))
+
         rows.append(
             {
                 "Quarter": quarter,
                 "Game Date": game_date,
                 "Rating Gap": rating_gap,
+                "Margin": margin,
             }
         )
 
@@ -2058,6 +2061,8 @@ def build_competitive_balance_by_quarter(player_log):
 
         gaps = sub["Rating Gap"]
 
+        margins = sub["Margin"]
+
         out_rows.append(
             {
                 "Quarter": quarter,
@@ -2069,6 +2074,8 @@ def build_competitive_balance_by_quarter(player_log):
                 "% 200+": (gaps >= 200).mean(),
                 "% 300+": (gaps >= 300).mean(),
                 "% 400+": (gaps >= 400).mean(),
+                "% Decided by <=3": (margins <= 3).mean(),
+                "% Decided by 9+": (margins >= 9).mean(),
             }
         )
 
@@ -4400,7 +4407,7 @@ def main():
     print(f"Built workbook: {output_path}")
 
     if args.with_history and not eod_df.empty and "Player" in eod_df.columns:
-        build_rating_history_html(eod_df, output_path.parent / "rating_history.html")
+        build_rating_history_html(eod_df, leaderboard, output_path.parent / "rating_history.html")
 
     build_competitive_balance_html(
         competitive_balance_by_quarter, player_pool_by_quarter,
@@ -4598,7 +4605,7 @@ def build_consistency_html(game_consistency, output_path):
     print(f"Consistency chart: {output_path}")
 
 
-def build_rating_history_html(eod_df, output_path):
+def build_rating_history_html(eod_df, leaderboard, output_path):
     try:
         import plotly.graph_objects as go
     except ImportError:
@@ -4647,20 +4654,36 @@ def build_rating_history_html(eod_df, output_path):
 
     chart_html = fig.to_html(full_html=False, include_plotlyjs="cdn", div_id="ratingChart")
 
+    # Quartiles are defined by each qualified leaderboard player's CURRENT
+    # rating -- not their rating on any particular past date -- so quartile
+    # membership doesn't shift when the Time Range selector changes. Only
+    # leaderboard-qualified players participate; guests/unqualified players
+    # get quartile 0 (excluded from all four quartile buttons, though their
+    # individual checkbox still works normally).
+    rating_map = dict(zip(leaderboard["Player"], leaderboard["Player Rating"]))
+    qualified_sorted = sorted(
+        [p for p in players if p in rating_map],
+        key=lambda p: rating_map[p], reverse=True,
+    )
+    n_qualified = len(qualified_sorted)
+    quartile_of = {}
+    for i, p in enumerate(qualified_sorted):
+        quartile_of[p] = min(4, int(i * 4 / n_qualified) + 1) if n_qualified else 0
+
     checkboxes_html = ""
     for i, player in enumerate(players):
+        q = quartile_of.get(player, 0)
         checkboxes_html += (
             f'<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;">'
-            f'<input type="checkbox" checked data-idx="{i}" onchange="toggleTrace({i},this.checked)"'
+            f'<input type="checkbox" checked data-idx="{i}" data-quartile="{q}" onchange="toggleTrace({i},this.checked)"'
             f' style="margin-right:6px;">{player}</label>\n'
         )
 
     max_date = df["Date"].max()
-    quarter_starts = {
-        "1Q": (max_date - pd.DateOffset(months=3)).isoformat(),
-        "2Q": (max_date - pd.DateOffset(months=6)).isoformat(),
-        "3Q": (max_date - pd.DateOffset(months=9)).isoformat(),
-        "4Q": (max_date - pd.DateOffset(months=12)).isoformat(),
+    month_starts = {
+        "1M": (max_date - pd.DateOffset(months=1)).isoformat(),
+        "3M": (max_date - pd.DateOffset(months=3)).isoformat(),
+        "6M": (max_date - pd.DateOffset(months=6)).isoformat(),
     }
     min_date = df["Date"].min().isoformat()
     max_date_iso = max_date.isoformat()
@@ -4674,7 +4697,7 @@ def build_rating_history_html(eod_df, output_path):
     * {{ box-sizing: border-box; margin: 0; padding: 0; }}
     body {{ font-family: Arial, sans-serif; display: flex; height: 100vh; overflow: hidden; }}
     #sidebar {{
-      width: 210px; min-width: 210px; padding: 14px 12px;
+      width: 210px; min-width: 210px; padding: 46px 12px 14px;
       background: #f7f7f7; border-right: 1px solid #ddd;
       display: flex; flex-direction: column; gap: 8px; overflow-y: auto;
     }}
@@ -4700,10 +4723,19 @@ def build_rating_history_html(eod_df, output_path):
 
     <div class="section-label">Time Range</div>
     <div class="btn-row">
-      <button class="btn" id="btn-1q" onclick="setRange('1Q')">1Q</button>
-      <button class="btn" id="btn-2q" onclick="setRange('2Q')">2Q</button>
-      <button class="btn" id="btn-3q" onclick="setRange('3Q')">3Q</button>
-      <button class="btn" id="btn-4q" onclick="setRange('4Q')">4Q</button>
+      <button class="btn" id="btn-1m" onclick="setRange('1M')">1M</button>
+      <button class="btn" id="btn-3m" onclick="setRange('3M')">3M</button>
+      <button class="btn" id="btn-6m" onclick="setRange('6M')">6M</button>
+      <button class="btn" id="btn-all" onclick="setRange('ALL')">All</button>
+    </div>
+
+    <div class="section-label">Rating Tier</div>
+    <p class="note">Quartiles by current rating (leaderboard-qualified players only).</p>
+    <div class="btn-row">
+      <button class="btn" onclick="selectQuartile(1)" title="Top 25% by current rating">Q1</button>
+      <button class="btn" onclick="selectQuartile(2)" title="2nd 25% by current rating">Q2</button>
+      <button class="btn" onclick="selectQuartile(3)" title="3rd 25% by current rating">Q3</button>
+      <button class="btn" onclick="selectQuartile(4)" title="Bottom 25% by current rating">Q4</button>
     </div>
 
     <div class="section-label">Players</div>
@@ -4720,10 +4752,10 @@ def build_rating_history_html(eod_df, output_path):
   <script>
     var chartDiv = document.getElementById('ratingChart');
     var ranges = {{
-      '1Q': ['{quarter_starts["1Q"]}', '{max_date_iso}'],
-      '2Q': ['{quarter_starts["2Q"]}', '{max_date_iso}'],
-      '3Q': ['{quarter_starts["3Q"]}', '{max_date_iso}'],
-      '4Q': ['{quarter_starts["4Q"]}', '{max_date_iso}'],
+      '1M': ['{month_starts["1M"]}', '{max_date_iso}'],
+      '3M': ['{month_starts["3M"]}', '{max_date_iso}'],
+      '6M': ['{month_starts["6M"]}', '{max_date_iso}'],
+      'ALL': ['{min_date}', '{max_date_iso}'],
     }};
 
     function setRange(q) {{
@@ -4752,6 +4784,14 @@ def build_rating_history_html(eod_df, output_path):
       }});
     }}
 
+    function selectQuartile(q) {{
+      document.querySelectorAll('#player-list input').forEach(function(b) {{
+        var show = parseInt(b.dataset.quartile) === q;
+        b.checked = show;
+        Plotly.restyle(chartDiv, {{'visible': show}}, [parseInt(b.dataset.idx)]);
+      }});
+    }}
+
     // Keep checkboxes in sync when user clicks legend items directly
     chartDiv.on('plotly_legendclick', function(data) {{
       var idx = data.curveNumber;
@@ -4764,8 +4804,9 @@ def build_rating_history_html(eod_df, output_path):
       }}
     }});
 
-    // Default to 2Q view
-    setRange('2Q');
+    // Default to a fixed 6-month window (not calendar-quarter-based --
+    // avoids showing almost no data in the first few days of a new quarter).
+    setRange('6M');
   </script>
 </body>
 </html>"""

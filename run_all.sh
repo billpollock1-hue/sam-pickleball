@@ -8,6 +8,22 @@ MASTER_FILE="data/master_history_raw.csv"
 LATEST_FILE="data/latest_scrape.csv"
 FINAL_OUTPUT="output/pickleball_model_latest.xlsx"
 TEMP_OUTPUT="output/pickleball_model_latest_tmp.xlsx"
+NO_SHOOTOUT_LOG="data/no_shootout_dates.csv"
+
+echo ""
+echo "0. Checking today's signup count (minimum 8 players required for a shootout)..."
+(cd assignments && python3 check_no_shootout.py)
+
+# Hash master history before any scrape/merge attempt. Steps 3-5c (summary
+# workbook, rating engine, session viewer, storybook, leaderboard) are gated
+# on this actually changing -- previously they ran unconditionally every
+# time run_all.sh executed, even when the scrape found nothing and merge
+# was skipped. The old guard ("single day AND fewer than 2 shootouts found")
+# also missed the case where a stale multi-day window (e.g. spanning a
+# weekend with no shootouts) legitimately found zero results but wasn't a
+# literal single-day window, so it fell through and ran the full rebuild
+# for no reason.
+HASH_BEFORE=$(shasum -a 256 "$MASTER_FILE" | awk '{print $1}')
 
 START_DATE=$(python3 - <<'PY'
 import pandas as pd
@@ -36,7 +52,13 @@ df = pd.read_csv(Path("data/master_history_raw.csv"))
 dates = pd.to_datetime(df["posted"], errors="coerce").dropna()
 latest_date = dates.max().date()
 
-now_mtn  = datetime.now(ZoneInfo("America/Denver"))
+no_shootout_dates = set()
+no_shootout_path = Path("data/no_shootout_dates.csv")
+if no_shootout_path.exists():
+    nsd = pd.read_csv(no_shootout_path)
+    no_shootout_dates = set(pd.to_datetime(nsd["date"], errors="coerce").dt.date.dropna())
+
+now_mtn  = datetime.now(ZoneInfo("America/Phoenix"))
 today    = now_mtn.date()
 CUTOFF   = time(8, 15)
 
@@ -45,11 +67,18 @@ if today.weekday() < 5:                        # weekday
         required_date = today                  # session data should be available by 8:15 AM MT
     else:
         required_date = today - timedelta(days=1)
-        while required_date.weekday() >= 5:    # walk back over any weekend
+        while required_date.weekday() >= 5 or required_date in no_shootout_dates:
             required_date -= timedelta(days=1)
 else:                                          # weekend — use prior Friday
     required_date = today - timedelta(days=1)
-    while required_date.weekday() >= 5:
+    while required_date.weekday() >= 5 or required_date in no_shootout_dates:
+        required_date -= timedelta(days=1)
+
+# If today itself is a logged no-shootout date, there's nothing to wait for
+# today either -- fall straight back to the prior real play date.
+if today in no_shootout_dates:
+    required_date = today - timedelta(days=1)
+    while required_date.weekday() >= 5 or required_date in no_shootout_dates:
         required_date -= timedelta(days=1)
 
 # Use >= rather than > so that master history being caught up EXACTLY
@@ -86,7 +115,10 @@ else
   SHOOTOUT_COUNT=$(echo "$SCRAPE_OUTPUT" | grep -o "Collected [0-9]* shootout" | grep -o "[0-9]*" || echo "0")
 
   echo ""
-  if [ "$START_DATE" = "$END_DATE" ] && [ "${SHOOTOUT_COUNT:-0}" -lt 2 ]; then
+  if [ "${SHOOTOUT_COUNT:-0}" -eq 0 ]; then
+    echo "2. Skipping merge — no shootouts found in $START_DATE through $END_DATE."
+    echo "   Nothing new to merge; master history stays as-is."
+  elif [ "$START_DATE" = "$END_DATE" ] && [ "${SHOOTOUT_COUNT:-0}" -lt 2 ]; then
     echo "2. Skipping merge — only $SHOOTOUT_COUNT shootout(s) found for $START_DATE (need 2)."
     echo "   Results may not be fully posted yet. Will retry on next scheduled run."
   else
@@ -95,41 +127,55 @@ else
   fi
 fi
 
-echo ""
-echo "3. Building 2026 summary workbook..."
-python3 engine/build_2026_summaries.py
+HASH_AFTER=$(shasum -a 256 "$MASTER_FILE" | awk '{print $1}')
 
-echo ""
-echo "4. Running rating engine..."
-rm -f "$TEMP_OUTPUT"
-
-python3 engine/pickleball_engine_v2.py \
-  --input "$MASTER_FILE" \
-  --output "$TEMP_OUTPUT" \
-  --with-history
-
-mv "$TEMP_OUTPUT" "$FINAL_OUTPUT"
-
-# Sync model inputs to the monitor runtime so the launchd agent can refresh
-# court assignments headlessly (it cannot read ~/Documents)
-PBM="$HOME/Library/Application Support/PBMonitor"
-if [ -d "$PBM" ]; then
-  cp "$FINAL_OUTPUT" "$PBM/pickleball_model_latest.xlsx"
-  cp "$MASTER_FILE" "$PBM/master_history_raw.csv"
-  echo "Synced model workbook + history to monitor runtime."
+if [ "$HASH_BEFORE" = "$HASH_AFTER" ]; then
+  DATA_CHANGED="NO"
+else
+  DATA_CHANGED="YES"
 fi
 
-echo ""
-echo "5. Building session viewer..."
-python3 engine/build_session_viewer.py
+if [ "$DATA_CHANGED" = "NO" ]; then
+  echo ""
+  echo "3-5c. Status quo — master history unchanged, skipping summary workbook,"
+  echo "      rating engine, session viewer, storybook, and leaderboard rebuild."
+else
+  echo ""
+  echo "3. Building 2026 summary workbook..."
+  python3 engine/build_2026_summaries.py
 
-echo ""
-echo "5b. Building storybook..."
-python3 engine/build_storybook.py
+  echo ""
+  echo "4. Running rating engine..."
+  rm -f "$TEMP_OUTPUT"
 
-echo ""
-echo "5c. Building slim leaderboard..."
-python3 engine/build_leaderboard_html.py
+  python3 engine/pickleball_engine_v2.py \
+    --input "$MASTER_FILE" \
+    --output "$TEMP_OUTPUT" \
+    --with-history
+
+  mv "$TEMP_OUTPUT" "$FINAL_OUTPUT"
+
+  # Sync model inputs to the monitor runtime so the launchd agent can refresh
+  # court assignments headlessly (it cannot read ~/Documents)
+  PBM="$HOME/Library/Application Support/PBMonitor"
+  if [ -d "$PBM" ]; then
+    cp "$FINAL_OUTPUT" "$PBM/pickleball_model_latest.xlsx"
+    cp "$MASTER_FILE" "$PBM/master_history_raw.csv"
+    echo "Synced model workbook + history to monitor runtime."
+  fi
+
+  echo ""
+  echo "5. Building session viewer..."
+  python3 engine/build_session_viewer.py
+
+  echo ""
+  echo "5b. Building storybook..."
+  python3 engine/build_storybook.py
+
+  echo ""
+  echo "5c. Building slim leaderboard..."
+  python3 engine/build_leaderboard_html.py
+fi
 
 echo ""
 echo "5d. Refreshing court assignment snapshots..."

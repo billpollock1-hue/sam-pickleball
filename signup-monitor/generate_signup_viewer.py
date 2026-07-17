@@ -15,7 +15,18 @@ from typing import Optional
 BASE_DIR = Path(__file__).parent
 LOGS_DIR = BASE_DIR / "logs"
 OUTPUT = LOGS_DIR / "signup_viewer.html"
-DOCS_OUTPUT = BASE_DIR.parent / "docs" / "signup_viewer.html"
+
+# Absolute path to the real git repo, NOT derived from BASE_DIR.parent --
+# this script runs from two different locations (the git-tracked
+# signup-monitor/ source, and the deployed PBMonitor copy that the
+# automated 15-min launchd job actually uses). BASE_DIR.parent/"docs"
+# only ever resolved correctly from the git-tracked location; from
+# PBMonitor it silently resolved to a nonexistent "Application
+# Support/docs" folder, crashing with FileNotFoundError -- meaning the
+# automated sync to the live site had likely never actually worked.
+DOCS_OUTPUT = Path(
+    "/Users/billpollock/Documents/SAM Pickleball/sam-pickleball/docs/signup_viewer.html"
+)
 
 
 def canonical(name: str) -> str:
@@ -38,6 +49,18 @@ def fmt_date(ts: str) -> str:
     try:
         dt = datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
         return f"{dt.month}/{dt.day}"
+    except Exception:
+        return ts
+
+
+def fmt_full_ts(ts: str) -> str:
+    """Full, unambiguous timestamp for tooltips -- e.g. "July 9, 2026, 9:15 PM MST".
+    All timestamps in these logs are recorded in true Phoenix/MST (see the
+    monitor_signups.py fix -- previously mislabeled as generic "MT" using
+    America/Denver, which silently drifted an hour during DST months)."""
+    try:
+        dt = datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
+        return dt.strftime("%B %-d, %Y, %-I:%M %p") + " MST"
     except Exception:
         return ts
 
@@ -194,7 +217,7 @@ def parse_log(date_str: str) -> Optional[dict]:
                 header_names = " & ".join(names)
             else:
                 header_names = f"{names[0]} +{len(names) - 1}"
-            rev["header"] = f"After {header_names}\nwd {fmt_date(rev['ts'])}"
+            rev["header"] = f"After {header_names}\nwd {fmt_ts(rev['ts'])}"
         else:
             # Pure promotion — nobody left the sheet at this instant, earlier
             # withdrawals just got backfilled from the wait list.
@@ -216,7 +239,7 @@ def parse_log(date_str: str) -> Optional[dict]:
         # Each withdrawn player's own cell
         for wd_c in rev["withdrawals"]:
             if wd_c in player_map:
-                player_map[wd_c]["revs"][ri] = {"t": "wd", "v": f"WD {fmt_date(rev['ts'])}"}
+                player_map[wd_c]["revs"][ri] = {"t": "wd", "v": f"WD {fmt_ts(rev['ts'])}", "title": fmt_full_ts(rev['ts'])}
 
         # Players who reordered due to this withdrawal (regular seat number,
         # or a live-tracked WL queue-position shift)
@@ -276,6 +299,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
              cursor: pointer; white-space: nowrap; }
 #print-btn:hover { background: #f0f0f0; }
 
+.back-btn { padding: 6px 14px; font-size: 12px; border: none;
+            border-radius: 5px; background: #1F4E79; color: #fff;
+            cursor: pointer; text-decoration: none; white-space: nowrap; }
+.back-btn:hover { background: #163a5c; }
+
 /* ── Content area ── */
 #content { padding: 20px; overflow-x: auto; }
 #print-header { display: none; font-size: 14px; font-weight: 600;
@@ -320,6 +348,7 @@ tr.wd td.name  { text-decoration: line-through; }
 <body>
 
 <div id="controls">
+  <a href="index.html" class="back-btn">&larr; Menu</a>
   <label for="date-select">Session date</label>
   <select id="date-select">%%OPTIONS%%</select>
   <button id="print-btn" onclick="window.print()">&#128438;&nbsp; Print / Save PDF</button>
@@ -365,7 +394,7 @@ function render(dateStr) {
     h += `<td class="${isWL(p.o) ? 'wl' : 'order'}">${p.o}</td>`;
     for (const rev of p.r) {
       if (!rev) { h += '<td class="empty"></td>'; continue; }
-      if (rev.t === 'wd')       { h += `<td class="wd-cell">${rev.v}</td>`; continue; }
+      if (rev.t === 'wd')       { h += `<td class="wd-cell" title="${rev.title}">${rev.v}</td>`; continue; }
       if (rev.t === 'promoted') { h += `<td class="promo">${rev.v}</td>`;   continue; }
       h += `<td class="${isWL(rev.v) ? 'wl' : 'rev'}">${rev.v}</td>`;
     }
@@ -460,9 +489,19 @@ def generate_viewer() -> Optional[Path]:
             .replace("%%DATES%%", json.dumps(dates)))
 
     OUTPUT.write_text(html, encoding="utf-8")
-    DOCS_OUTPUT.write_text(html, encoding="utf-8")
-    print(f"Saved: {DOCS_OUTPUT}")
     print(f"Saved: {OUTPUT}")
+
+    # Fail soft: never let a missing/unreachable docs/ folder crash the
+    # whole run (this previously took down monitor_signups.py's automated
+    # regeneration step silently, every single cycle, since it runs from
+    # a location where the old relative path never resolved correctly).
+    try:
+        DOCS_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+        DOCS_OUTPUT.write_text(html, encoding="utf-8")
+        print(f"Saved: {DOCS_OUTPUT}")
+    except Exception as e:
+        print(f"⚠ Could not write to {DOCS_OUTPUT}: {e}")
+
     return OUTPUT
 
 

@@ -1,6 +1,21 @@
 """
 Signup sheet monitor for Pickleball Den.
 Run every 15 min via launchd. Tracks sign-ups and withdrawals per date.
+
+Single source of truth for both locations this script runs from:
+  repo copy      — ~/Documents/SAM Pickleball/sam-pickleball/signup-monitor/
+                   BASE_DIR resolves relative to this file.
+  deployed copy  — ~/Library/Application Support/PBMonitor/
+                   (launchd agents cannot access ~/Documents, so this is the
+                   copy that actually runs on the 15-minute schedule.)
+                   Set PB_RUNTIME to force this location explicitly instead
+                   of relying on file location, same pattern as
+                   refresh_assignments.py / den_assignments.py.
+
+Deploy: after editing the repo copy, sync it to the runtime location with:
+  cp signup-monitor/monitor_signups.py ~/Library/Application\\ Support/PBMonitor/monitor_signups.py
+This file is identical in both locations by design -- BASE_DIR below is what
+makes it behave correctly in each without needing separate versions.
 """
 
 import csv
@@ -20,15 +35,31 @@ try:
 except ImportError:
     _generate_viewer = None
 
-MT = ZoneInfo("America/Denver")
+MT = ZoneInfo("America/Phoenix")  # true MST year-round -- NOT "America/Denver",
+# which observes DST and would silently shift every logged timestamp and the
+# 8 AM cutoff by an hour during daylight saving months. Also NOT generic
+# "Arizona time" -- Navajo Nation (within Arizona) does observe DST, so
+# America/Phoenix specifically is the correct anchor for true MST.
 HOME_URL = "https://app.pickleballden.com"
 LOOK_AHEAD_DAYS = 21  # search window: today through today+N
 
-BASE_DIR = Path(__file__).parent
+# PB_RUNTIME (set by launchd, same convention as refresh_assignments.py /
+# den_assignments.py) pins this to the deployed PBMonitor folder explicitly.
+# Falls back to this file's own directory, so the repo copy still works
+# correctly when run manually without the env var set.
+_RUNTIME = os.environ.get("PB_RUNTIME")
+BASE_DIR = Path(_RUNTIME) if _RUNTIME else Path(__file__).resolve().parent
+
 SESSION_FILE = BASE_DIR / "den_session.json"
 STATE_FILE = BASE_DIR / "signup_monitor_state.json"
 LOGS_DIR = BASE_DIR / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
+
+# Repo assignments/ folder -- kept as an absolute path (not derived from
+# BASE_DIR) since it must always point at the git-tracked location
+# regardless of which copy of this script is running, same reasoning as
+# refresh_assignments.py's sync_to_live_site() repo_root.
+REPO_ASSIGNMENTS_DIR = Path("/Users/billpollock/Documents/SAM Pickleball/sam-pickleball/assignments")
 
 
 # ── Utilities ───────────────────────────────────────────────────────────────
@@ -53,7 +84,7 @@ def notify(message):
 
 
 def is_sheet_open(date_str):
-    """True if the 8 AM MT cutoff for this date hasn't passed yet."""
+    """True if the 8 AM MST cutoff for this date hasn't passed yet."""
     d = datetime.strptime(date_str, "%Y-%m-%d")
     cutoff = datetime(d.year, d.month, d.day, 8, 0, 0, tzinfo=MT)
     return now_mt() < cutoff
@@ -224,7 +255,7 @@ def run_monitor():
     ts = now_mt()
     timestamp_str = ts.strftime("%Y-%m-%d %H:%M:%S")
 
-    print(f"\n[{timestamp_str} MT] Monitor cycle starting...")
+    print(f"\n[{timestamp_str} MST] Monitor cycle starting...")
 
     body_text = fetch_all_sheets()
     if body_text is None:
@@ -264,7 +295,7 @@ def run_monitor():
             snap = snapshots.get(date_str, {})
             if not snap.get("closed"):
                 snapshots[date_str] = {**snap, "closed": True}
-                print(f"[{timestamp_str}] Sheet {date_str} is now closed (past 8 AM MT).")
+                print(f"[{timestamp_str}] Sheet {date_str} is now closed (past 8 AM MST).")
             continue
 
         prior = snapshots.get(date_str, {})
@@ -314,6 +345,17 @@ def run_monitor():
     state["snapshots"] = snapshots
     save_state(state)
 
+    # Keep the repo's assignments/ copy of the DEN login session fresh, so
+    # manually running den_assignments.py from the repo never hits a stale
+    # session. Repo-only concern -- skipped harmlessly if the repo folder
+    # isn't present on this machine.
+    try:
+        import shutil
+        if REPO_ASSIGNMENTS_DIR.exists():
+            shutil.copy2(str(SESSION_FILE), str(REPO_ASSIGNMENTS_DIR / "den_session.json"))
+    except Exception:
+        pass
+
     checked = [d for d in current_sheets if is_sheet_open(d)]
     print(f"[{timestamp_str}] Done. Open sheets checked: {checked}")
 
@@ -321,16 +363,6 @@ def run_monitor():
         try:
             _generate_viewer()
             print(f"[{timestamp_str}] Updated signup_viewer.html")
-            import subprocess
-            deploy_result = subprocess.run(
-                ["/opt/homebrew/bin/netlify", "deploy", "--prod",
-                 "--dir", str(BASE_DIR / "logs")],
-                capture_output=True, text=True,
-            )
-            if deploy_result.returncode == 0:
-                print(f"[{timestamp_str}] Deployed signup_viewer.html to Netlify")
-            else:
-                print(f"[{timestamp_str}] Netlify deploy failed: {deploy_result.stderr[-300:]}")
         except Exception as e:
             print(f"[{timestamp_str}] Viewer update failed: {e}")
 

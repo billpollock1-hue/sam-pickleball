@@ -111,17 +111,17 @@ def parse_log(date_str: str) -> Optional[dict]:
     # or that seat change never shows up anywhere in the table.
     real_withdrawal_ts = {
         e["ts"] for e in raw
-        if e["action"] == "withdrew" and (e["ts"], canonical(e["name"])) not in transitions
+        if e["action"] in ("withdrew", "removed_auto") and (e["ts"], canonical(e["name"])) not in transitions
     }
     wl_departure_ts = {
-        e["ts"] for e in raw if e["action"] == "withdrew" and is_wl(e["name"])
+        e["ts"] for e in raw if e["action"] in ("withdrew", "removed_auto") and is_wl(e["name"])
     }
     revision_ts = sorted(real_withdrawal_ts | set(pending_by_ts.keys()) | wl_departure_ts)
 
     rev_by_ts = {}
     revisions = []
     for ts in revision_ts:
-        rev = {"ts": ts, "withdrawals": [], "reorders": {},
+        rev = {"ts": ts, "withdrawals": [], "withdrawal_action": {}, "reorders": {},
                "transitions": pending_by_ts.get(ts, {}), "header": ""}
         rev_by_ts[ts] = rev
         revisions.append(rev)
@@ -169,7 +169,7 @@ def parse_log(date_str: str) -> Optional[dict]:
                     player_map[key] = p
                     players.append(p)
 
-            elif action == "withdrew":
+            elif action in ("withdrew", "removed_auto"):
                 if is_wl(name):
                     if c in active_wl:
                         active_wl.remove(c)
@@ -179,12 +179,14 @@ def parse_log(date_str: str) -> Optional[dict]:
                         rev = rev_by_ts.get(ts)
                         if rev is not None:
                             rev["withdrawals"].append(c)
+                            rev["withdrawal_action"][c] = action
                         if c in player_map:
                             player_map[c]["withdrew"] = True
                 else:
                     rev = rev_by_ts.get(ts)
                     if rev is not None:
                         rev["withdrawals"].append(c)
+                        rev["withdrawal_action"][c] = action
                     if c in player_map:
                         player_map[c]["withdrew"] = True
 
@@ -217,7 +219,9 @@ def parse_log(date_str: str) -> Optional[dict]:
                 header_names = " & ".join(names)
             else:
                 header_names = f"{names[0]} +{len(names) - 1}"
-            rev["header"] = f"After {header_names}\nwd {fmt_ts(rev['ts'])}"
+            all_auto = all(rev["withdrawal_action"].get(w) == "removed_auto" for w in rev["withdrawals"])
+            verb = "auto-removed" if all_auto else "wd"
+            rev["header"] = f"After {header_names}\n{verb} {fmt_ts(rev['ts'])}"
         else:
             # Pure promotion — nobody left the sheet at this instant, earlier
             # withdrawals just got backfilled from the wait list.
@@ -236,10 +240,16 @@ def parse_log(date_str: str) -> Optional[dict]:
         p["revs"] = [None] * n
 
     for ri, rev in enumerate(revisions):
-        # Each withdrawn player's own cell
+        # Each withdrawn player's own cell -- WD (red) for a real player
+        # withdrawal, AUTO (amber) for a shootout-launcher court-count
+        # trim, so the two very different situations aren't visually
+        # conflated with each other.
         for wd_c in rev["withdrawals"]:
             if wd_c in player_map:
-                player_map[wd_c]["revs"][ri] = {"t": "wd", "v": f"WD {fmt_ts(rev['ts'])}", "title": fmt_full_ts(rev['ts'])}
+                if rev["withdrawal_action"].get(wd_c) == "removed_auto":
+                    player_map[wd_c]["revs"][ri] = {"t": "auto", "v": f"AUTO {fmt_ts(rev['ts'])}", "title": fmt_full_ts(rev['ts']) + " — removed by shootout launcher (court-count trim)"}
+                else:
+                    player_map[wd_c]["revs"][ri] = {"t": "wd", "v": f"WD {fmt_ts(rev['ts'])}", "title": fmt_full_ts(rev['ts'])}
 
         # Players who reordered due to this withdrawal (regular seat number,
         # or a live-tracked WL queue-position shift)
@@ -327,6 +337,8 @@ td.wl     { text-align: center; color: #1565c0; font-weight: 500; }
 td.promo  { text-align: center; color: #2e7d32; font-weight: 500; }
 td.wd-cell { text-align: center; background: #fff0f0;
              color: #c0392b; font-weight: 600; font-size: 11px; }
+td.auto-cell { text-align: center; background: #fff6e0;
+               color: #8a6d1f; font-weight: 600; font-size: 11px; }
 
 tr.wd td       { color: #c8c8c8; }
 tr.wd td.name  { text-decoration: line-through; }
@@ -361,6 +373,19 @@ tr.wd td.name  { text-decoration: line-through; }
 </div>
 
 <script>
+// ── Freshness: force a genuine network fetch on every real navigation to
+// this page, bypassing any browser/CDN cache. If this load doesn't already
+// carry our cache-bust marker, immediately redirect to a URL that does --
+// GitHub Pages' CDN (and browsers) cache by full URL including query
+// string, so a unique timestamp guarantees a cache miss.
+(function () {
+  const params = new URLSearchParams(location.search);
+  if (!params.has('_cb')) {
+    params.set('_cb', Date.now());
+    location.replace(location.pathname + '?' + params.toString());
+  }
+})();
+
 const DATA = %%JSON%%;
 const DATES = %%DATES%%;
 
@@ -395,6 +420,7 @@ function render(dateStr) {
     for (const rev of p.r) {
       if (!rev) { h += '<td class="empty"></td>'; continue; }
       if (rev.t === 'wd')       { h += `<td class="wd-cell" title="${rev.title}">${rev.v}</td>`; continue; }
+      if (rev.t === 'auto')     { h += `<td class="auto-cell" title="${rev.title}">${rev.v}</td>`; continue; }
       if (rev.t === 'promoted') { h += `<td class="promo">${rev.v}</td>`;   continue; }
       h += `<td class="${isWL(rev.v) ? 'wl' : 'rev'}">${rev.v}</td>`;
     }
@@ -452,8 +478,28 @@ if (sel.options.length === 0 && DATES.length > 0) {
 // reordering options in the DOM does not change which one is marked selected.
 sel.selectedIndex = 0;
 
+// Restore a manually-selected date carried over from a periodic auto-reload
+// (see setInterval below), if that date still appears in the dropdown --
+// otherwise the reload would silently snap back to the default date while
+// someone is actively reviewing an older session.
+const preservedDate = new URLSearchParams(location.search).get('d');
+if (preservedDate) {
+  const match = Array.from(sel.options).find(o => o.value === preservedDate);
+  if (match) sel.value = preservedDate;
+}
+
 sel.addEventListener('change', () => render(sel.value));
 render(sel.value);
+
+// Periodic freshness re-check for tabs left open a while -- carries the
+// current date selection forward via the 'd' param so the reload restores
+// it instead of resetting to the default date.
+setInterval(() => {
+  const params = new URLSearchParams(location.search);
+  params.set('_cb', Date.now());
+  params.set('d', sel.value);
+  location.replace(location.pathname + '?' + params.toString());
+}, 5 * 60 * 1000);
 </script>
 </body>
 </html>

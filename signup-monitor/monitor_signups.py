@@ -61,6 +61,12 @@ LOGS_DIR.mkdir(exist_ok=True)
 # refresh_assignments.py's sync_to_live_site() repo_root.
 REPO_ASSIGNMENTS_DIR = Path("/Users/billpollock/Documents/SAM Pickleball/sam-pickleball/assignments")
 
+# Repo root itself -- used for the signup-viewer auto-push, same absolute-
+# path reasoning as REPO_ASSIGNMENTS_DIR above (this script runs from two
+# different locations, so a path derived from BASE_DIR would be wrong when
+# running from the deployed PBMonitor copy).
+REPO_ROOT = Path("/Users/billpollock/Documents/SAM Pickleball/sam-pickleball")
+
 
 # ── Utilities ───────────────────────────────────────────────────────────────
 
@@ -104,11 +110,111 @@ def log_event(date_str, timestamp_str, action, player, signup_order, prior_order
     log_file = LOGS_DIR / f"{date_str}_signup_log.csv"
     if not log_file.exists():
         log_file.write_text("timestamp_mt,action,player,signup_order,prior_order\n"
-                            "# joined* = present when sheet was first discovered\n")
+                            "# joined* = present when sheet was first discovered\n"
+                            "# removed_auto = removed by the shootout launcher's court-count trim, not a player-initiated withdrawal\n")
     player_escaped = player.replace('"', '""')
     prior_str = str(prior_order) if prior_order is not None else ""
     with log_file.open("a") as f:
         f.write(f'"{timestamp_str}","{action}","{player_escaped}",{signup_order},{prior_str}\n')
+
+
+AUTO_REMOVAL_MARKER = REPO_ROOT / "data" / "last_auto_removal.json"
+AUTO_REMOVAL_WINDOW_MINUTES = 60  # generous enough to cover the retry-on-error
+                                   # pattern seen in production (multiple launch
+                                   # attempts within ~10 minutes before success)
+
+
+def load_auto_removals():
+    """
+    Read the marker create_shootout.py leaves when it removes players,
+    keyed by date. Returns {} if missing, unreadable, or stale (older
+    than AUTO_REMOVAL_WINDOW_MINUTES) -- a stale marker is treated the
+    same as no marker, so an old leftover file can never mis-tag an
+    unrelated later withdrawal.
+    """
+    if not AUTO_REMOVAL_MARKER.exists():
+        return {}
+    try:
+        data = json.loads(AUTO_REMOVAL_MARKER.read_text())
+        ts = datetime.fromisoformat(data["timestamp"])
+        if now_mt() - ts > timedelta(minutes=AUTO_REMOVAL_WINDOW_MINUTES):
+            return {}
+        return {data["date"]: set(data["players"])}
+    except Exception:
+        return {}
+
+
+def consume_auto_removal(date_str, player):
+    """
+    Remove one matched name from the marker file so a later, genuine
+    withdrawal of the same person (on a future date, or after being
+    re-added) never gets mis-tagged as launcher-driven. Deletes the
+    marker entirely once its player list is empty.
+    """
+    try:
+        if not AUTO_REMOVAL_MARKER.exists():
+            return
+        data = json.loads(AUTO_REMOVAL_MARKER.read_text())
+        if data.get("date") != date_str or player not in data.get("players", []):
+            return
+        data["players"] = [p for p in data["players"] if p != player]
+        if data["players"]:
+            AUTO_REMOVAL_MARKER.write_text(json.dumps(data))
+        else:
+            AUTO_REMOVAL_MARKER.unlink()
+    except Exception:
+        pass
+
+
+def sync_signup_viewer_to_live_site(timestamp_str):
+    """
+    Copy the freshly-regenerated signup_viewer.html into the real repo's
+    docs/ folder and push it live -- same pattern as
+    refresh_assignments.py's sync_to_live_site() for court_assignments.html.
+
+    Before this, generate_signup_viewer.generate_viewer() already wrote
+    docs/signup_viewer.html locally on disk (confirmed in the 2026-07-17
+    logs), but nothing committed or pushed that file to GitHub on this
+    15-minute path -- it only ever reached the live site as a side effect
+    of a separate, coarser process (e.g. run_all.sh's own broader commits).
+    That gap meant the live signup viewer could sit stale for hours even
+    though the local file and the underlying signup log were both correct.
+
+    Runs unconditionally, no trial window -- same reasoning as
+    sync_to_live_site() being made permanent on the same date.
+    """
+    docs_target = REPO_ROOT / "docs" / "signup_viewer.html"
+
+    try:
+        if not docs_target.exists():
+            print(f"[{timestamp_str}]   ⚠ sync_signup_viewer_to_live_site: "
+                  f"{docs_target} not found -- skipping.")
+            return
+
+        status = subprocess.run(
+            ["git", "status", "--porcelain", "docs/signup_viewer.html"],
+            cwd=str(REPO_ROOT), capture_output=True, text=True, timeout=30,
+        )
+        if not status.stdout.strip():
+            print(f"[{timestamp_str}]   No change in docs/signup_viewer.html — skipping git push.")
+            return
+
+        subprocess.run(["git", "add", "docs/signup_viewer.html"],
+                        cwd=str(REPO_ROOT), check=True, timeout=30)
+        now = now_mt().strftime("%Y-%m-%d %H:%M")
+        subprocess.run(
+            ["git", "commit", "-m", f"Auto-refresh signup viewer ({now} MST)"],
+            cwd=str(REPO_ROOT), check=True, timeout=30,
+        )
+        push = subprocess.run(["git", "push", "origin", "main"],
+                               cwd=str(REPO_ROOT), capture_output=True, text=True, timeout=60)
+        if push.returncode == 0:
+            print(f"[{timestamp_str}]   ✓ Pushed updated signup viewer to live site.")
+        else:
+            print(f"[{timestamp_str}]   ⚠ git push failed (committed locally, not pushed): "
+                  f"{push.stderr[-300:]}")
+    except Exception as e:
+        print(f"[{timestamp_str}]   ⚠ sync_signup_viewer_to_live_site failed: {e}")
 
 
 # ── Page parsing ─────────────────────────────────────────────────────────────
@@ -314,6 +420,9 @@ def run_monitor():
                   f"({len(withdrew)} withdrew, only {len(players)} visible)")
             continue
 
+        auto_removals = load_auto_removals()
+        auto_removed_here = auto_removals.get(date_str, set())
+
         for player in joined:
             order = players.index(player) + 1
             log_event(date_str, timestamp_str, "joined", player, order)
@@ -322,8 +431,13 @@ def run_monitor():
 
         for player in withdrew:
             old_order = prior_players.index(player) + 1
-            log_event(date_str, timestamp_str, "withdrew", player, old_order)
-            print(f"[{timestamp_str}] {date_str} WITHDREW (was #{old_order:2d}): {player}")
+            if player in auto_removed_here:
+                log_event(date_str, timestamp_str, "removed_auto", player, old_order)
+                print(f"[{timestamp_str}] {date_str} REMOVED_AUTO (was #{old_order:2d}): {player}")
+                consume_auto_removal(date_str, player)
+            else:
+                log_event(date_str, timestamp_str, "withdrew", player, old_order)
+                print(f"[{timestamp_str}] {date_str} WITHDREW (was #{old_order:2d}): {player}")
             dates_with_changes.add(date_str)
 
         # Log reordered entries for players who moved up due to withdrawals
@@ -363,6 +477,7 @@ def run_monitor():
         try:
             _generate_viewer()
             print(f"[{timestamp_str}] Updated signup_viewer.html")
+            sync_signup_viewer_to_live_site(timestamp_str)
         except Exception as e:
             print(f"[{timestamp_str}] Viewer update failed: {e}")
 
@@ -414,7 +529,7 @@ def reconstruct_players_from_log(date_str):
             if action in ("joined*", "joined"):
                 if player not in players:
                     players.insert(min(order - 1, len(players)), player)
-            elif action == "withdrew":
+            elif action in ("withdrew", "removed_auto"):
                 if player in players:
                     players.remove(player)
             elif action == "reordered":

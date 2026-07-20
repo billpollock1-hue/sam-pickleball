@@ -4718,6 +4718,8 @@ def build_rating_history_html(eod_df, leaderboard, output_path):
 </head>
 <body>
   <a href="index.html" style="position:fixed;top:10px;left:10px;z-index:1000;background:#1F4E79;color:#fff;font-size:12px;padding:6px 12px;border-radius:6px;text-decoration:none;box-shadow:0 1px 4px rgba(0,0,0,0.2);">&larr; Menu</a>
+  <button onclick="forceRefresh()" style="position:fixed;top:10px;left:96px;z-index:1000;background:#1F4E79;color:#fff;font-size:12px;padding:6px 12px;border-radius:6px;border:none;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,0.2);">&#8635;&nbsp;Refresh</button>
+  <div id="freshness-hint" style="position:fixed;top:42px;left:10px;z-index:999;font-size:10px;color:#888;background:#fff;padding:2px 6px;border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,0.15);">💡 Tap Refresh for the latest data.</div>
   <div id="sidebar">
     <h3>SAM Rating History</h3>
 
@@ -4750,6 +4752,31 @@ def build_rating_history_html(eod_df, leaderboard, output_path):
   </div>
   <div id="chart">{chart_html}</div>
   <script>
+    // Freshness: force a genuine network fetch on every real navigation to
+    // this page, bypassing any browser/CDN cache. If this load doesn't
+    // already carry our cache-bust marker, immediately redirect to a URL
+    // that does -- GitHub Pages' CDN (and browsers) cache by full URL
+    // including query string, so a unique timestamp guarantees a cache miss.
+    (function () {{
+      var params = new URLSearchParams(location.search);
+      if (!params.has('_cb')) {{
+        params.set('_cb', Date.now());
+        location.replace(location.pathname + '?' + params.toString());
+      }}
+    }})();
+
+    // Forces a genuine network fetch bypassing any cache -- used both by
+    // the manual Refresh button and the periodic timer below. No state to
+    // preserve on this page (Time Range / Quartile selections are just
+    // client-side filters on data already embedded in the page, not a
+    // per-date server-driven view).
+    function forceRefresh() {{
+      var params = new URLSearchParams(location.search);
+      params.set('_cb', Date.now());
+      location.replace(location.pathname + '?' + params.toString());
+    }}
+    setInterval(forceRefresh, 5 * 60 * 1000);
+
     var chartDiv = document.getElementById('ratingChart');
     var ranges = {{
       '1M': ['{month_starts["1M"]}', '{max_date_iso}'],

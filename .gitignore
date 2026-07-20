@@ -25,3 +25,8 @@ diag*.js
 scraper/*.bak
 scraper/*.bak2
 scraper/*.bak3
+
+# Launcher runtime state — not source code, changes constantly
+launcher/launch_log.jsonl
+launcher/launcher_config.json
+launcher/logs/

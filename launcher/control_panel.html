@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SAM Shootout Launcher Control Panel</title>
+<style>
+  body { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; background: #0f1115; color: #e6e6e6; margin: 0; padding: 24px; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .sub { color: #9aa0a6; font-size: 13px; margin-bottom: 6px; }
+  .next-shootout { color: #4ade80; font-size: 14px; font-weight: 600; margin-bottom: 24px; }
+  .card { background: #1a1d24; border: 1px solid #2a2e37; border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+  .mode-option { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border-radius: 8px; margin-bottom: 8px; cursor: pointer; border: 1px solid transparent; }
+  .mode-option:hover { background: #22262f; }
+  .mode-option.selected { border-color: #4f8cff; background: #182238; }
+  .mode-option input { margin-top: 3px; }
+  .mode-title { font-weight: 600; font-size: 14px; }
+  .mode-desc { font-size: 12px; color: #9aa0a6; margin-top: 2px; }
+  .time-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding-left: 30px; }
+  .time-row input[type=time] { background: #0f1115; border: 1px solid #2a2e37; color: #e6e6e6; padding: 6px 8px; border-radius: 6px; }
+  .time-row.disabled { opacity: 0.35; pointer-events: none; }
+  button { background: #4f8cff; color: white; border: none; padding: 10px 16px; border-radius: 8px; font-size: 13px; cursor: pointer; font-weight: 600; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  .status-line { font-size: 12px; color: #9aa0a6; margin-top: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #2a2e37; vertical-align: top; }
+  th { color: #9aa0a6; font-weight: 600; font-size: 11px; text-transform: uppercase; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .badge.success { background: #113a22; color: #4ade80; }
+  .badge.error { background: #3a1111; color: #f87171; }
+  .removed-list { color: #f0b429; }
+  .none-removed { color: #5c6270; font-style: italic; }
+  .actions { display: flex; gap: 10px; margin-top: 16px; align-items: center; }
+</style>
+</head>
+<body>
+
+<h1>SAM Shootout Launcher</h1>
+<div class="sub">Controls the daily shootout creation/seeding job. Times shown in MST.</div>
+<div class="next-shootout" id="next-shootout">Next SAM Shootout: loading…</div>
+
+<div class="card">
+  <div id="mode-none" class="mode-option" data-mode="none">
+    <input type="radio" name="mode" value="none">
+    <div>
+      <div class="mode-title">None</div>
+      <div class="mode-desc">Do not create or launch a shootout automatically.</div>
+    </div>
+  </div>
+
+  <div id="mode-step_percent" class="mode-option" data-mode="step_percent">
+    <input type="radio" name="mode" value="step_percent">
+    <div>
+      <div class="mode-title">Auto Launch — DEN Step/% based seeding</div>
+      <div class="mode-desc">Scheduled. Fires once per day at the time below (MST) using DEN's native step/percent seeding.</div>
+    </div>
+  </div>
+
+  <div id="mode-elo_autolaunch" class="mode-option" data-mode="elo_autolaunch">
+    <input type="radio" name="mode" value="elo_autolaunch">
+    <div>
+      <div class="mode-title">Auto Launch — Modified ELO based seeding</div>
+      <div class="mode-desc">Scheduled. Fires once per day at the time below (MST) using the rating-seeded variant.</div>
+    </div>
+  </div>
+
+  <div class="time-row disabled" id="time-row">
+    <label for="autolaunch-time">Autolaunch time (MST):</label>
+    <input type="time" id="autolaunch-time" value="05:45">
+  </div>
+
+  <div class="actions">
+    <button id="save-btn">Save</button>
+    <span class="status-line" id="save-status"></span>
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="font-size:15px; margin-top:0;">Launch Log</h2>
+  <table id="log-table">
+    <thead>
+      <tr><th>Timestamp (MST)</th><th>Status</th><th>Seeding Basis</th><th>Players Removed Prior to Launch</th></tr>
+    </thead>
+    <tbody id="log-body">
+      <tr><td colspan="4">Loading…</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+const API = ""; // same-origin
+
+async function loadConfig() {
+  const res = await fetch(`${API}/api/config`);
+  const cfg = await res.json();
+  applyConfigToUI(cfg);
+}
+
+function applyConfigToUI(cfg) {
+  document.querySelectorAll('.mode-option').forEach(el => {
+    const radio = el.querySelector('input[type=radio]');
+    const selected = el.dataset.mode === cfg.mode;
+    radio.checked = selected;
+    el.classList.toggle('selected', selected);
+  });
+  document.getElementById('autolaunch-time').value = cfg.autolaunch_time_mst || "05:45";
+  const timeRow = document.getElementById('time-row');
+  timeRow.classList.toggle('disabled', cfg.mode === 'none');
+}
+
+document.querySelectorAll('.mode-option').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.mode-option').forEach(o => o.classList.remove('selected'));
+    el.classList.add('selected');
+    el.querySelector('input[type=radio]').checked = true;
+    const mode = el.dataset.mode;
+    document.getElementById('time-row').classList.toggle('disabled', mode === 'none');
+  });
+});
+
+document.getElementById('save-btn').addEventListener('click', async () => {
+  const mode = document.querySelector('input[name=mode]:checked').value;
+  const autolaunch_time_mst = document.getElementById('autolaunch-time').value;
+  const statusEl = document.getElementById('save-status');
+  statusEl.textContent = "Saving…";
+  try {
+    const res = await fetch(`${API}/api/config`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({mode, autolaunch_time_mst})
+    });
+    if (!res.ok) throw new Error(await res.text());
+    statusEl.textContent = "Saved.";
+    setTimeout(() => statusEl.textContent = "", 2000);
+  } catch (e) {
+    statusEl.textContent = "Save failed: " + e.message;
+  }
+});
+
+async function loadLog() {
+  const res = await fetch(`${API}/api/log?limit=50`);
+  const entries = await res.json();
+  const body = document.getElementById('log-body');
+  if (!entries.length) {
+    body.innerHTML = '<tr><td colspan="4">No launches logged yet.</td></tr>';
+    return;
+  }
+  body.innerHTML = entries.map(e => {
+    const removed = (e.players_removed && e.players_removed.length)
+      ? `<span class="removed-list">${e.players_removed.join(', ')}</span>`
+      : `<span class="none-removed">none</span>`;
+    const badgeClass = e.status === 'success' ? 'success' : 'error';
+    return `<tr>
+      <td>${e.timestamp}</td>
+      <td><span class="badge ${badgeClass}">${e.status}</span></td>
+      <td>${e.seeding_basis || '—'}</td>
+      <td>${removed}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function loadNextShootout() {
+  const el = document.getElementById('next-shootout');
+  try {
+    const res = await fetch(`${API}/api/next-shootout`);
+    const data = await res.json();
+    el.textContent = `Next SAM Shootout: ${data.display}`;
+  } catch (e) {
+    el.textContent = "Next SAM Shootout: unavailable";
+  }
+}
+
+loadConfig();
+loadLog();
+loadNextShootout();
+setInterval(loadLog, 30000);
+setInterval(loadNextShootout, 5 * 60000);
+</script>
+
+</body>
+</html>

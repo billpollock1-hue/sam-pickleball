@@ -1,6 +1,6 @@
 """
-Generate a self-contained HTML court-assignments viewer with date dropdown,
-DEN / Rating / Comparison tabs, and on-demand 1-page or 3-page print/PDF.
+Generate a self-contained HTML court-assignments viewer with date dropdown
+and DEN / Rating / Comparison tabs.
 
 Reads JSON snapshots written by den_assignments.py (save_assignments_snapshot)
 from output/assignments_history/ and embeds them all into one HTML file —
@@ -53,10 +53,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
            border-radius: 5px; background: #fff; cursor: pointer; }
 .tab-btn.active { background: #1565c0; color: #fff; border-color: #1565c0; }
 
-#print-group { margin-left: auto; display: flex; gap: 8px; }
-.print-btn { padding: 6px 14px; font-size: 12px; border: 1px solid #bbb;
-             border-radius: 5px; background: #fff; cursor: pointer; white-space: nowrap; }
-.print-btn:hover { background: #f0f0f0; }
+.back-btn { padding: 6px 14px; font-size: 12px; border: none;
+            border-radius: 5px; background: #1F4E79; color: #fff;
+            cursor: pointer; text-decoration: none; white-space: nowrap; }
+.back-btn:hover { background: #163a5c; }
+#freshness-hint { padding: 6px 20px; font-size: 11px; color: #888;
+                   background: #fafafa; border-bottom: 1px solid #eee; }
 
 /* ── Content area ── */
 #content { padding: 20px; max-width: 720px; }
@@ -85,7 +87,7 @@ td { padding: 4px 9px; border: 1px solid #e4e4e4; overflow-wrap: break-word; }
 
 #comp-footer { margin-top: 10px; font-size: 12px; color: #555; font-weight: 600; }
 
-/* ── Print ── */
+/* ── Print (native browser print, e.g. Cmd+P / mobile share-sheet print) ── */
 @media print {
   body { background: #fff; }
   #controls { display: none; }
@@ -93,22 +95,14 @@ td { padding: 4px 9px; border: 1px solid #e4e4e4; overflow-wrap: break-word; }
   table { font-size: 11px; }
   td, th { padding: 4px 8px; }
   @page { size: letter portrait; margin: 0.75in 1in; }
-
-  /* 1-page print: only DEN section, regardless of active tab */
-  body.print-1page .section { display: none; }
-  body.print-1page .section[data-section="den"] { display: block; }
-
-  /* 3-page print: DEN, Rating, Comparison each on their own page.
-     DEN gets no page-break-before so it stays on page 1. */
-  body.print-3page .section { display: block !important; }
-  body.print-3page .section[data-section="rating"],
-  body.print-3page .section[data-section="comparison"] { page-break-before: always; }
 }
 </style>
 </head>
 <body>
 
 <div id="controls">
+  <a href="index.html" class="back-btn">&larr; Menu</a>
+  <button class="back-btn" onclick="forceRefresh()">&#8635;&nbsp;Refresh</button>
   <label for="date-select">Session date</label>
   <select id="date-select"></select>
 
@@ -117,12 +111,8 @@ td { padding: 4px 9px; border: 1px solid #e4e4e4; overflow-wrap: break-word; }
     <button class="tab-btn" data-tab="rating">Rating</button>
     <button class="tab-btn" data-tab="comparison">Comparison</button>
   </div>
-
-  <div id="print-group">
-    <button class="print-btn" onclick="printMode('1page')">Print 1-page</button>
-    <button class="print-btn" onclick="printMode('3page')">Print 3-page</button>
-  </div>
 </div>
+<div id="freshness-hint">💡 Tap Refresh anytime to make sure you're seeing the latest data.</div>
 
 <div id="content">
   <div class="section" data-section="den"><div id="den-body"></div></div>
@@ -131,6 +121,19 @@ td { padding: 4px 9px; border: 1px solid #e4e4e4; overflow-wrap: break-word; }
 </div>
 
 <script>
+// ── Freshness: force a genuine network fetch on every real navigation to
+// this page, bypassing any browser/CDN cache. If this load doesn't already
+// carry our cache-bust marker, immediately redirect to a URL that does --
+// GitHub Pages' CDN (and browsers) cache by full URL including query
+// string, so a unique timestamp guarantees a cache miss.
+(function () {
+  const params = new URLSearchParams(location.search);
+  if (!params.has('_cb')) {
+    params.set('_cb', Date.now());
+    location.replace(location.pathname + '?' + params.toString());
+  }
+})();
+
 const DATA = %%JSON%%;
 const DATES = %%DATES%%;
 const NO_SHOOTOUT_DATES = new Set(%%NO_SHOOTOUT_DATES%%);
@@ -318,12 +321,6 @@ function setTab(tab) {
   document.querySelectorAll('.section').forEach(s => s.classList.toggle('active', s.dataset.section === tab));
 }
 
-function printMode(mode) {
-  document.body.classList.remove('print-1page', 'print-3page');
-  document.body.classList.add(mode === '1page' ? 'print-1page' : 'print-3page');
-  window.print();
-}
-
 document.querySelectorAll('.tab-btn').forEach(b => {
   b.addEventListener('click', () => setTab(b.dataset.tab));
 });
@@ -374,10 +371,33 @@ if (sel.options.length === 0 && DATES.length > 0) {
 // reordering options in the DOM does not change which one is marked selected.
 sel.selectedIndex = 0;
 
+// Restore a manually-selected date carried over from a periodic auto-reload
+// (see setInterval below), if that date still appears in the dropdown --
+// otherwise the reload would silently snap back to the default date while
+// someone is actively reviewing an older session.
+const preservedDate = new URLSearchParams(location.search).get('d');
+if (preservedDate) {
+  const match = Array.from(sel.options).find(o => o.value === preservedDate);
+  if (match) sel.value = preservedDate;
+}
+
 sel.addEventListener('change', () => render(sel.value));
 
 setTab('den');
 render(sel.value);
+
+// Forces a genuine network fetch bypassing any cache, carrying the current
+// date selection forward so it isn't lost -- used both by the manual
+// Refresh button and the periodic timer below.
+function forceRefresh() {
+  const params = new URLSearchParams(location.search);
+  params.set('_cb', Date.now());
+  params.set('d', sel.value);
+  location.replace(location.pathname + '?' + params.toString());
+}
+
+// Periodic freshness re-check for tabs left open a while.
+setInterval(forceRefresh, 5 * 60 * 1000);
 </script>
 </body>
 </html>

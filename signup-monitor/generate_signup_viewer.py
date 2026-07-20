@@ -313,6 +313,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
             border-radius: 5px; background: #1F4E79; color: #fff;
             cursor: pointer; text-decoration: none; white-space: nowrap; }
 .back-btn:hover { background: #163a5c; }
+#freshness-hint { padding: 6px 20px; font-size: 11px; color: #888;
+                   background: #fafafa; border-bottom: 1px solid #eee; }
 
 /* ── Content area ── */
 #content { padding: 20px; overflow-x: auto; }
@@ -361,10 +363,12 @@ tr.wd td.name  { text-decoration: line-through; }
 
 <div id="controls">
   <a href="index.html" class="back-btn">&larr; Menu</a>
+  <button class="back-btn" onclick="forceRefresh()">&#8635;&nbsp;Refresh</button>
   <label for="date-select">Session date</label>
   <select id="date-select">%%OPTIONS%%</select>
   <button id="print-btn" onclick="window.print()">&#128438;&nbsp; Print / Save PDF</button>
 </div>
+<div id="freshness-hint">💡 Tap Refresh anytime to make sure you're seeing the latest data.</div>
 
 <div id="content">
   <div id="print-header"></div>
@@ -491,15 +495,18 @@ if (preservedDate) {
 sel.addEventListener('change', () => render(sel.value));
 render(sel.value);
 
-// Periodic freshness re-check for tabs left open a while -- carries the
-// current date selection forward via the 'd' param so the reload restores
-// it instead of resetting to the default date.
-setInterval(() => {
+// Forces a genuine network fetch bypassing any cache, carrying the current
+// date selection forward so it isn't lost -- used both by the manual
+// Refresh button and the periodic timer below.
+function forceRefresh() {
   const params = new URLSearchParams(location.search);
   params.set('_cb', Date.now());
   params.set('d', sel.value);
   location.replace(location.pathname + '?' + params.toString());
-}, 5 * 60 * 1000);
+}
+
+// Periodic freshness re-check for tabs left open a while.
+setInterval(forceRefresh, 5 * 60 * 1000);
 </script>
 </body>
 </html>

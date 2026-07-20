@@ -187,41 +187,20 @@ def sync_to_live_site():
     since this script runs from two different locations (git-tracked
     source and the deployed PBMonitor runtime), same reasoning as the
     generate_signup_viewer.py DOCS_OUTPUT fix earlier.
+
+    Runs unconditionally (no trial window) -- validated across a full
+    production day (2026-07-17): confirmed catching a real signup change
+    (Barnett/Barroso withdrawal) and pushing it to the live site within
+    the same 15-minute cycle it was detected in.
     """
     import shutil
     import subprocess
-    from datetime import datetime, timedelta
+    from datetime import datetime
     from zoneinfo import ZoneInfo
 
     repo_root = Path("/Users/billpollock/Documents/SAM Pickleball/sam-pickleball")
     local_viewer = Path("output") / "court_assignments_viewer.html"
     docs_target = repo_root / "docs" / "court_assignments.html"
-
-    # --- Self-expiring 3-hour trial -------------------------------------
-    # Unattended auto-push is new and untested in production; rather than
-    # running indefinitely, this stamps its own start time on first call
-    # and stops pushing on its own once 3 hours have elapsed -- no manual
-    # step required to turn it back off after the trial window.
-    trial_marker = repo_root / "data" / "sync_to_live_site_trial_start.txt"
-    now_mt = datetime.now(ZoneInfo("America/Phoenix"))
-    try:
-        if trial_marker.exists():
-            trial_start = datetime.fromisoformat(trial_marker.read_text().strip())
-        else:
-            trial_marker.parent.mkdir(parents=True, exist_ok=True)
-            trial_marker.write_text(now_mt.isoformat())
-            trial_start = now_mt
-            print(f"  sync_to_live_site: starting 3-hour auto-push trial at "
-                  f"{now_mt.strftime('%Y-%m-%d %I:%M %p')} MST.")
-    except Exception as e:
-        print(f"  ⚠ sync_to_live_site: couldn't read/write trial marker ({e}) -- skipping push.")
-        return
-
-    if now_mt - trial_start > timedelta(hours=3):
-        print(f"  sync_to_live_site: 3-hour trial window has ended "
-              f"(started {trial_start.strftime('%Y-%m-%d %I:%M %p')} MST) -- skipping push. "
-              f"Delete {trial_marker} to start a new trial window.")
-        return
 
     try:
         if not local_viewer.exists():

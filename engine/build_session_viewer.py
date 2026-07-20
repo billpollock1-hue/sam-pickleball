@@ -171,6 +171,12 @@ html = f"""<!DOCTYPE html>
     background: #fff;
     cursor: pointer;
   }}
+  .refresh-btn {{ background: #1F4E79; color: #fff; font-size: 12px;
+                  padding: 6px 12px; border: none; border-radius: 4px;
+                  cursor: pointer; white-space: nowrap; }}
+  .refresh-btn:hover {{ background: #163a5c; }}
+  #freshness-hint {{ padding: 6px 28px; font-size: 11px; color: #888;
+                     background: #fafafa; border-bottom: 1px solid var(--border); }}
   .sec-head {{ display: flex; align-items: center; gap: 10px; }}
   .sec-head h2 {{ flex: 1; }}
   .sec-head label {{ font-weight: bold; color: var(--blue-dark); font-size: 13px; }}
@@ -253,8 +259,10 @@ html = f"""<!DOCTYPE html>
 <div class="controls">
   <label for="dateSelect">Play Date:</label>
   <select id="dateSelect" onchange="render()"></select>
+  <button class="refresh-btn" onclick="forceRefresh()">&#8635;&nbsp;Refresh</button>
   <div class="stat-pills" id="statPills"></div>
 </div>
+<div id="freshness-hint">💡 Tap Refresh anytime to make sure you're seeing the latest data.</div>
 
 <main>
   <section>
@@ -276,6 +284,19 @@ html = f"""<!DOCTYPE html>
 </main>
 
 <script>
+// ── Freshness: force a genuine network fetch on every real navigation to
+// this page, bypassing any browser/CDN cache. If this load doesn't already
+// carry our cache-bust marker, immediately redirect to a URL that does --
+// GitHub Pages' CDN (and browsers) cache by full URL including query
+// string, so a unique timestamp guarantees a cache miss.
+(function () {{
+  const params = new URLSearchParams(location.search);
+  if (!params.has('_cb')) {{
+    params.set('_cb', Date.now());
+    location.replace(location.pathname + '?' + params.toString());
+  }}
+}})();
+
 const DATA   = {data_json};
 const DATES  = {dates_json};
 const LATEST = "{latest_date}";
@@ -292,6 +313,15 @@ const sel = document.getElementById("dateSelect");
   sel.appendChild(opt);
 }});
 sel.value = LATEST;
+
+// Restore a manually-selected date carried over from a periodic auto-reload
+// (see setInterval below), if that date still has data -- otherwise the
+// reload would silently snap back to LATEST while someone is actively
+// reviewing an older session.
+const preservedDate = new URLSearchParams(location.search).get('d');
+if (preservedDate && DATES.includes(preservedDate)) {{
+  sel.value = preservedDate;
+}}
 
 function formatDate(d) {{
   const [y,m,day] = d.split("-");
@@ -490,6 +520,19 @@ function renderGames() {{
 }}
 
 render();
+
+// Forces a genuine network fetch bypassing any cache, carrying the current
+// date selection forward so it isn't lost -- used both by the manual
+// Refresh button and the periodic timer below.
+function forceRefresh() {{
+  const params = new URLSearchParams(location.search);
+  params.set('_cb', Date.now());
+  params.set('d', sel.value);
+  location.replace(location.pathname + '?' + params.toString());
+}}
+
+// Periodic freshness re-check for tabs left open a while.
+setInterval(forceRefresh, 5 * 60 * 1000);
 </script>
 </body>
 </html>

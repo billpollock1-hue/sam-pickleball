@@ -213,8 +213,10 @@ html = f"""<!DOCTYPE html>
   .back-badge {{ position: fixed; top: 10px; left: 10px; z-index: 1000;
                  background: #1F4E79; color: #fff; font-size: 12px;
                  padding: 6px 12px; border-radius: 6px; text-decoration: none;
-                 box-shadow: 0 1px 4px rgba(0,0,0,0.2); }}
+                 box-shadow: 0 1px 4px rgba(0,0,0,0.2); border: none; cursor: pointer; }}
   .back-badge:hover {{ background: #163a5c; }}
+  #freshness-hint {{ padding: 6px 16px; font-size: 11px; color: #888;
+                     background: #fafafa; border-bottom: 1px solid #e8edf3; text-align: center; }}
 
   /* ── Icon decoder (left panel) ── */
   .decoder {{ flex: 1 1 220px; max-width: 250px; order: 1; }}
@@ -281,11 +283,13 @@ html = f"""<!DOCTYPE html>
 <body>
 
 <a href="index.html" class="back-badge">&larr; Menu</a>
+<button class="back-badge" style="left:96px;" onclick="forceRefresh()">&#8635;&nbsp;Refresh</button>
 
 <header>
   <h1>SAM Leaderboard</h1>
   <p>Modified Elo ratings &middot; through {data_through}</p>
 </header>
+<div id="freshness-hint">💡 Tap Refresh anytime to make sure you're seeing the latest data.</div>
 
 <div class="page">
   <div class="decoder">
@@ -335,6 +339,31 @@ html = f"""<!DOCTYPE html>
 </div>
 
 <script>
+// ── Freshness: force a genuine network fetch on every real navigation to
+// this page, bypassing any browser/CDN cache. If this load doesn't already
+// carry our cache-bust marker, immediately redirect to a URL that does --
+// GitHub Pages' CDN (and browsers) cache by full URL including query
+// string, so a unique timestamp guarantees a cache miss.
+(function () {{
+  const params = new URLSearchParams(location.search);
+  if (!params.has('_cb')) {{
+    params.set('_cb', Date.now());
+    location.replace(location.pathname + '?' + params.toString());
+  }}
+}})();
+
+// Forces a genuine network fetch bypassing any cache -- used both by the
+// manual Refresh button and the periodic timer below. No per-date state
+// to preserve on this page (it's a single current snapshot, not a
+// per-date viewer), so this is simpler than the other viewers' version.
+function forceRefresh() {{
+  const params = new URLSearchParams(location.search);
+  params.set('_cb', Date.now());
+  location.replace(location.pathname + '?' + params.toString());
+}}
+
+// Periodic freshness re-check for tabs left open a while.
+setInterval(forceRefresh, 5 * 60 * 1000);
 </script>
 </body>
 </html>

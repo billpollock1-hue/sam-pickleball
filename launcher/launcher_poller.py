@@ -19,8 +19,18 @@ days on every append, oldest entries first (matching the file's own
 chronological write order) -- the control panel's own display already
 reverses this to newest-first, so trimming the old end of the file never
 disturbs what's currently visible without scrolling.
+
+Play-date eligibility: mirrors run_all.sh's SHOULD_SKIP_SCRAPE /
+check_no_shootout.py's own weekday + no_shootout_dates.csv awareness.
+Without this, the poller had no concept of weekends or known no-shootout
+days at all -- confirmed live on 2026-07-19 (a Sunday): it retried every
+5 minutes for ~18 hours straight against a signup sheet that was never
+going to behave like a real play day, all failing with the identical
+"Could not open View Players" timeout, until the calendar rolled over to
+Monday and a real attempt finally succeeded.
 """
 
+import csv
 import json
 import re
 import subprocess
@@ -35,6 +45,13 @@ MST = ZoneInfo("America/Phoenix")  # Arizona, no DST — matches "MST" label use
 
 LOG_RETENTION_DAYS = 30
 
+# Absolute path -- this script always runs from the same fixed location
+# (~/Documents/SAM Pickleball/sam-pickleball/launcher/), unlike the
+# assignments/signup-monitor scripts that run from two different
+# locations, so a single hardcoded path is safe here (matches the
+# existing SCRIPT_PATHS convention below).
+NO_SHOOTOUT_LOG = Path.home() / "Documents/SAM Pickleball/sam-pickleball/data/no_shootout_dates.csv"
+
 SCRIPT_PATHS = {
     "step_percent": str(Path.home() / "Documents/SAM Pickleball/sam-pickleball/assignments/create_shootout.py"),
     "elo_autolaunch": str(Path.home() / "Documents/SAM Pickleball/sam-pickleball/assignments/create_shootout_rating_seeded.py"),
@@ -44,6 +61,28 @@ SEEDING_LABELS = {
     "step_percent": "DEN Step/%",
     "elo_autolaunch": "Modified ELO",
 }
+
+
+def is_eligible_play_date(date_obj):
+    """
+    False on weekends or any date logged in no_shootout_dates.csv (e.g.
+    a weather cancellation) -- days that were never going to have a real
+    signup sheet to launch against. Fails open (returns True) if the log
+    can't be read, so a broken/missing file never silently blocks a
+    legitimate launch attempt.
+    """
+    if date_obj.weekday() >= 5:  # Saturday=5, Sunday=6
+        return False
+    if NO_SHOOTOUT_LOG.exists():
+        try:
+            with NO_SHOOTOUT_LOG.open(newline="", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                no_shootout_dates = {row["date"] for row in reader if row.get("date")}
+            if date_obj.isoformat() in no_shootout_dates:
+                return False
+        except Exception:
+            pass
+    return True
 
 
 def load_config():
@@ -144,6 +183,9 @@ def main():
 
     now = datetime.now(MST)
     today_str = now.date().isoformat()
+
+    if not is_eligible_play_date(now.date()):
+        return  # weekend or a logged no-shootout date -- nothing to do today
 
     if cfg.get("last_autolaunch_date") == today_str:
         return  # already launched today

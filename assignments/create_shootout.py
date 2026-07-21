@@ -217,8 +217,33 @@ def automate_signup_search_today(page):
         # gives slow-loading mornings more room to succeed on the first
         # try instead of relying on the poller's 5-minute retry to paper
         # over it.
-        search_button = page.get_by_role("button", name="Search", exact=True)
-        search_button.wait_for(state="visible", timeout=45000)
+        # Hardened further (2026-07-21): the 45s explicit wait above still
+        # failed outright at least once (2026-07-21 02:33 MST) with no
+        # further diagnostic info beyond the timeout message itself. Rather
+        # than raise immediately, try one page reload + fresh wait -- if
+        # the button still isn't there after that, capture a screenshot
+        # before raising so the next occurrence leaves an actual record of
+        # what the page looked like, instead of just a timeout string.
+        try:
+            search_button = page.get_by_role("button", name="Search", exact=True)
+            search_button.wait_for(state="visible", timeout=45000)
+        except Exception:
+            page.reload()
+            page.wait_for_timeout(2000)
+            try:
+                search_button = page.get_by_role("button", name="Search", exact=True)
+                search_button.wait_for(state="visible", timeout=45000)
+            except Exception as retry_exc:
+                debug_dir = Path(__file__).resolve().parent / "logs" / "failure_screenshots"
+                debug_dir.mkdir(parents=True, exist_ok=True)
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                screenshot_path = debug_dir / f"search_button_timeout_{ts}.png"
+                page.screenshot(path=str(screenshot_path))
+                raise RuntimeError(
+                    f"Automatic date/search step failed after reload retry: {retry_exc} "
+                    f"(screenshot: {screenshot_path})"
+                )
+
         search_button.click()
         page.wait_for_timeout(2500)
 

@@ -30,3 +30,4 @@ scraper/*.bak3
 launcher/launch_log.jsonl
 launcher/launcher_config.json
 launcher/logs/
+data/den_current_members.csv

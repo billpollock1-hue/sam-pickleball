@@ -78,7 +78,17 @@ def fetch_den_ratings():
         # Persist any refreshed cookies for the next run
         context.storage_state(path=session)
         browser.close()
-    return da.extract_ratings_from_text(text)
+    ratings = da.extract_ratings_from_text(text)
+
+    # Rolling membership snapshot (added 2026-07-21): unconditional save on
+    # every run of this file's 15-minute refresh cycle, unlike the older
+    # DEBUG_MODE-gated dump in den_assignments.py itself. Presence of a
+    # player's name in this file is the membership signal for the engine's
+    # leaderboard exclusion filter.
+    if not ratings.empty:
+        ratings.to_csv(da.MEMBERSHIP_FILE, index=False)
+
+    return ratings
 
 
 def ratings_through_date():

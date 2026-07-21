@@ -24,26 +24,14 @@ pgl["date_str"]  = pgl["posted_dt"].dt.strftime("%Y-%m-%d")
 pgl["time_str"]  = pgl["posted_dt"].dt.strftime("%H:%M")
 
 # Show every game that was actually played -- including matches involving
-# a placeholder ("Den New Player Tryout" or similar) and games that fell
-# outside a player's own no-history-drift window but stayed in because a
-# different participant's shorter window still carried the match (see the
-# July 13, 2026 Cary McCormick / Peter Barnett investigation: a match is
-# only pulled into the "recent" replay if ANY of its 4 players still has
-# it in their own last-60-games window, which silently showed some
-# players' games on a date but not their partners'/opponents' on the
-# exact same match).
+# a placeholder ("Den New Player Tryout" or similar).
 #
-# Per-row rating display now falls back in two steps rather than a hard
-# filter:
-#   1. include_in_ratings == "Yes" and nhd_pre/post present -> use those
-#      (leaderboard-consistent, last-60-games basis).
-#   2. include_in_ratings == "Yes" but nhd is NaN (aged out of this
-#      player's own window, but the match still counted) -> fall back to
-#      the full cumulative player_pre/post_rating rather than hiding the
-#      game.
-#   3. include_in_ratings == "No" (placeholder/tryout match) -> show the
-#      game itself, but with no rating figures -- flagged "adjusted": false
-#      so the front end can label it "Unadjusted" instead of a number.
+# Per-row rating display:
+#   1. include_in_ratings == "Yes" -> use player_pre/post_rating (the single,
+#      full-history rating source -- see pickleball_engine_v2.py).
+#   2. include_in_ratings == "No" (placeholder/tryout match) -> show the game
+#      itself, but with no rating figures -- flagged "adjusted": false so the
+#      front end can label it "Unadjusted" instead of a number.
 
 # ── Build date_games dict ─────────────────────────────────────────────────────
 date_games = defaultdict(list)
@@ -54,15 +42,9 @@ for _, r in pgl.sort_values("posted_dt").iterrows():
     pa      = int(r["pa"]) if pd.notna(r.get("pa")) else 0
     adjusted = str(r.get("include_in_ratings", "No")).strip() == "Yes"
 
-    if adjusted and pd.notna(r.get("nhd_pre_rating")):
-        pre    = round(float(r["nhd_pre_rating"]))
-        post   = round(float(r["nhd_post_rating"]))
-        change = round(float(r["nhd_post_rating"]) - float(r["nhd_pre_rating"]), 1)
-    elif adjusted:
-        # Counted toward ratings, but this date has aged out of this
-        # player's own last-60-games window -- fall back to the full
-        # cumulative rating rather than hiding a game that genuinely
-        # affected their rating.
+    if adjusted:
+        # full_player_log is the single rating source now -- no more nhd_pre/
+        # post_rating window check to try first.
         pre    = round(float(r["player_pre_rating"]))
         post   = round(float(r["player_post_rating"]))
         change = round(float(r["player_post_rating"]) - float(r["player_pre_rating"]), 1)

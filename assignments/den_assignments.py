@@ -43,6 +43,13 @@ else:
 OUT_DIR.mkdir(exist_ok=True, parents=True)
 
 HISTORY_DIR = OUT_DIR / "assignments_history"
+
+# Rolling snapshot of current DEN membership (added 2026-07-21): DEN's ratings
+# page only lists current members, so presence of a player's name in this file
+# is itself the membership signal -- no separate boolean needed. Written each
+# run by refresh_assignments.py's fetch_den_ratings() (unconditional, not
+# gated behind DEBUG_MODE like the older debug/ratings_latest.csv dump).
+MEMBERSHIP_FILE = MODEL_INPUT.parent / "den_current_members.csv"
 HISTORY_DIR.mkdir(exist_ok=True, parents=True)
 DEBUG_MODE = False
 

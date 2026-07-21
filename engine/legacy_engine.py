@@ -12,79 +12,17 @@ from openpyxl.formatting.rule import ColorScaleRule, DataBarRule
 from openpyxl.utils import get_column_letter
 
 BASE_ELO = 1000.0
-K_FACTOR = 20.0                      # unchanged -- confirmed near-optimal (Step 2, Sweep A)
-EXPECTATION_COMPRESSION = 0.92       # was 0.85 -- display/reporting only, does not affect
-                                      # rating values (feeds predicted(), not expected())
-PROVISIONAL_K_START = 40.0           # REVERTED to original value (July 2026 re-check).
-                                      # Step 2's 100/120 recommendation was invalidated: it
-                                      # was chosen using build_model_validation(), whose
-                                      # eligibility gate (60+ prior games) is a FIXED
-                                      # threshold that never moves with PROVISIONAL_K_GAMES.
-                                      # As PROVISIONAL_K_GAMES increased, more elevated-K
-                                      # games shifted into the ineligible population --
-                                      # the population Step 2's objective was measuring
-                                      # changed along with the parameter being tested. A
-                                      # relaxed-gate re-check (MIN_GAMES threshold, scored
-                                      # separately by prior-game bucket) showed elevated K
-                                      # actively HURT predictions in the provisional
-                                      # population itself (Brier 0.1866 at K_START=40 vs.
-                                      # 0.1886 at K_START=100, same 426 games, K_GAMES=60
-                                      # held constant) -- confirmed directly against real
-                                      # cases (Jose Valdez R: 1218 -> 1106 on revert, zero
-                                      # 80+pt swings remaining, down from 10; Russ Brannon,
-                                      # whose rating rested on a broad sustained record
-                                      # rather than outlier leverage, barely moved: 1630 ->
-                                      # 1560). A fine-grid re-sweep against the corrected,
-                                      # bucketed objective found K_START=40, K_GAMES=60 --
-                                      # the original defaults -- at or near the true optimum.
-PROVISIONAL_K_GAMES = 60             # REVERTED alongside PROVISIONAL_K_START -- see above.
-                                      # Fine-grid sweep showed this is a real local minimum
-                                      # for the provisional population, not just a fallback:
-                                      # worse both shorter (45: ramp too fast, Brier ~0.208)
-                                      # and longer (75/90: keeps K elevated past where it
-                                      # helps, Brier ~0.19). Also once again the freshness/
-                                      # credibility window's size (LAST_N_GAMES, below) --
-                                      # the two meanings happen to share this constant.
+K_FACTOR = 20.0
+EXPECTATION_COMPRESSION = 0.85
+PROVISIONAL_K_START = 40.0   # K for a player's very first rated game
+PROVISIONAL_K_GAMES = 60     # game number at which K levels off at K_FACTOR
 
-LAST_N_GAMES = 60                    # unchanged in VALUE, but changes MEANING -- no longer
-                                      # used for the rating window; now exclusively the
-                                      # freshness/credibility window
-MIN_GAMES = 24                       # unchanged -- out of scope for this fix
-CONF_DEN = 10                        # unchanged -- UNTESTED, deferred
+LAST_N_GAMES = 60
+MIN_GAMES = 24
+CONF_DEN = 10
 
-NO_AGING_DAYS = 90                   # value unchanged, but role changes: now the hard
-                                      # exclusion tier's threshold only (see freshness_tier
-                                      # below); no longer feeds a continuous penalty
-MAX_FRESHNESS_PENALTY = 0.0          # was 0.15 -- continuous freshness penalty removed
-                                      # (validated worse at every tested value); this makes
-                                      # freshness_factor() always return 1.0. Kept as a
-                                      # no-op rather than deleted so freshness_tier's hard
-                                      # exclusion below remains the only staleness mechanism
-
-# DEN membership snapshot (added 2026-07-21): rolling file written every ~15
-# minutes by refresh_assignments.py's fetch_den_ratings(). Presence of a
-# player's name here is the current-membership signal -- DEN's ratings page
-# only lists current members, so there's no separate boolean to check.
-MEMBERSHIP_FILE = Path(__file__).resolve().parent.parent / "data" / "den_current_members.csv"
-
-
-def load_current_members():
-    """Returns a set of current DEN member names, or None if the membership
-    snapshot file doesn't exist yet -- callers should treat None as "fail
-    open" (don't exclude anyone) rather than treat a missing file as an
-    empty membership list."""
-    if not MEMBERSHIP_FILE.exists():
-        print(f"WARNING: membership file not found ({MEMBERSHIP_FILE}) -- "
-              f"skipping membership-based leaderboard exclusion this run.")
-        return None
-    try:
-        df = pd.read_csv(MEMBERSHIP_FILE)
-        return set(df["Player"].dropna().astype(str).str.strip())
-    except Exception as e:
-        print(f"WARNING: failed to read membership file ({e}) -- "
-              f"skipping membership-based leaderboard exclusion this run.")
-        return None
-
+NO_AGING_DAYS = 90
+MAX_FRESHNESS_PENALTY = 0.15
 
 PLACEHOLDERS = {
     "den new player tryout",
@@ -138,11 +76,7 @@ def team_has_placeholder(team):
 
 
 def margin_multiplier(point_diff):
-    return math.log(abs(point_diff) + 1)
-    # No cap. Confirmed by Step 2 Sweep D: Brier score improved monotonically up to
-    # the natural ceiling for an 11-0 game (log(12) ~= 2.485) and went perfectly flat
-    # beyond it -- the cap was suppressing real signal from blowout games, not
-    # protecting against anything.
+    return min(math.log(abs(point_diff) + 1), 2.0)
 
 
 def expected(team_a_rating, team_b_rating):
@@ -153,17 +87,34 @@ def predicted(team_a_rating, team_b_rating):
     gap = (team_a_rating - team_b_rating) * EXPECTATION_COMPRESSION
     return 1 / (1 + 10 ** (-gap / 400))
 
-# game_position_decay() REMOVED (July 2026 review): was applying 25%->100% weight
-# ramp to a player's first 60 games ever recorded in whatever dataset was passed to
-# build_full_player_log(), regardless of window -- unconditional, not scoped to the
-# no-history-drift window it was originally built for. Since build_model_validation()
-# only scores predictions for players with 60+ prior games (see build_model_validation),
-# this decay's immediate multiplier was always 1.0 for every game actually scored --
-# it was invisible to every validation run so far, never isolated or tested for
-# removal. Its downstream effect (suppressed early-career rating deltas baked into
-# history) was present in every tested configuration, including the "no decay"
-# baseline. Removed as an unvalidated, out-of-scope mechanism; re-run
-# build_model_validation() after this change as a genuine baseline check.
+def game_position_decay(game_position_in_window, window_size=60, total_games=None):
+    """
+    Calculate decay factor based on game position in the 60-game moving window.
+    
+    Games at position 1 (oldest in window) get 25% weight.
+    Games at position 60 (newest) get 100% weight.
+    Linear interpolation between them prevents cliff-drop when games leave window.
+    
+    Args:
+        game_position_in_window: Position within the window (1 to 60)
+        window_size: Size of the moving window (default 60)
+    
+    Returns:
+        Decay factor (0.25 to 1.0)
+    """
+    if total_games is not None and total_games < 60:
+        return 1.0
+    
+    if game_position_in_window < 1 or game_position_in_window > window_size:
+        return 1.0
+    
+    min_weight = 0.25  # Oldest games get 25% weight
+    max_weight = 1.0   # Newest games get 100% weight
+    
+    # Linear interpolation from oldest to newest
+    decay = min_weight + (max_weight - min_weight) * (game_position_in_window - 1) / (window_size - 1)
+    return round(decay, 3)
+
 
 
 def freshness_factor(days_since_last_play, avg_game_age):
@@ -276,6 +227,18 @@ def _provisional_k(game_num):
 def build_full_player_log(raw):
     ratings = defaultdict(lambda: BASE_ELO)
     player_game_count = defaultdict(int)  # rated games played so far per player
+    player_games_in_window = defaultdict(list)  # Track game sequence for 60-game window
+    
+    # Count total games per player BEFORE processing (needed for decay decision)
+    player_total_games = defaultdict(int)
+    for _, r in raw.iterrows():
+        if bool(r["include_in_ratings"]):
+            w1, w2 = split_team(r["winning_team"])
+            l1, l2 = split_team(r["losing_team"])
+            player_total_games[w1] += 1
+            player_total_games[w2] += 1
+            player_total_games[l1] += 1
+            player_total_games[l2] += 1
     player_rows = []
 
     for match_id, (_, r) in enumerate(raw.iterrows(), start=1):
@@ -301,10 +264,33 @@ def build_full_player_log(raw):
         else:
             k_w1 = k_w2 = k_l1 = k_l2 = 0.0
 
-        d_w1 = round(k_w1 * (1 - exp_win) * mult, 2)
-        d_w2 = round(k_w2 * (1 - exp_win) * mult, 2)
-        d_l1 = round(k_l1 * (0 - exp_lose) * mult, 2)
-        d_l2 = round(k_l2 * (0 - exp_lose) * mult, 2)
+        # Calculate position in 60-game window for phase-out decay
+        w1_pos = len(player_games_in_window[w1]) + 1  # +1 because this is the next game
+        w2_pos = len(player_games_in_window[w2]) + 1
+        l1_pos = len(player_games_in_window[l1]) + 1
+        l2_pos = len(player_games_in_window[l2]) + 1
+        
+        # Only keep last 60 games in the position calculation
+        if w1_pos > 60:
+            w1_pos = 60
+        if w2_pos > 60:
+            w2_pos = 60
+        if l1_pos > 60:
+            l1_pos = 60
+        if l2_pos > 60:
+            l2_pos = 60
+        
+        # Get decay factors for games at each position in window
+        decay_w1 = game_position_decay(w1_pos, total_games=player_total_games[w1]) if include else 1.0
+        decay_w2 = game_position_decay(w2_pos, total_games=player_total_games[w2]) if include else 1.0
+        decay_l1 = game_position_decay(l1_pos, total_games=player_total_games[l1]) if include else 1.0
+        decay_l2 = game_position_decay(l2_pos, total_games=player_total_games[l2]) if include else 1.0
+
+        # Apply decay to rating deltas to smooth window transitions
+        d_w1 = round(k_w1 * (1 - exp_win) * mult * decay_w1, 2)
+        d_w2 = round(k_w2 * (1 - exp_win) * mult * decay_w2, 2)
+        d_l1 = round(k_l1 * (0 - exp_lose) * mult * decay_l1, 2)
+        d_l2 = round(k_l2 * (0 - exp_lose) * mult * decay_l2, 2)
 
         rows_for_game = [
             (w1, w2, l1, l2, 1, sw, sl, d_w1, pred_win),
@@ -361,122 +347,94 @@ def build_full_player_log(raw):
             player_game_count[w2] += 1
             player_game_count[l1] += 1
             player_game_count[l2] += 1
+            
+            # Track games in 60-game window for each player
+            player_games_in_window[w1].append(match_id)
+            player_games_in_window[w2].append(match_id)
+            player_games_in_window[l1].append(match_id)
+            player_games_in_window[l2].append(match_id)
+            
+            # Trim to last 60 games to maintain window size
+            if len(player_games_in_window[w1]) > 60:
+                player_games_in_window[w1] = player_games_in_window[w1][-60:]
+            if len(player_games_in_window[w2]) > 60:
+                player_games_in_window[w2] = player_games_in_window[w2][-60:]
+            if len(player_games_in_window[l1]) > 60:
+                player_games_in_window[l1] = player_games_in_window[l1][-60:]
+            if len(player_games_in_window[l2]) > 60:
+                player_games_in_window[l2] = player_games_in_window[l2][-60:]
 
     return pd.DataFrame(player_rows)
 
 
-def build_player_freshness_window(full_player_log, as_of, player, window_size=LAST_N_GAMES):
-    """
-    Per-player only -- no union with any other player's data. This is a purely
-    descriptive stat (how recently and consistently has THIS person played), not
-    a relational rating computation, so there is nothing here for a contamination
-    bug to attach to.
-
-    Returns the player's own last `window_size` real games as of `as_of`, for
-    computing days_since_last_play, avg_game_age, recent form, and sample size --
-    NOT for computing their rating (that comes from the full log elsewhere).
-    """
+def collect_recent_match_ids_for_no_history_drift(player_log, as_of):
     as_of = pd.Timestamp(as_of).normalize()
-    rated = full_player_log[
-        (full_player_log["include_in_ratings"] == "Yes")
-        & (full_player_log["player"] == player)
-        & (pd.to_datetime(full_player_log["posted_dt"]) <= as_of + pd.Timedelta(days=1) - pd.Timedelta(seconds=1))
-    ].sort_values(["posted_dt", "match_id"])
-
-    return rated.tail(window_size)
-
-
-def build_current_leaderboard(full_player_log, as_of):
-    """
-    Replaces build_last_n_leaderboard(). Two things are now computed from two
-    different sources, deliberately:
-
-      - Rating: the player's most recent player_post_rating in the FULL cumulative
-        log (all history, no window, no reset).
-      - Freshness / sample size / recent-form stats: computed from
-        build_player_freshness_window() -- last LAST_N_GAMES real games, per-player,
-        no union, no contamination.
-    """
-    as_of = pd.Timestamp(as_of).normalize()
-    rated = full_player_log[
-        (full_player_log["include_in_ratings"] == "Yes")
-        & (pd.to_datetime(full_player_log["posted_dt"]) <= as_of + pd.Timedelta(days=1) - pd.Timedelta(seconds=1))
+    rated = player_log[
+        (player_log["include_in_ratings"] == "Yes")
+        & (pd.to_datetime(player_log["posted_dt"]) <= as_of + pd.Timedelta(days=1) - pd.Timedelta(seconds=1))
     ].copy()
 
-    current_members = load_current_members()
+    match_ids = set()
+
+    for p in sorted(rated["player"].dropna().unique()):
+        sub = rated[rated["player"] == p].sort_values(["posted_dt", "match_id"]).tail(LAST_N_GAMES)
+        if len(sub) >= MIN_GAMES:
+            match_ids.update(sub["match_id"].dropna().astype(int).tolist())
+
+    return sorted(match_ids)
+
+
+def build_last_n_leaderboard(player_log, as_of):
+    as_of = pd.Timestamp(as_of).normalize()
+    rated = player_log[
+        (player_log["include_in_ratings"] == "Yes")
+        & (pd.to_datetime(player_log["posted_dt"]) <= as_of + pd.Timedelta(days=1) - pd.Timedelta(seconds=1))
+    ].copy()
 
     rows = []
 
     for p in sorted(rated["player"].dropna().unique()):
-        window = build_player_freshness_window(full_player_log, as_of, p)
-        g = len(window)
+        sub = rated[rated["player"] == p].sort_values(["posted_dt", "match_id"]).tail(LAST_N_GAMES).copy()
+        g = len(sub)
 
         if g < MIN_GAMES:
             continue
 
-        # RATING: from full history, not the window.
-        player_all = rated[rated["player"] == p].sort_values(["posted_dt", "match_id"])
-        raw_rating = float(player_all["player_post_rating"].iloc[-1])
-
-        # INACTIVITY EXCLUSION (added 2026-07-21): players absent 182+ days
-        # (~6 months) are excluded from the visible leaderboard entirely,
-        # not just tagged Very Stale. Threshold chosen to comfortably clear
-        # known seasonal "snowbird" absences (~May-Sept, some longer) while
-        # still catching genuinely inactive players. Computed here (ahead
-        # of the freshness-window stats below) since it needs the true
-        # last-played date, not the windowed one.
-        _last_played_check = player_all["posted_dt"].max()
-        _days_inactive = (as_of - pd.Timestamp(_last_played_check).normalize()).days
-        if _days_inactive > 182:
-            continue
-
-        # MEMBERSHIP EXCLUSION (added 2026-07-21): only current DEN members
-        # appear on the live leaderboard. current_members is None if the
-        # snapshot file is missing -- fail open (don't exclude anyone) rather
-        # than fail closed, since a missing/stale snapshot is a data problem,
-        # not a signal that everyone quit.
-        if current_members is not None and p.strip() not in current_members:
-            continue
-
-        # FRESHNESS / RECENT FORM: from the bounded window, exactly as before.
-        wins = int(window["is_win"].sum())
+        raw_rating = float(sub["player_post_rating"].iloc[-1])
+        wins = int(sub["is_win"].sum())
         losses = int(g - wins)
         actual_win_pct = wins / g if g else None
-        expected_win_pct = float(window["expected_win"].mean()) if g else None
+        expected_win_pct = float(sub["expected_win"].mean()) if g else None
         win_pct_vs_expected = actual_win_pct - expected_win_pct if g else None
 
-        last_played = pd.Timestamp(window["posted"].iloc[-1]).date()
+        last_played = pd.Timestamp(sub["posted"].iloc[-1]).date()
         days_since_last = int((as_of.date() - last_played).days)
-        game_ages = [(as_of.date() - pd.Timestamp(d).date()).days for d in window["posted"]]
+        game_ages = [(as_of.date() - pd.Timestamp(d).date()).days for d in sub["posted"]]
         avg_game_age = round(sum(game_ages) / len(game_ages), 1)
 
         sample_conf = 1.0 if g >= LAST_N_GAMES else g / (g + CONF_DEN)
-        # NOTE: the continuous freshness penalty (fresh_conf) is REMOVED here --
-        # validated in Step 2b and found to make predictions monotonically worse
-        # at every tested value; MAX_FRESHNESS_PENALTY = 0.0 now, so
-        # freshness_factor() always returns 1.0. Staleness is still handled, but
-        # only by the hard exclusion tier below (Freshness Tier), not by a
-        # continuous rating pull.
-        rating_conf = sample_conf
+        fresh_conf = freshness_factor(days_since_last, avg_game_age)
+        rating_conf = sample_conf * fresh_conf
 
-        # Shrinkage now applies to the FULL-HISTORY rating, using only
-        # window-derived sample-size confidence.
+        sample_rating = 1000 + ((raw_rating - 1000) * sample_conf)
         player_rating = 1000 + ((raw_rating - 1000) * rating_conf)
+
+        credibility_adjustment = sample_rating - raw_rating
+        freshness_adjustment = player_rating - sample_rating
 
         rows.append(
             {
                 "Rank": None,
                 "Player": p,
                 "Player Rating": int(round(player_rating)),
-                "Games Used (last 60)": int(g),
-                "Career Games": int(len(player_all)),
+                "Games Used": int(g),
                 "Wins": wins,
                 "Losses": losses,
                 "Win %": actual_win_pct,
                 "Expected Win %": expected_win_pct,
                 "Win % vs Expected": win_pct_vs_expected,
-                "Avg Point Diff": round(float(window["margin"].mean()), 1),
-                "Avg Matchup Edge": int(round(float(window["schedule_differential"].mean()))),
+                "Avg Point Diff": round(float(sub["margin"].mean()), 1),
+                "Avg Matchup Edge": int(round(float(sub["schedule_differential"].mean()))),
                 "Last Played": last_played,
                 "Days Since Last Play": days_since_last,
                 "Avg Game Age": avg_game_age,
@@ -490,7 +448,7 @@ def build_current_leaderboard(full_player_log, as_of):
     if board.empty:
         return board
 
-    board = board.sort_values(["Player Rating", "Games Used (last 60)"], ascending=[False, False]).reset_index(drop=True)
+    board = board.sort_values(["Player Rating", "Games Used"], ascending=[False, False]).reset_index(drop=True)
     board["Rank"] = range(1, len(board) + 1)
 
     return board[
@@ -498,8 +456,7 @@ def build_current_leaderboard(full_player_log, as_of):
             "Rank",
             "Player",
             "Player Rating",
-            "Games Used (last 60)",
-            "Career Games",
+            "Games Used",
             "Wins",
             "Losses",
             "Win %",
@@ -1059,7 +1016,7 @@ def build_session_effects(player_log, leaderboard_players):
 def build_recent_trends(player_log, leaderboard, as_of):
     leaderboard_players = set(leaderboard["Player"])
     rating_map = dict(zip(leaderboard["Player"], leaderboard["Player Rating"]))
-    games_map = dict(zip(leaderboard["Player"], leaderboard["Games Used (last 60)"]))
+    games_map = dict(zip(leaderboard["Player"], leaderboard["Games Used"]))
 
     log = player_log[
         (player_log["include_in_ratings"] == "Yes")
@@ -2774,24 +2731,32 @@ def main():
     else:
         illustration_date = pd.Timestamp(raw.loc[raw["include_in_ratings"], "posted_dt"].max().date())
 
-    # Full history log — single, authoritative source for everything: leaderboard,
-    # historical display, model validation, court simulation. No window, no reset.
+    # Full history log — used for historical/calibration analyses and court simulation.
+    # Elo computed cumulatively from all games ever recorded.
     full_player_log = build_full_player_log(raw)
     rated_full = full_player_log[full_player_log["include_in_ratings"] == "Yes"].copy()
 
-    full_board = build_current_leaderboard(full_player_log, as_of)
+    # No-history-drift log — used for the leaderboard and current-state analyses.
+    # Each qualifying player's last 60 rated games are replayed from a neutral 1000 baseline,
+    # so all players are evaluated on equal footing regardless of how long they've been active.
+    # Also moderates extreme rating values at the tails that accumulate over full history.
+    recent_match_ids = collect_recent_match_ids_for_no_history_drift(full_player_log, as_of)
+    raw_recent = raw.loc[[mid - 1 for mid in recent_match_ids]].copy().reset_index(drop=True)
+    player_log = build_full_player_log(raw_recent)
+
+    full_board = build_last_n_leaderboard(player_log, as_of)
 
     if full_board.empty:
         leaderboard = full_board.copy()
         inactive_players = full_board.copy()
     else:
         leaderboard = full_board[full_board["Freshness Tier"].isin(["Very Fresh", "Mature"])].copy()
-        leaderboard = leaderboard.sort_values(["Player Rating", "Games Used (last 60)"], ascending=[False, False]).reset_index(drop=True)
+        leaderboard = leaderboard.sort_values(["Player Rating", "Games Used"], ascending=[False, False]).reset_index(drop=True)
         leaderboard["Rank"] = range(1, len(leaderboard) + 1)
 
         inactive_players = full_board[full_board["Freshness Tier"].isin(["Stale", "Very Stale"])].copy()
         inactive_players = inactive_players[pd.to_datetime(inactive_players["Last Played"]) >= pd.Timestamp("2025-01-01")].copy()
-        inactive_players = inactive_players.sort_values(["Player Rating", "Games Used (last 60)"], ascending=[False, False]).reset_index(drop=True)
+        inactive_players = inactive_players.sort_values(["Player Rating", "Games Used"], ascending=[False, False]).reset_index(drop=True)
         inactive_players["Rank"] = range(1, len(inactive_players) + 1)
 
     illustration = build_illustration_tab(full_player_log, raw, illustration_date)
@@ -2803,14 +2768,14 @@ def main():
     extreme_spread_summary = build_extreme_spread_summary(full_player_log)
     competitive_balance_by_quarter = build_competitive_balance_by_quarter(full_player_log)
     player_pool_by_quarter = build_player_pool_by_quarter(full_player_log)
-    session_effects = build_session_effects(full_player_log, set(leaderboard["Player"]))
-    recent_trends = build_recent_trends(full_player_log, leaderboard, as_of)
+    session_effects = build_session_effects(player_log, set(leaderboard["Player"]))
+    recent_trends = build_recent_trends(player_log, leaderboard, as_of)
 
     if not recent_trends.empty and not leaderboard.empty:
         trend_map = dict(zip(recent_trends["Player"], recent_trends["Trend"]))
         leaderboard.insert(2, "Trend", leaderboard["Player"].map(trend_map).apply(trend_icon))
 
-    game_consistency = build_game_consistency(full_player_log, leaderboard)  # own internal last-60-game window, unrelated to the rating source
+    game_consistency = build_game_consistency(player_log, leaderboard)  # no-drift: last-60-game consistency
 
     if not game_consistency.empty and not leaderboard.empty:
         scores = game_consistency["Consistency Score"]
@@ -2824,14 +2789,14 @@ def main():
                 lambda s: consistency_icon(s, t_low, t_high)
             ),
         )
-    best_worst_day = build_best_worst_day(full_player_log, leaderboard, as_of)  # own internal last-60-game window, unrelated to the rating source
+    best_worst_day = build_best_worst_day(player_log, leaderboard, as_of)  # no-drift
 
     performance_vs_expectation = leaderboard[
         [
             "Rank",
             "Player",
             "Player Rating",
-            "Games Used (last 60)",
+            "Games Used",
             "Win %",
             "Expected Win %",
             "Win % vs Expected",
@@ -2869,7 +2834,7 @@ def main():
             if key not in cache:
                 # Use full_player_log so Rating History shows cumulative Elo progression,
                 # giving a complete picture across all of 2026 (no gaps from the no-drift window).
-                board = build_current_leaderboard(full_player_log, pd.Timestamp(date_))
+                board = build_last_n_leaderboard(full_player_log, pd.Timestamp(date_))
                 cache[key] = {row["Player"]: int(row["Player Rating"]) for _, row in board.iterrows()}
             return cache[key]
 
@@ -2996,9 +2961,19 @@ def main():
     historical = exclude_guest_players(historical)
     player_log_trim = exclude_guest_players(player_log_trim)
 
-    # player_log_trim is built from full_player_log -- one authoritative
-    # player_pre_rating/player_post_rating per game already. No merge needed;
-    # session_viewer.html reads this sheet directly (see build_session_viewer.py).
+    # Merge no-history-drift ratings into player_log_trim so session viewer
+    # can show leaderboard-consistent ratings (not cumulative Elo).
+    # player_log is built from raw_recent (each player's last 60 games from 1000).
+    # Note: match_ids differ between player_log and full_player_log due to reset_index,
+    # so we join on posted_dt + player instead.
+    nhd_cols = player_log[["posted_dt", "player", "player_pre_rating", "player_post_rating"]].copy()
+    nhd_cols = nhd_cols.rename(columns={
+        "player_pre_rating": "nhd_pre_rating",
+        "player_post_rating": "nhd_post_rating",
+    })
+    player_log_trim = player_log_trim.merge(
+        nhd_cols, on=["posted_dt", "player"], how="left"
+    )
 
     if "session_effects" in locals():
         session_effects = exclude_guest_players(session_effects)
@@ -3014,23 +2989,23 @@ def main():
         ("Model overview", "Ratings are generated by a Python engine from the master history CSV. Excel is for viewing, review, validation, and diagnostics."),
         ("Base Elo", "1000"),
         ("K-factor", "Provisional: grades linearly from 40 at game 1 to 20 at game 60, then holds at 20. Allows new players to converge to their true level faster without creating extreme rating spreads."),
-        ("Margin multiplier", "LN(point_diff + 1), uncapped."),
+        ("Margin multiplier", "MIN(LN(point_diff + 1), 2.0)"),
         ("Format", "Doubles, team-based modified Elo"),
-        ("Leaderboard basis", "Full cumulative history: rating is the player's most recent Elo from their entire rated career, no window, no reset. Freshness/sample-size eligibility (see below) is computed separately from a bounded recent window and does not affect the rating value itself."),
+        ("Leaderboard basis", "No-history-drift: each qualifying player's last 60 rated games are replayed from a neutral 1000 baseline, so all players are rated on equal footing regardless of tenure."),
         ("Minimum games", "24 rated games required to appear on the Leaderboard"),
-        ("Displayed Player Rating", "Full-history modified Elo, shrunk toward 1000 only for sample-size (fewer than 60 games in the player's own last-60-games window). No continuous freshness penalty is applied — staleness is handled entirely by the Freshness Tier exclusion below, not by a rating adjustment."),
-        ("Expected Win %", "Uses team pre-match rating difference with 92% expectation compression (rating gap scaled by 0.92 before computing win probability) based on calibration testing. Display/reporting only — does not affect rating values."),
-        ("Freshness tiers", "Based on worse of days since last play and average game age, computed from the player's own last 60 real games: 0-90 Very Fresh; 91-180 Mature; 181-365 Stale; 366+ Very Stale"),
-        ("Main Leaderboard inclusion", "Very Fresh and Mature only"),
-        ("Less Active tab", "Stale and Very Stale players are shown separately, excluding players whose last play was before 1/1/2025"),
-        ("Avg Matchup Edge", "Own team pre-match rating minus opponent team pre-match rating, over the player's last 60 real games. Positive means the player's team usually had the rating edge; negative means tougher matchups."),
+        ("Displayed Player Rating", "Freshness-adjusted modified Elo from the no-history-drift replay. Freshness applies a small penalty (up to 15%) for inactivity beyond 90 days. No credibility compression is applied — the replay baseline eliminates the advantage of long tenure."),
+        ("Expected Win %", "Uses team pre-match rating difference with 85% expectation compression (rating gap scaled by 0.85 before computing win probability) based on calibration testing."),
+        ("Freshness tiers", "Based on worse of days since last play and average game age: 0-90 Current; 91-180 Aging; 181-365 Stale; 366+ Inactive"),
+        ("Main Leaderboard inclusion", "Current and Aging only"),
+        ("Less Active tab", "Stale and Inactive players are shown separately, excluding players whose last play was before 1/1/2025"),
+        ("Avg Matchup Edge", "Own team pre-match rating minus opponent team pre-match rating. Positive means the player's team usually had the rating edge; negative means tougher matchups."),
         ("Results vs Expectation", "Shows players whose actual results exceeded or lagged Expected Win %. This is diagnostic, not necessarily a trend measure."),
         ("Model Validation", "Uses 2026 games where all four players had at least 60 prior rated games. Reports favorite win %, predicted favorite win %, Brier score, log loss, calibration buckets, and rating-gap buckets."),
         ("Special-case exclusions", "Steve Fahrenkrog, Jonathan Ernst, and Bella Tinstman are treated as guest/special-case players and should be excluded from leaderboard-style analyses."),
         ("Included limited-participation player", "Logan Brannon is included normally despite low participation."),
         ("Known name fixes", "Manual name fixes include DEN New Player Tryout replacements for Bella Tinstman, Jonathan Ernst, Logan Brannon, and Karen Carter to Kenneth Whipple."),
         ("Known date adjustment", "The first nine Feb 12, 2026 records were corrected to Feb 11, 2026 to properly classify the second 2/11/26 shootout."),
-        ("Pre-2025 data", "Pre-2025 data is part of every player's full rated history and directly informs their current rating, since the rating is cumulative with no window. It does not affect Freshness Tier or the Games Used (last 60) count, which look only at each player's most recent 60 real games regardless of date."),
+        ("Pre-2025 data", "Pre-2025 data is used in the full history log (court simulation, model validation, historical analyses). The leaderboard uses no-history-drift ratings based only on each player's last 60 games, so pre-2025 history does not affect current rankings."),
         ("Match exclusions", "DEN New Player Tryout; SAM/8AM New Player Tryout; SAM/NAM/Co-ed Drop In 2"),
         ("EOD rating note", "The EOD sheet freezes each player after their last played date."),
         ("Engine call", "python3 pickleball_engine_v2.py --input data/master_history_raw.csv --output output/pickleball_model.xlsx"),
@@ -3154,19 +3129,18 @@ def main():
         "D": 8,
         "E": 14,
         "F": 12,
-        "G": 12,
+        "G": 10,
         "H": 10,
-        "I": 10,
-        "J": 12,
+        "I": 12,
+        "J": 16,
         "K": 16,
         "L": 16,
-        "M": 16,
-        "N": 18,
-        "O": 14,
-        "P": 18,
-        "Q": 14,
-        "R": 16,
-        "S": 18,
+        "M": 18,
+        "N": 14,
+        "O": 18,
+        "P": 14,
+        "Q": 16,
+        "R": 18,
     }
 
     inactive_widths = {
@@ -3174,19 +3148,18 @@ def main():
         "B": 24,
         "C": 14,
         "D": 12,
-        "E": 12,
+        "E": 10,
         "F": 10,
-        "G": 10,
-        "H": 12,
+        "G": 12,
+        "H": 16,
         "I": 16,
         "J": 16,
-        "K": 16,
-        "L": 18,
-        "M": 14,
-        "N": 18,
-        "O": 14,
-        "P": 16,
-        "Q": 18,
+        "K": 18,
+        "L": 14,
+        "M": 18,
+        "N": 14,
+        "O": 16,
+        "P": 18,
     }
 
     leaderboard_ws = wb["Leaderboard"]
@@ -3206,19 +3179,19 @@ def main():
     )
 
     for r in range(2, leaderboard_ws.max_row + 1):
-        for col in ["E", "F", "G", "H", "I", "P"]:
+        for col in ["E", "F", "G", "H", "O"]:
             leaderboard_ws[f"{col}{r}"].number_format = "#,##0"
+        leaderboard_ws[f"I{r}"].number_format = "0.0%"
         leaderboard_ws[f"J{r}"].number_format = "0.0%"
-        leaderboard_ws[f"K{r}"].number_format = "0.0%"
-        leaderboard_ws[f"L{r}"].number_format = "0.0%;(0.0%);0.0%"
-        leaderboard_ws[f"M{r}"].number_format = "0.0;(0.0);0.0"
-        leaderboard_ws[f"N{r}"].number_format = "#,##0;(#,##0);0"
-        leaderboard_ws[f"O{r}"].number_format = "m/d/yyyy"
-        leaderboard_ws[f"Q{r}"].number_format = "0.0"
+        leaderboard_ws[f"K{r}"].number_format = "0.0%;(0.0%);0.0%"
+        leaderboard_ws[f"L{r}"].number_format = "0.0;(0.0);0.0"
+        leaderboard_ws[f"M{r}"].number_format = "#,##0;(#,##0);0"
+        leaderboard_ws[f"N{r}"].number_format = "m/d/yyyy"
+        leaderboard_ws[f"P{r}"].number_format = "0.0"
 
-        for col in ["A", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "P", "Q"]:
+        for col in ["A", "E", "F", "G", "H", "I", "J", "K", "L", "M", "O", "P"]:
             leaderboard_ws[f"{col}{r}"].alignment = Alignment(horizontal="right", vertical="center")
-        for col in ["B", "R", "S"]:
+        for col in ["B", "Q", "R"]:
             leaderboard_ws[f"{col}{r}"].alignment = Alignment(horizontal="left", vertical="center")
         for col in ["C", "D"]:
             leaderboard_ws[f"{col}{r}"].alignment = Alignment(horizontal="center", vertical="center")
@@ -3234,19 +3207,19 @@ def main():
     )
 
     for r in range(2, inactive_ws.max_row + 1):
-        for col in ["C", "D", "E", "F", "G", "N"]:
+        for col in ["C", "D", "E", "F", "M"]:
             inactive_ws[f"{col}{r}"].number_format = "#,##0"
+        inactive_ws[f"G{r}"].number_format = "0.0%"
         inactive_ws[f"H{r}"].number_format = "0.0%"
-        inactive_ws[f"I{r}"].number_format = "0.0%"
-        inactive_ws[f"J{r}"].number_format = "0.0%;(0.0%);0.0%"
-        inactive_ws[f"K{r}"].number_format = "0.0;(0.0);0.0"
-        inactive_ws[f"L{r}"].number_format = "#,##0;(#,##0);0"
-        inactive_ws[f"M{r}"].number_format = "m/d/yyyy"
-        inactive_ws[f"O{r}"].number_format = "0.0"
+        inactive_ws[f"I{r}"].number_format = "0.0%;(0.0%);0.0%"
+        inactive_ws[f"J{r}"].number_format = "0.0;(0.0);0.0"
+        inactive_ws[f"K{r}"].number_format = "#,##0;(#,##0);0"
+        inactive_ws[f"L{r}"].number_format = "m/d/yyyy"
+        inactive_ws[f"N{r}"].number_format = "0.0"
 
-        for col in ["A", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "N", "O"]:
+        for col in ["A", "C", "D", "E", "F", "G", "H", "I", "J", "K", "M", "N"]:
             inactive_ws[f"{col}{r}"].alignment = Alignment(horizontal="right", vertical="center")
-        for col in ["B", "P", "Q"]:
+        for col in ["B", "O", "P"]:
             inactive_ws[f"{col}{r}"].alignment = Alignment(horizontal="left", vertical="center")
 
     kf_ws = wb["Key Findings"]
@@ -4745,8 +4718,6 @@ def build_rating_history_html(eod_df, leaderboard, output_path):
 </head>
 <body>
   <a href="index.html" style="position:fixed;top:10px;left:10px;z-index:1000;background:#1F4E79;color:#fff;font-size:12px;padding:6px 12px;border-radius:6px;text-decoration:none;box-shadow:0 1px 4px rgba(0,0,0,0.2);">&larr; Menu</a>
-  <button onclick="forceRefresh()" style="position:fixed;top:10px;left:96px;z-index:1000;background:#1F4E79;color:#fff;font-size:12px;padding:6px 12px;border-radius:6px;border:none;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,0.2);">&#8635;&nbsp;Refresh</button>
-  <div id="freshness-hint" style="position:fixed;top:42px;left:10px;z-index:999;font-size:10px;color:#888;background:#fff;padding:2px 6px;border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,0.15);">💡 Tap Refresh for the latest data.</div>
   <div id="sidebar">
     <h3>SAM Rating History</h3>
 
@@ -4779,31 +4750,6 @@ def build_rating_history_html(eod_df, leaderboard, output_path):
   </div>
   <div id="chart">{chart_html}</div>
   <script>
-    // Freshness: force a genuine network fetch on every real navigation to
-    // this page, bypassing any browser/CDN cache. If this load doesn't
-    // already carry our cache-bust marker, immediately redirect to a URL
-    // that does -- GitHub Pages' CDN (and browsers) cache by full URL
-    // including query string, so a unique timestamp guarantees a cache miss.
-    (function () {{
-      var params = new URLSearchParams(location.search);
-      if (!params.has('_cb')) {{
-        params.set('_cb', Date.now());
-        location.replace(location.pathname + '?' + params.toString());
-      }}
-    }})();
-
-    // Forces a genuine network fetch bypassing any cache -- used both by
-    // the manual Refresh button and the periodic timer below. No state to
-    // preserve on this page (Time Range / Quartile selections are just
-    // client-side filters on data already embedded in the page, not a
-    // per-date server-driven view).
-    function forceRefresh() {{
-      var params = new URLSearchParams(location.search);
-      params.set('_cb', Date.now());
-      location.replace(location.pathname + '?' + params.toString());
-    }}
-    setInterval(forceRefresh, 5 * 60 * 1000);
-
     var chartDiv = document.getElementById('ratingChart');
     var ranges = {{
       '1M': ['{month_starts["1M"]}', '{max_date_iso}'],

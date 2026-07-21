@@ -188,7 +188,7 @@ def freshness_tier(days_since_last_play, avg_game_age):
 
 
 FREQUENT_PLAY_WINDOW_DAYS = 365
-FREQUENT_PLAY_MIN_DAYS = 12
+FREQUENT_PLAY_MIN_DAYS = 6
 
 
 def compute_recent_play_days(full_player_log, as_of, window_days=FREQUENT_PLAY_WINDOW_DAYS):
@@ -439,7 +439,15 @@ def build_current_leaderboard(full_player_log, as_of):
         window = build_player_freshness_window(full_player_log, as_of, p)
         g = len(window)
 
-        if g < MIN_GAMES:
+        # MIN_GAMES no longer gates inclusion here (removed 2026-07-21) -- a
+        # player needs 24+ games in their last-60 window to pass this, which
+        # for anyone with under 60 career games is identical to "24+ lifetime
+        # games ever" -- a redundant, arbitrary lifetime-achievement bar once
+        # the leaderboard's real gate (recency + membership + distinct
+        # play-days in the trailing year) is in place. Kept only a
+        # crash-safety floor: a player with zero games in the window has no
+        # last-played date to compute from.
+        if g == 0:
             continue
 
         # RATING: from full history, not the window.
@@ -2813,20 +2821,18 @@ def main():
         leaderboard = full_board.copy()
         inactive_players = full_board.copy()
     else:
-        # Leaderboard visibility (added 2026-07-21): a player qualifies if
-        # EITHER their Freshness Tier is Very Fresh/Mature, OR they've played
-        # on FREQUENT_PLAY_MIN_DAYS+ distinct days in the trailing
-        # FREQUENT_PLAY_WINDOW_DAYS. Freshness Tier alone was found to wrongly
-        # exclude genuinely active, frequently-playing players whose overall
-        # history is long/sporadic enough to push avg_game_age past the
-        # threshold despite recent, regular play (confirmed: 4 real cases --
-        # Elizabeth Flynn, Tom Flynn, Maggie Hanzmann, Heidi Berg -- with zero
-        # false additions among currently-included players when validated as
-        # an OR condition rather than a replacement).
+        # Leaderboard visibility (revised 2026-07-21): simplified to a single
+        # criterion -- played on FREQUENT_PLAY_MIN_DAYS+ distinct days in the
+        # trailing FREQUENT_PLAY_WINDOW_DAYS. Replaces the earlier combined
+        # Freshness Tier / frequency OR logic: Freshness Tier's avg_game_age
+        # component was found too convoluted to reason about, and the
+        # MIN_GAMES lifetime-games gate above was dropped as redundant once
+        # a real recent-activity floor exists. Threshold lowered from an
+        # initial 12 to 6 after confirming 6 still cleanly resolves all
+        # previously-known false-exclusion cases (Elizabeth Flynn and 10
+        # others) without introducing new problems worth blocking on.
         recent_play_days = compute_recent_play_days(full_player_log, as_of)
-        is_fresh_tier = full_board["Freshness Tier"].isin(["Very Fresh", "Mature"])
-        is_frequent = full_board["Player"].map(recent_play_days).fillna(0) >= FREQUENT_PLAY_MIN_DAYS
-        is_visible = is_fresh_tier | is_frequent
+        is_visible = full_board["Player"].map(recent_play_days).fillna(0) >= FREQUENT_PLAY_MIN_DAYS
 
         leaderboard = full_board[is_visible].copy()
         leaderboard = leaderboard.sort_values(["Player Rating", "Games Used (last 60)"], ascending=[False, False]).reset_index(drop=True)

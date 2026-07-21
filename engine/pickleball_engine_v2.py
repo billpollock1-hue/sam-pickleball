@@ -187,6 +187,34 @@ def freshness_tier(days_since_last_play, avg_game_age):
     return "Very Stale"
 
 
+FREQUENT_PLAY_WINDOW_DAYS = 365
+FREQUENT_PLAY_MIN_DAYS = 12
+
+
+def compute_recent_play_days(full_player_log, as_of, window_days=FREQUENT_PLAY_WINDOW_DAYS):
+    """
+    Distinct play-dates per player in the trailing window_days. Added
+    2026-07-21 alongside the leaderboard visibility fix below: freshness_tier's
+    avg_game_age component can flag a genuinely active, frequently-playing
+    player as Stale/Very Stale if their overall history is long and sporadic,
+    even though their recent play pattern is regular. This measures
+    frequency directly (how many distinct days played recently) rather than
+    inferring it from an averaged history -- confirmed against real cases
+    (e.g. Elizabeth Flynn: 23 distinct play-days in the trailing year, but
+    avg_game_age of 183 pushes her to Stale under the old measure alone).
+    """
+    as_of_ts = pd.Timestamp(as_of).normalize()
+    cutoff = as_of_ts - pd.Timedelta(days=window_days)
+    rated = full_player_log[
+        (full_player_log["include_in_ratings"] == "Yes")
+        & (pd.to_datetime(full_player_log["posted_dt"]) >= cutoff)
+        & (pd.to_datetime(full_player_log["posted_dt"]) <= as_of_ts + pd.Timedelta(days=1) - pd.Timedelta(seconds=1))
+    ].copy()
+    if rated.empty:
+        return pd.Series(dtype=int)
+    return rated.groupby("player")["posted_dt"].apply(lambda s: pd.to_datetime(s).dt.date.nunique())
+
+
 def confidence_tier(games_used):
     if games_used >= 30:
         return "Highly Reliable"
@@ -2785,11 +2813,26 @@ def main():
         leaderboard = full_board.copy()
         inactive_players = full_board.copy()
     else:
-        leaderboard = full_board[full_board["Freshness Tier"].isin(["Very Fresh", "Mature"])].copy()
+        # Leaderboard visibility (added 2026-07-21): a player qualifies if
+        # EITHER their Freshness Tier is Very Fresh/Mature, OR they've played
+        # on FREQUENT_PLAY_MIN_DAYS+ distinct days in the trailing
+        # FREQUENT_PLAY_WINDOW_DAYS. Freshness Tier alone was found to wrongly
+        # exclude genuinely active, frequently-playing players whose overall
+        # history is long/sporadic enough to push avg_game_age past the
+        # threshold despite recent, regular play (confirmed: 4 real cases --
+        # Elizabeth Flynn, Tom Flynn, Maggie Hanzmann, Heidi Berg -- with zero
+        # false additions among currently-included players when validated as
+        # an OR condition rather than a replacement).
+        recent_play_days = compute_recent_play_days(full_player_log, as_of)
+        is_fresh_tier = full_board["Freshness Tier"].isin(["Very Fresh", "Mature"])
+        is_frequent = full_board["Player"].map(recent_play_days).fillna(0) >= FREQUENT_PLAY_MIN_DAYS
+        is_visible = is_fresh_tier | is_frequent
+
+        leaderboard = full_board[is_visible].copy()
         leaderboard = leaderboard.sort_values(["Player Rating", "Games Used (last 60)"], ascending=[False, False]).reset_index(drop=True)
         leaderboard["Rank"] = range(1, len(leaderboard) + 1)
 
-        inactive_players = full_board[full_board["Freshness Tier"].isin(["Stale", "Very Stale"])].copy()
+        inactive_players = full_board[~is_visible].copy()
         inactive_players = inactive_players[pd.to_datetime(inactive_players["Last Played"]) >= pd.Timestamp("2025-01-01")].copy()
         inactive_players = inactive_players.sort_values(["Player Rating", "Games Used (last 60)"], ascending=[False, False]).reset_index(drop=True)
         inactive_players["Rank"] = range(1, len(inactive_players) + 1)

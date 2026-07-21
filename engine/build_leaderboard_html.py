@@ -338,6 +338,11 @@ html = f"""<!DOCTYPE html>
   </div>
 </div>
 
+<div style="max-width:700px;margin:24px auto 0;padding:0 16px;font-size:0.85rem;color:#888;line-height:1.5;">
+  Leaderboard shows current DEN members who have played within the last 6 months
+  and on at least 6 distinct days in the past 12 months.
+</div>
+
 <script>
 // ── Freshness: force a genuine network fetch on every real navigation to
 // this page, bypassing any browser/CDN cache. If this load doesn't already

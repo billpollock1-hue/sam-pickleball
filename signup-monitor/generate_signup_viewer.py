@@ -162,11 +162,25 @@ def parse_log(date_str: str) -> Optional[dict]:
                     player_map[c] = p
                     players.append(p)
                 elif not is_wl(name):
-                    # Withdrew and rejoined — add a second row
-                    key = f"{c}†"
+                    # Withdrew and rejoined — add a second row. Reassign
+                    # player_map[c] (not a separate suffixed key) so every
+                    # later event for this name -- withdrawals, reorders --
+                    # resolves to this new, currently-open episode instead
+                    # of silently continuing to mutate the stale original
+                    # row. Previously this used a "c + '†'" key here, which
+                    # left player_map[c] pointing at the closed original
+                    # row forever; any subsequent withdrawal/reorder for
+                    # this name (e.g. Greg Egli's and Tron Brinkmann's
+                    # 7/21 18:12 withdrawal after rejoining at 17:57) was
+                    # then wrongly applied to that stale original row
+                    # instead of the real, currently-active rejoined row.
+                    # Because a rejoin can only happen after a withdrawal,
+                    # the plain name key always naturally tracks whichever
+                    # episode is currently open, even across multiple
+                    # rejoin cycles for the same person.
                     p = {"name": c + " (rejoined)", "joined": fmt_ts(ts),
                          "initial": str(order), "withdrew": False, "revs": []}
-                    player_map[key] = p
+                    player_map[c] = p
                     players.append(p)
 
             elif action in ("withdrew", "removed_auto"):

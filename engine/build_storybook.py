@@ -31,6 +31,7 @@ each chart's back face lines up with its narrative's front face.
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 ENGINE_DIR = Path(__file__).resolve().parent
@@ -169,14 +170,21 @@ for _, r in gap_dist.iterrows():
       <tr><td>{r['Rating Gap']}</td><td>{r['% Won by Higher-Rated Team']}</td>
       <td>{r.get('Margin 1–3','—')}</td><td>{r.get('Margin 9–11','—')}</td></tr>"""
 
+# Effort labels corrected 2026-07-21: "Settings only" wrongly implied
+# Rating-seeded scenarios need no automation at all, when they in fact
+# depend on the same rating engine as everything else here -- the real
+# distinction is whether that automation already exists and runs
+# unattended (Rating-seeded start, via the already-built/validated
+# pipeline) versus needs to be newly built and triggered live on-site
+# in the tight post-Shootout-1 window (everything results-driven).
 options = [
-    ("Rating-seeded start &middot; keep today's shuffle", sv(e2u, "vs DEN"), sv(e2u, "S1→S2 % Moving"), "Settings only"),
-    ("Rating-seeded start &middot; gentler shuffle &nbsp;&#9733; Phase 1", sv(ph1, "vs DEN"), sv(ph1, "S1→S2 % Moving"), "Settings only"),
-    ("Results-driven Shootout 2 &middot; steady dial", sv(e20, "vs DEN"), sv(e20, "S1→S2 % Moving"), "Automation"),
-    ("Results-driven Shootout 2 &middot; balanced dial &nbsp;&#9733; Phase 2", sv(ph2, "vs DEN"), sv(ph2, "S1→S2 % Moving"), "Automation"),
-    ("Results-driven Shootout 2 &middot; fast dial", sv(k150, "vs DEN"), sv(k150, "S1→S2 % Moving"), "Automation"),
-    ("Swap near-ties at court borders only", sv(bsw, "vs DEN"), sv(bsw, "S1→S2 % Moving"), "Automation"),
-    ("Move only big over/under-performers", sv(upt, "vs DEN"), sv(upt, "S1→S2 % Moving"), "Automation"),
+    ("Rating-seeded start &middot; keep today's shuffle", sv(e2u, "vs DEN"), sv(e2u, "S1→S2 % Moving"), "Already automated"),
+    ("Rating-seeded start &middot; gentler shuffle &nbsp;&#9733; Phase 1", sv(ph1, "vs DEN"), sv(ph1, "S1→S2 % Moving"), "Already automated"),
+    ("Results-driven Shootout 2 &middot; steady dial", sv(e20, "vs DEN"), sv(e20, "S1→S2 % Moving"), "New automation"),
+    ("Results-driven Shootout 2 &middot; balanced dial &nbsp;&#9733; Phase 2", sv(ph2, "vs DEN"), sv(ph2, "S1→S2 % Moving"), "New automation"),
+    ("Results-driven Shootout 2 &middot; fast dial", sv(k150, "vs DEN"), sv(k150, "S1→S2 % Moving"), "New automation"),
+    ("Swap near-ties at court borders only", sv(bsw, "vs DEN"), sv(bsw, "S1→S2 % Moving"), "New automation"),
+    ("Move only big over/under-performers", sv(upt, "vs DEN"), sv(upt, "S1→S2 % Moving"), "New automation"),
 ]
 option_rows = ""
 for label, vs, mv, impl in options:
@@ -194,27 +202,51 @@ ph2_comb = sv(ph2, "Combined Spread")
 ph1_vs = sv(ph1, "vs DEN")
 ph2_vs = sv(ph2, "vs DEN")
 
-pct_lt200_first = round(100 * q_first["% Under 200"])
-pct_lt200_last = round(100 * q_last["% Under 200"])
+# Trendline-based (added 2026-07-21), same reasoning and method as the
+# Avg Gap fix below: a raw first-vs-last QUARTER comparison is oversensitive
+# to whichever single quarter happens to anchor each end. Fit each series
+# across the full quarterly history and report the fitted endpoints instead
+# of the raw ones.
+_trend_x = np.arange(len(cb))
 
-# Live margin-of-victory figures, same pattern as pct_lt200 above -- these
-# replace what used to be hardcoded "35% to 28%" / "14% to 18%" literals
-# in the Chapter Four narrative that had no underlying data behind them
-# at all (unlike the earlier 78%-vs-79.4% bug, which WAS wired to real
-# data that had simply drifted out of sync).
-pct_close_first = round(100 * q_first["% Decided by <=3"])
-pct_close_last = round(100 * q_last["% Decided by <=3"])
-pct_blowout_first = round(100 * q_first["% Decided by 9+"])
-pct_blowout_last = round(100 * q_last["% Decided by 9+"])
 
-# "Nearly doubled" was also a fixed adjective describing a ratio that
-# moves every time new games post -- compute the real ratio and phrase
-# the sentence to match it honestly instead of assuming it's always ~2x.
-_gap_ratio = q_last["Avg Gap"] / q_first["Avg Gap"] if q_first["Avg Gap"] else 1
+def _trend_endpoints(col):
+    y = cb[col].values
+    slope, intercept = np.polyfit(_trend_x, y, 1)
+    fitted = slope * _trend_x + intercept
+    return fitted[0], fitted[-1]
+
+_lt200_first, _lt200_last = _trend_endpoints("% Under 200")
+pct_lt200_first = round(100 * _lt200_first)
+pct_lt200_last = round(100 * _lt200_last)
+
+_close_first, _close_last = _trend_endpoints("% Decided by <=3")
+pct_close_first = round(100 * _close_first)
+pct_close_last = round(100 * _close_last)
+
+_blowout_first, _blowout_last = _trend_endpoints("% Decided by 9+")
+pct_blowout_first = round(100 * _blowout_first)
+pct_blowout_last = round(100 * _blowout_last)
+
+# Trendline replaces the earlier first-vs-last QUARTER point comparison
+# (added 2026-07-21): that comparison overstated apparent growth because
+# the first quarter shown (2022 Q1) happens to sit almost at the lowest
+# single value in the entire quarterly series (2022 Q2 is barely lower).
+# A least-squares fit across the FULL series is far less sensitive to any
+# one noisy quarter at either end, and is the same approach discussed
+# (but never implemented) in the 2026-07-20 session.
+_trend_x = np.arange(len(cb))
+_trend_y = cb["Avg Gap"].values
+_slope, _intercept = np.polyfit(_trend_x, _trend_y, 1)
+_fitted = _slope * _trend_x + _intercept
+_ss_res = ((_trend_y - _fitted) ** 2).sum()
+_ss_tot = ((_trend_y - _trend_y.mean()) ** 2).sum()
+_r_squared = (1 - (_ss_res / _ss_tot)) if _ss_tot else 0
+_gap_ratio = (_fitted[-1] / _fitted[0]) if _fitted[0] else 1
 if _gap_ratio >= 1.85:
     gap_change_phrase = "has nearly doubled"
 elif _gap_ratio >= 1.4:
-    gap_change_phrase = f"has grown roughly {_gap_ratio:.1f}x"
+    gap_change_phrase = f"has grown roughly {_gap_ratio:.2f}x"
 elif _gap_ratio > 1.05:
     gap_change_phrase = f"has grown by {round((_gap_ratio - 1) * 100)}%"
 elif _gap_ratio >= 0.95:
@@ -409,6 +441,7 @@ html = f"""<!DOCTYPE html>
         <h1>Can SAM<br>Be Improved?</h1>
         <div class="rule"></div>
         <div class="sub">Using four years of shootout data to make<br>every SAM session more competitive</div>
+        <div class="sub" style="font-size:0.65em;opacity:0.65;margin-top:2%;">Snapshot as of July 21, 2026 &mdash; numbers reflect data through this date, not live</div>
         <div class="hint">click to open &#8250;</div>
       </div>
       <div class="face back">
@@ -828,7 +861,7 @@ html = f"""<!DOCTYPE html>
         <h2>How to Read the Scorecard</h2>
         <p><b>Better-matched courts</b> is the improvement in court tightness versus today. +37% means the skill spread inside a typical court shrinks by more than a third.</p>
         <p><b>Players changing courts</b> is the share of players sitting on a different court in Shootout 2 than Shootout 1. Today&rsquo;s 2-up/2-back moves about {den_move} &mdash; the most of anything we tested.</p>
-        <p><b>Effort:</b> &ldquo;Settings only&rdquo; works within DEN as it exists today. &ldquo;Automation&rdquo; relies on the rating engine this project already runs after every play date.</p>
+        <p><b>Effort:</b> &ldquo;Already automated&rdquo; rows run through the rating engine this project already builds and runs, unattended, after every play date &mdash; nothing new to build. &ldquo;New automation&rdquo; rows would need new tooling, triggered live on-site in the tight window between Shootout 1 and Shootout 2.</p>
         <p>The two &#9733; rows are the recommendation &mdash; a starting step and a destination.</p>
         <div class="pgnum">23</div>
       </div>

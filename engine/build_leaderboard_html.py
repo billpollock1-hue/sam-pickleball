@@ -5,6 +5,8 @@ leaderboard columns, published alongside the other shareable pages.
 Reads the workbook produced by the engine, so run after the model build.
 """
 
+import html as html_lib
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -77,10 +79,16 @@ for _, r in lb.iterrows():
     if sb.get("finish_icon"):
         badge_html += f' <span class="se" title="{sb["finish_title"]}">{sb["finish_icon"]}</span>'
 
+    # Player name is now a clickable link that opens the session-history
+    # modal (see PLAYER_HISTORY / showHistory() below). Name is passed via
+    # a data-attribute (not inlined into an onclick string) so names
+    # containing apostrophes (e.g. an "O'Brien") can't break the JS.
+    name_attr = html_lib.escape(str(r["Player"]), quote=True)
+
     rows += f"""
       <tr>
         <td class="rk">{int(r['Rank'])}</td>
-        <td class="nm">{r['Player']} <span class="tr">{trend}</span>{badge_html}</td>
+        <td class="nm"><a href="javascript:void(0)" class="player-link" data-player="{name_attr}">{r['Player']}</a> <span class="tr">{trend}</span>{badge_html}</td>
         <td class="rt">{int(r['Player Rating'])}</td>
         <td>{round(100 * r['Win %'])}%</td>
         {vs_exp}
@@ -105,6 +113,45 @@ FINE_BUCKET_WIDTH = 50
 
 log = pd.read_excel(XLSX_PATH, sheet_name="Player_Game_Log")
 log["posted_dt"] = pd.to_datetime(log["posted_dt"], errors="coerce")
+
+# ── Per-player session history (last 15 rated play-dates), for the
+# leaderboard name click-through modal ──────────────────────────────────────
+# A "session" here is a full play-date (both shootouts combined), matching
+# Bill's call. Only rated games (include_in_ratings == "Yes") count -- an
+# unrated/placeholder-involved game (e.g. a Den New Player Tryout match)
+# has no meaningful expected_win figure and never moved the player's
+# rating, so it would only muddy the beginning/ending-rating and
+# win%-vs-expected numbers for that date.
+log["date_str"] = log["posted_dt"].dt.strftime("%Y-%m-%d")
+rated_for_history = log[log["include_in_ratings"] == "Yes"].dropna(subset=["posted_dt"])
+
+player_history = {}
+for player, pdf in rated_for_history.groupby("player"):
+    sessions = []
+    for date_str, day in pdf.groupby("date_str"):
+        day = day.sort_values("posted_dt")
+        wins = int(day["is_win"].sum())
+        losses = int(len(day) - wins)
+        win_pct = wins / len(day) if len(day) else 0.0
+        exp_pct = float(day["expected_win"].mean())
+        begin_rating = round(float(day["player_pre_rating"].iloc[0]))
+        end_rating = round(float(day["player_post_rating"].iloc[-1]))
+        sessions.append({
+            "date": date_str,
+            "wins": wins,
+            "losses": losses,
+            "win_pct": win_pct,
+            "exp_pct": exp_pct,
+            "vs_exp": win_pct - exp_pct,
+            "begin_rating": begin_rating,
+            "end_rating": end_rating,
+            "net_change": round(end_rating - begin_rating),
+        })
+    # Most recent first, last 15
+    sessions.sort(key=lambda s: s["date"], reverse=True)
+    player_history[str(player)] = sessions[:15]
+
+player_history_json = json.dumps(player_history, separators=(",", ":"))
 
 rated = log[log["include_in_ratings"] == "Yes"].dropna(subset=["posted_dt"])
 window_end = rated["posted_dt"].max()
@@ -247,6 +294,42 @@ html = f"""<!DOCTYPE html>
   .foot {{ margin-top: 12px; font-size: 12px; color: #8a97a8; text-align: center; line-height: 1.6; }}
   .foot a {{ color: var(--blue-mid); }}
 
+  /* ── Player name link (opens session-history modal) ── */
+  .player-link {{ color: inherit; text-decoration: none; cursor: pointer;
+                  border-bottom: 1px dotted var(--blue-mid); }}
+  .player-link:hover {{ color: var(--blue-mid); }}
+
+  /* ── Session-history modal ── */
+  .modal-overlay {{ position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2000;
+                     display: flex; align-items: center; justify-content: center; padding: 16px; }}
+  .modal-box {{ background: #fff; border-radius: 10px; max-width: 620px; width: 100%;
+                max-height: 84vh; overflow-y: auto; box-shadow: 0 4px 24px rgba(0,0,0,0.25); }}
+  .modal-header {{ display: flex; align-items: center; justify-content: space-between;
+                    padding: 14px 18px; border-bottom: 1px solid #e8edf3;
+                    position: sticky; top: 0; background: #fff; }}
+  .modal-header h3 {{ font-size: 15px; color: var(--blue-dark); }}
+  .modal-close {{ background: none; border: none; font-size: 22px; line-height: 1;
+                   color: #8a97a8; cursor: pointer; padding: 0 4px; }}
+  .modal-close:hover {{ color: var(--blue-dark); }}
+  .modal-body {{ padding: 12px 18px 18px; }}
+  .modal-body .no-data {{ font-size: 13px; color: #8a97a8; text-align: center; padding: 20px 0; }}
+
+  .hist-table {{ width: 100%; border-collapse: collapse; font-size: 12.5px; box-shadow: none; }}
+  .hist-table th {{ background: var(--blue-light); color: var(--blue-dark); position: static;
+                     font-size: 11px; padding: 6px 5px; }}
+  .hist-table td {{ padding: 6px 5px; font-size: 12.5px; white-space: nowrap; }}
+
+  @media (max-width: 430px) {{
+    td.lp, th.lp {{ display: none; }}
+    td {{ font-size: 13.5px; padding: 7px 6px; }}
+    .hist-table th, .hist-table td {{ font-size: 11px; padding: 5px 3px; }}
+  }}
+  @media (max-width: 900px) {{
+    .decoder {{ max-width: none; flex-basis: 100%; order: 2; }}
+    .wrap {{ order: 1; }}
+    .sidebar {{ max-width: none; flex-basis: 100%; order: 3; }}
+  }}
+
   /* ── Perspective Scale sidebar ── */
   .sidebar {{ flex: 1 1 260px; max-width: 300px; order: 3; }}
   .ps-card {{ background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(31,78,121,0.10);
@@ -268,16 +351,6 @@ html = f"""<!DOCTYPE html>
   .ps-bar-track {{ flex: 1; background: #eef2f7; border-radius: 4px; height: 10px; overflow: hidden; }}
   .ps-bar-fill {{ background: var(--blue-mid); height: 100%; border-radius: 4px; }}
   .ps-bar-pct {{ font-size: 10.5px; color: var(--blue-dark); font-weight: 600; width: 30px; text-align: right; flex-shrink: 0; }}
-
-  @media (max-width: 430px) {{
-    td.lp, th.lp {{ display: none; }}
-    td {{ font-size: 13.5px; padding: 7px 6px; }}
-  }}
-  @media (max-width: 900px) {{
-    .decoder {{ max-width: none; flex-basis: 100%; order: 2; }}
-    .wrap {{ order: 1; }}
-    .sidebar {{ max-width: none; flex-basis: 100%; order: 3; }}
-  }}
 </style>
 </head>
 <body>
@@ -316,6 +389,7 @@ html = f"""<!DOCTYPE html>
       All stats reflect each player's last 60 rated games (fewer for newer players).<br>
       Qualification: at least 24 rated games within the past 180 days.<br>
       🚀/🐢 strong/weak starter &middot; 🎯/📉 strong/weak finisher (15+ play dates, hover for detail)<br>
+      Tap a player's name for their last 15 rated sessions.<br>
       <a href="index.html">All charts &amp; tools</a> &middot; updated after every play date
     </p>
   </div>
@@ -341,6 +415,16 @@ html = f"""<!DOCTYPE html>
 <div style="max-width:700px;margin:24px auto 0;padding:0 16px;font-size:0.85rem;color:#888;line-height:1.5;">
   Leaderboard shows current DEN members who have played within the last 6 months
   and on at least 6 distinct days in the past 12 months.
+</div>
+
+<div id="historyModal" class="modal-overlay" style="display:none;">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="historyModalTitle">Player History</h3>
+      <button class="modal-close" onclick="closeHistory()">&times;</button>
+    </div>
+    <div id="historyModalBody" class="modal-body"></div>
+  </div>
 </div>
 
 <script>
@@ -369,6 +453,72 @@ function forceRefresh() {{
 
 // Periodic freshness re-check for tabs left open a while.
 setInterval(forceRefresh, 5 * 60 * 1000);
+
+// ── Player session-history modal ────────────────────────────────────────
+// PLAYER_HISTORY: {{ playerName: [ {{date, wins, losses, win_pct, exp_pct,
+// vs_exp, begin_rating, end_rating, net_change}}, ... up to 15, most
+// recent first ] }}. Built server-side from each player's rated
+// (include_in_ratings == "Yes") games, grouped by full play-date (both
+// shootouts combined per Bill's call).
+const PLAYER_HISTORY = {player_history_json};
+
+function fmtSigned(n, decimals, suffix) {{
+  const val = Number(n.toFixed(decimals));
+  const sign = val > 0 ? '+' : '';
+  const cls = val > 0 ? 'pos' : (val < 0 ? 'neg' : '');
+  return `<span class="${{cls}}">${{sign}}${{val}}${{suffix || ''}}</span>`;
+}}
+
+function showHistory(name) {{
+  const sessions = PLAYER_HISTORY[name] || [];
+  document.getElementById('historyModalTitle').textContent =
+    name + ' — Last ' + sessions.length + (sessions.length === 1 ? ' Session' : ' Sessions');
+
+  const body = document.getElementById('historyModalBody');
+  if (sessions.length === 0) {{
+    body.innerHTML = '<p class="no-data">No rated session history available yet.</p>';
+  }} else {{
+    let h = `<table class="hist-table"><thead><tr>
+      <th>Date</th><th>W</th><th>L</th><th>Win %</th><th>vs Exp</th>
+      <th>Begin Rtg</th><th>End Rtg</th><th>Net Chg</th>
+    </tr></thead><tbody>`;
+    sessions.forEach(s => {{
+      h += `<tr>
+        <td>${{s.date}}</td>
+        <td>${{s.wins}}</td>
+        <td>${{s.losses}}</td>
+        <td>${{Math.round(s.win_pct * 100)}}%</td>
+        <td>${{fmtSigned(s.vs_exp * 100, 0, '%')}}</td>
+        <td>${{s.begin_rating}}</td>
+        <td>${{s.end_rating}}</td>
+        <td>${{fmtSigned(s.net_change, 0, '')}}</td>
+      </tr>`;
+    }});
+    h += '</tbody></table>';
+    body.innerHTML = h;
+  }}
+  document.getElementById('historyModal').style.display = 'flex';
+}}
+
+function closeHistory() {{
+  document.getElementById('historyModal').style.display = 'none';
+}}
+
+// Event delegation on the table body -- names are rendered server-side as
+// <a class="player-link" data-player="..."> links, so this fires for any
+// current or future row without needing to wire up each one individually.
+document.getElementById('body').addEventListener('click', (e) => {{
+  const link = e.target.closest('.player-link');
+  if (link) showHistory(link.dataset.player);
+}});
+
+// Close on backdrop click or Escape key.
+document.getElementById('historyModal').addEventListener('click', (e) => {{
+  if (e.target.id === 'historyModal') closeHistory();
+}});
+document.addEventListener('keydown', (e) => {{
+  if (e.key === 'Escape') closeHistory();
+}});
 </script>
 </body>
 </html>
@@ -377,3 +527,4 @@ setInterval(forceRefresh, 5 * 60 * 1000);
 OUT_PATH.write_text(html, encoding="utf-8")
 print(f"Saved: {OUT_PATH} ({len(lb)} players, through {data_through})")
 print(f"Perspective Scale: {len(perspective_buckets)} buckets from {len(favorite)} favorite-side games in last 120 days")
+print(f"Player history: {len(player_history)} players with session data")

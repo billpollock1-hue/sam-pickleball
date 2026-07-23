@@ -471,6 +471,44 @@ def remove_excess_players(page, names_to_remove):
         )
 
 
+class ShootoutAlreadyExistsError(Exception):
+    """
+    Raised when DEN reports a shootout already exists for today -- most
+    likely a human manually launched one after enough players signed up,
+    ahead of the automated poller's next cycle. This is a SUCCESSFUL
+    outcome from the launcher's perspective (today's shootout exists,
+    nothing more to do), not a failure -- main() catches this specifically
+    and exits cleanly rather than treating it like a real error.
+    """
+    pass
+
+
+# Not confirmed verbatim against DEN's live wording -- a deliberately
+# loose set of plausible fragments rather than one exact string, so a
+# close-but-not-identical real warning still gets caught.
+ALREADY_EXISTS_PHRASES = [
+    "already active",
+    "already exists",
+    "already been created",
+    "delete the existing",
+    "delete the current",
+]
+
+
+def _check_shootout_already_exists(page):
+    """
+    Best-effort check for DEN's already-active-shootout warning, run right
+    after attempting to submit Create Shootout. Reads the whole page body
+    rather than targeting a specific dialog element, since the exact
+    element structure of that warning hasn't been observed live yet.
+    """
+    try:
+        body_text = page.locator("body").inner_text().lower()
+    except Exception:
+        return False
+    return any(phrase in body_text for phrase in ALREADY_EXISTS_PHRASES)
+
+
 def create_shootout(page, num_courts):
     print(f"Creating shootout with {num_courts} court(s)...")
 
@@ -509,6 +547,13 @@ def create_shootout(page, num_courts):
     # matched. get_by_role targets the button specifically.
     page.get_by_role("button", name="Create Shootout", exact=True).click(timeout=5000)
     page.wait_for_timeout(1200)
+
+    if _check_shootout_already_exists(page):
+        raise ShootoutAlreadyExistsError(
+            "DEN reports a shootout already exists for today -- most "
+            "likely created manually after enough players signed up. "
+            "Not creating a duplicate."
+        )
 
     # "Sign-up sheet is still available for additional players" guard popup
     # -- ignore and proceed, per the documented routine.
@@ -790,6 +835,12 @@ def main():
             context.storage_state(path=SESSION_FILE)
             print(f"\n✓ Shootout created and started for {play_date_display}.")
             print(f"LAUNCH_RESULT: {json.dumps({'players_removed': excess_names})}")
+
+        except ShootoutAlreadyExistsError as e:
+            print(f"\n✓ {e}")
+            print(f"LAUNCH_RESULT: {json.dumps({'players_removed': [], 'already_existed': True})}")
+            # Not re-raised -- exits cleanly (code 0) so launcher_poller.py
+            # correctly treats today as done rather than retrying.
 
         except Exception as e:
             print(f"\n✗ Automated shootout creation failed: {e}")

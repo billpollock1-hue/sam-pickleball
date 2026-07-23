@@ -40,7 +40,11 @@ def is_wl(name: str) -> bool:
 def fmt_ts(ts: str) -> str:
     try:
         dt = datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
-        return f"{dt.month}/{dt.day} {dt.hour}:{dt.minute:02d}"
+        hour12 = dt.hour % 12
+        if hour12 == 0:
+            hour12 = 12
+        ampm = "AM" if dt.hour < 12 else "PM"
+        return f"{dt.month}/{dt.day} {hour12}:{dt.minute:02d} {ampm}"
     except Exception:
         return ts
 

@@ -470,7 +470,7 @@ html = f"""<!DOCTYPE html>
         <h2>The Metric: Modified Elo</h2>
         <p>Elo is a rating system originally developed for chess and widely used in competitive sports. Every player starts at 1,000. After each game, all four players&rsquo; ratings update based on the result versus what the model predicted.</p>
         <p>Your team&rsquo;s rating is the average of you and your partner. The bigger the rating gap between two teams, the more confidently the model expects the stronger side to win.</p>
-        <p>Three club-specific adjustments &mdash; covered in the appendix &mdash; make sure long tenure carries no unearned advantage and new players reach an accurate rating quickly.</p>
+        <p>Ratings reflect your full career with no window and no reset, so long tenure carries no unearned advantage &mdash; there is nothing here to correct for. One adjustment, covered in the appendix, helps new players converge to an accurate rating quickly.</p>
         <div class="pgnum">3</div>
       </div>
     </div>
@@ -951,10 +951,10 @@ M = margin multiplier = ln(margin + 1)</div>
       </div>
       <div class="face back apx">
         <div class="kicker" style="color:#8a7f6a;">Technical Appendix &middot; B, continued</div>
-        <div class="factor"><b>EXPECTATION COMPRESSION</b><span>Displayed win probabilities compress the rating gap by 0.92 before the logistic &mdash; matching observed SAM outcomes ({pct_0_100} / {pct_101_200} / {pct_201_300}%) rather than theoretical chess curves.</span></div>
+        <div class="factor"><b>EXPECTATION COMPRESSION</b><span>Affects what is shown, not what is earned: displayed win probabilities compress the rating gap by 0.92 before the logistic, matching observed SAM outcomes ({pct_0_100} / {pct_101_200} / {pct_201_300}%). The actual rating calculation does not use this compressed figure at all.</span></div>
         <div class="factor"><b>VALIDATION</b><span>Predictions are checked against outcomes across the full pool every run. Gaps between individual actual and expected win rates reflect normal variance and close as games accumulate; aggregate calibration is what the model is tuned for.</span></div>
         <div class="factor"><b>SCENARIO REPLAY</b><span>Assignment alternatives were tested against the last 90 days of real sessions &mdash; same signups, same court counts &mdash; not simulations of hypothetical players.</span></div>
-        <div class="mono" style="margin-top:3%;">Every number in this book is computed live from the underlying rating engine and regenerates automatically after each play date.</div>
+        <div class="mono" style="margin-top:3%;">Every number in this book was computed from the underlying rating engine as of the snapshot date on the cover. It is not a live document -- re-run the report to produce a new dated snapshot after major changes.</div>
                 <p style="font-style:italic;opacity:0.75;">&mdash; end &mdash;</p>
         <div class="pgnum">31</div>
       </div>

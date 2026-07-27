@@ -30,23 +30,34 @@ data_through = pd.to_datetime(lb["Last Played"]).max().strftime("%B %-d, %Y")
 # (read as "neutral" — no icon shown).
 
 SE_MIN_DATES = 15
-SE_EFFECT_THRESHOLD = 0.15
 
 se = pd.read_excel(XLSX_PATH, sheet_name="Session Effects")
 
-def se_badge(effect, n, strong_icon, weak_icon):
-    if pd.isna(effect) or pd.isna(n) or n < SE_MIN_DATES:
+# Dynamic percentile thresholds (added 2026-07-21, consistency with the
+# leaderboard's Trend badge): computed fresh each run as the 85th/15th
+# percentile of each effect among eligible players (15+ play dates at that
+# position), rather than a fixed constant -- self-calibrates rather than
+# needing periodic re-tuning.
+g1_eligible = se[se["G1 Games"] >= SE_MIN_DATES]["G1 Effect"].dropna()
+g6_eligible = se[se["G6 Games"] >= SE_MIN_DATES]["G6 Effect"].dropna()
+g1_hot = g1_eligible.quantile(0.85) if len(g1_eligible) >= 10 else None
+g1_cold = g1_eligible.quantile(0.15) if len(g1_eligible) >= 10 else None
+g6_hot = g6_eligible.quantile(0.85) if len(g6_eligible) >= 10 else None
+g6_cold = g6_eligible.quantile(0.15) if len(g6_eligible) >= 10 else None
+
+def se_badge(effect, n, strong_icon, weak_icon, hot_threshold, cold_threshold):
+    if pd.isna(effect) or pd.isna(n) or n < SE_MIN_DATES or hot_threshold is None or cold_threshold is None:
         return "", ""
-    if effect >= SE_EFFECT_THRESHOLD:
-        return strong_icon, f"Strong starter/finisher: {effect:+.0%} vs. own norm ({int(n)} play dates)"
-    if effect <= -SE_EFFECT_THRESHOLD:
-        return weak_icon, f"Weak starter/finisher: {effect:+.0%} vs. own norm ({int(n)} play dates)"
+    if effect >= hot_threshold:
+        return strong_icon, f"Strong starter/finisher: {effect:+.0f} pts vs. own norm ({int(n)} play dates)"
+    if effect <= cold_threshold:
+        return weak_icon, f"Weak starter/finisher: {effect:+.0f} pts vs. own norm ({int(n)} play dates)"
     return "", ""
 
 session_badges = {}
 for _, s in se.iterrows():
-    start_icon, start_title = se_badge(s["G1 Effect"], s["G1 Games"], "🚀", "🐢")
-    finish_icon, finish_title = se_badge(s["G6 Effect"], s["G6 Games"], "🎯", "📉")
+    start_icon, start_title = se_badge(s["G1 Effect"], s["G1 Games"], "🚀", "🐢", g1_hot, g1_cold)
+    finish_icon, finish_title = se_badge(s["G6 Effect"], s["G6 Games"], "🎯", "📉", g6_hot, g6_cold)
     session_badges[s["Player"]] = {
         "start_icon": start_icon, "start_title": start_title.replace("starter/finisher", "starter"),
         "finish_icon": finish_icon, "finish_title": finish_title.replace("starter/finisher", "finisher"),
@@ -368,12 +379,12 @@ html = f"""<!DOCTYPE html>
   <div class="decoder">
     <div class="dc-card">
       <div class="dc-title">Icon Decoder</div>
-      <div class="dc-row"><span class="dc-icon">🔥</span><span>Hot streak — last 15 games running 6+ pts hotter (win% vs. expected) than their prior 45-game baseline; requires 60+ total rated games and a game within the last 14 days</span></div>
-      <div class="dc-row"><span class="dc-icon">🧊</span><span>Cold streak — last 15 games running 6+ pts colder (win% vs. expected) than their prior 45-game baseline; requires 60+ total rated games and a game within the last 14 days</span></div>
-      <div class="dc-row"><span class="dc-icon">🚀</span><span>Strong starter — Game 1 win% vs. expected runs 15+ pts above own mid-session norm (15+ play dates)</span></div>
-      <div class="dc-row"><span class="dc-icon">🐢</span><span>Slow starter — Game 1 win% vs. expected runs 15+ pts below own mid-session norm (15+ play dates)</span></div>
-      <div class="dc-row"><span class="dc-icon">🎯</span><span>Strong finisher — last game win% vs. expected runs 15+ pts above own mid-session norm (15+ play dates)</span></div>
-      <div class="dc-row"><span class="dc-icon">📉</span><span>Fades late — last game win% vs. expected runs 15+ pts below own mid-session norm (15+ play dates)</span></div>
+      <div class="dc-row"><span class="dc-icon">🔥</span><span>Hot streak — rating rose more over the last 24 games than most currently active players (top 15%); requires 24+ games and a game within the last 14 days</span></div>
+      <div class="dc-row"><span class="dc-icon">🧊</span><span>Cold streak — rating fell more over the last 24 games than most currently active players (bottom 15%); requires 24+ games and a game within the last 14 days</span></div>
+      <div class="dc-row"><span class="dc-icon">🚀</span><span>Strong starter — rating gain in Game 1 runs notably above own mid-session norm, among the top 15% of starters (15+ play dates)</span></div>
+      <div class="dc-row"><span class="dc-icon">🐢</span><span>Slow starter — rating gain in Game 1 runs notably below own mid-session norm, among the bottom 15% of starters (15+ play dates)</span></div>
+      <div class="dc-row"><span class="dc-icon">🎯</span><span>Strong finisher — rating gain in the last game runs notably above own mid-session norm, among the top 15% of finishers (15+ play dates)</span></div>
+      <div class="dc-row"><span class="dc-icon">📉</span><span>Fades late — rating gain in the last game runs notably below own mid-session norm, among the bottom 15% of finishers (15+ play dates)</span></div>
     </div>
   </div>
 

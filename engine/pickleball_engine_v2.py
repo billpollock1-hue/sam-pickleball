@@ -1057,39 +1057,38 @@ def build_session_effects(player_log, leaderboard_players):
 
     rows = []
 
+    # Switched 2026-07-21 from a win%-vs-expected gap to average rating
+    # delta per game position, for consistency with the leaderboard's Trend
+    # badge (same underlying signal, same "compare against your own norm"
+    # logic, same dynamic percentile thresholding downstream in
+    # build_leaderboard_html.py). G2-5 (mid-session) remains the baseline;
+    # this is a within-player comparison, not against the wider pool, so it
+    # isolates a starting/finishing effect from general skill level.
     def metrics(sub):
         g = len(sub)
         if g == 0:
-            return 0, None, None, None
-        actual = float(sub["is_win"].mean())
-        expected_pct = float(sub["expected_win"].mean())
-        gap = actual - expected_pct
-        return g, actual, expected_pct, gap
+            return 0, None
+        avg_delta = float(sub["rating_change"].mean())
+        return g, avg_delta
 
     for player in sorted(log["player"].dropna().unique()):
         sub = log[log["player"] == player]
 
-        g1_games, g1_actual, g1_expected, g1_gap = metrics(sub[sub["session_segment"] == "G1"])
-        mid_games, mid_actual, mid_expected, mid_gap = metrics(sub[sub["session_segment"] == "G2-5"])
-        g6_games, g6_actual, g6_expected, g6_gap = metrics(sub[sub["session_segment"] == "G6"])
+        g1_games, g1_delta = metrics(sub[sub["session_segment"] == "G1"])
+        mid_games, mid_delta = metrics(sub[sub["session_segment"] == "G2-5"])
+        g6_games, g6_delta = metrics(sub[sub["session_segment"] == "G6"])
 
         rows.append(
             {
                 "Player": player,
                 "G1 Games": g1_games,
-                "G1 Actual Win %": g1_actual,
-                "G1 Expected Win %": g1_expected,
-                "G1 Gap": g1_gap,
+                "G1 Avg Rating Delta": g1_delta,
                 "G2-5 Games": mid_games,
-                "G2-5 Actual Win %": mid_actual,
-                "G2-5 Expected Win %": mid_expected,
-                "G2-5 Gap": mid_gap,
-                "G1 Effect": (g1_gap - mid_gap) if g1_gap is not None and mid_gap is not None else None,
+                "G2-5 Avg Rating Delta": mid_delta,
+                "G1 Effect": (g1_delta - mid_delta) if g1_delta is not None and mid_delta is not None else None,
                 "G6 Games": g6_games,
-                "G6 Actual Win %": g6_actual,
-                "G6 Expected Win %": g6_expected,
-                "G6 Gap": g6_gap,
-                "G6 Effect": (g6_gap - mid_gap) if g6_gap is not None and mid_gap is not None else None,
+                "G6 Avg Rating Delta": g6_delta,
+                "G6 Effect": (g6_delta - mid_delta) if g6_delta is not None and mid_delta is not None else None,
             }
         )
 

@@ -60,7 +60,7 @@ if no_shootout_path.exists():
 
 now_mtn  = datetime.now(ZoneInfo("America/Phoenix"))
 today    = now_mtn.date()
-CUTOFF   = time(8, 15)
+CUTOFF   = time(7, 50)
 
 if today.weekday() < 5:                        # weekday
     if now_mtn.time() >= CUTOFF:

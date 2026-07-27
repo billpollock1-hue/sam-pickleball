@@ -243,10 +243,61 @@ _ss_res = ((_trend_y - _fitted) ** 2).sum()
 _ss_tot = ((_trend_y - _trend_y.mean()) ** 2).sum()
 _r_squared = (1 - (_ss_res / _ss_tot)) if _ss_tot else 0
 _gap_ratio = (_fitted[-1] / _fitted[0]) if _fitted[0] else 1
+
+
+def build_gap_trend_svg(cb, slope, intercept, r_squared):
+    """Scatter of the real per-quarter Avg Gap values with the fitted
+    least-squares trendline drawn through them -- added 2026-07-21 to
+    replace a 5-row waypoint table + bare ratio callout that asserted a
+    trend number without letting the reader see it. Shows genuine
+    quarter-to-quarter noise (2022 Q1 low, 2024 Q1 spike, etc.) alongside
+    the steady underlying climb, plus R-squared so the strength of the
+    fit is stated honestly rather than implied."""
+    n = len(cb)
+    y_vals = cb["Avg Gap"].values
+    x_left, x_right = 45, 400
+    y_top, y_bottom = 25, 205
+    y_min, y_max = 100, 250
+
+    def xp(i):
+        return x_left + i * (x_right - x_left) / (n - 1)
+
+    def yp(v):
+        return y_bottom - (v - y_min) / (y_max - y_min) * (y_bottom - y_top)
+
+    parts = []
+    for gv in (100, 150, 200, 250):
+        gy = yp(gv)
+        parts.append(f'<line x1="{x_left}" y1="{gy}" x2="{x_right}" y2="{gy}" stroke="#d8cfba" stroke-width="0.75"/>')
+        parts.append(f'<text x="{x_left - 6}" y="{gy + 3}" text-anchor="end" font-family="\'Trebuchet MS\',sans-serif" font-size="8" fill="#8a7f6a">{gv}</text>')
+
+    fitted_x0, fitted_x1 = 0, n - 1
+    fitted_y0 = slope * fitted_x0 + intercept
+    fitted_y1 = slope * fitted_x1 + intercept
+    parts.append(f'<line x1="{xp(fitted_x0)}" y1="{yp(fitted_y0)}" x2="{xp(fitted_x1)}" y2="{yp(fitted_y1)}" stroke="#b3543a" stroke-width="2"/>')
+
+    for i, v in enumerate(y_vals):
+        parts.append(f'<circle cx="{xp(i)}" cy="{yp(v)}" r="2.5" fill="var(--navy)"/>')
+
+    label_idxs = list(range(0, n, 4))
+    if label_idxs[-1] != n - 1:
+        label_idxs.append(n - 1)
+    for i in label_idxs:
+        q = cb["Quarter"].iloc[i]
+        parts.append(f'<text x="{xp(i)}" y="{y_bottom + 14}" text-anchor="middle" font-family="\'Trebuchet MS\',sans-serif" font-size="7.5" fill="var(--ink)">{q}</text>')
+
+    parts.append(f'<text x="{x_right}" y="18" text-anchor="end" font-family="\'Trebuchet MS\',sans-serif" font-size="8.5" font-style="italic" fill="#8a7f6a">R&sup2; = {r_squared:.2f}</text>')
+
+    body = "\n          ".join(parts)
+    return f'<svg viewBox="0 0 420 230" width="100%" style="display:block;">\n          {body}\n        </svg>'
+
+
+gap_trend_svg = build_gap_trend_svg(cb, _slope, _intercept, _r_squared)
+
 if _gap_ratio >= 1.85:
     gap_change_phrase = "has nearly doubled"
 elif _gap_ratio >= 1.4:
-    gap_change_phrase = f"has grown roughly {_gap_ratio:.2f}x"
+    gap_change_phrase = f"has grown to roughly {_gap_ratio:.1f}x"
 elif _gap_ratio > 1.05:
     gap_change_phrase = f"has grown by {round((_gap_ratio - 1) * 100)}%"
 elif _gap_ratio >= 0.95:
@@ -273,742 +324,645 @@ else:
 
 # ══ HTML ══════════════════════════════════════════════════════════════════════
 html = f"""<!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Can SAM Be Improved?</title>
 <style>
   :root {{
-    --navy:   #1F4E79;
-    --navy-2: #2E75B6;
-    --paper:  #FBF7EE;
-    --ink:    #33302A;
-    --accent: #C9A84C;
-    --tan:    #f3ecdd;
+    --navy: #1e3a5f; --navy-2: #2c5282; --tan: #f4ecd8; --ink: #2d2a26;
+    --paper: #fdf9f0; --accent: #c9a44c;
   }}
-  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-  html, body {{ height: 100%; }}
+  * {{ box-sizing: border-box; }}
   body {{
-    font-family: Georgia, 'Times New Roman', serif;
-    background: radial-gradient(ellipse at center, #3d5a75 0%, #24384d 70%);
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    min-height: 100vh; padding: 24px 12px; overflow-x: hidden;
+    margin: 0; font-family: 'Georgia', 'Times New Roman', serif;
+    background: var(--paper); color: var(--ink); line-height: 1.65;
   }}
-  .book-wrap {{ perspective: 2600px; }}
-  .book {{
-    position: relative;
-    width: min(94vw, 1040px);
-    aspect-ratio: 2 / 1.38;
-    transform-style: preserve-3d;
+  .doc-wrap {{ max-width: 720px; margin: 0 auto; padding: 40px 24px 100px; }}
+  .section {{ padding: 20px 0; }}
+  .cover-section {{ text-align: center; padding: 60px 0; }}
+  .cover-section h1 {{ font-size: clamp(28px, 5vw, 44px); color: var(--navy); font-weight: normal; }}
+  .cover-section .rule {{ width: 60px; height: 2px; background: var(--accent); margin: 16px auto; }}
+  .cover-section .sub {{ font-size: 16px; color: #6b6355; margin-top: 12px; }}
+  .cover-section .hint {{ display: none; }}
+  .back-cover-section {{
+    background: var(--navy); color: #fff; text-align: center; padding: 60px 24px;
+    margin: 40px -24px 0; border-radius: 8px;
   }}
-  .page {{
-    position: absolute; top: 0; width: 50%; height: 100%;
-    background: var(--paper); padding: 4.6% 4.4%; overflow: hidden;
-  }}
-  .page.left  {{ left: 0;  border-radius: 12px 0 0 12px; box-shadow: inset -14px 0 24px -14px rgba(0,0,0,0.35); }}
-  .page.right {{ right: 0; border-radius: 0 12px 12px 0; box-shadow: inset 14px 0 24px -14px rgba(0,0,0,0.30); }}
-  .sheet {{
-    position: absolute; top: 0; left: 50%; width: 50%; height: 100%;
-    transform-origin: left center; transform-style: preserve-3d;
-    transition: transform 0.85s cubic-bezier(0.4, 0.05, 0.3, 1);
-    cursor: pointer;
-  }}
-  .sheet.flipped {{ transform: rotateY(-180deg); }}
-  .face {{
-    position: absolute; inset: 0;
-    backface-visibility: hidden; -webkit-backface-visibility: hidden;
-    background: var(--paper); padding: 4.6% 4.4%; overflow: hidden;
-  }}
-  .face.front {{ border-radius: 0 12px 12px 0; box-shadow: inset 14px 0 24px -14px rgba(0,0,0,0.30); }}
-  .face.back  {{ transform: rotateY(180deg); border-radius: 12px 0 0 12px; box-shadow: inset -14px 0 24px -14px rgba(0,0,0,0.35); }}
-
-  .cover, .darkpage {{
-    background: linear-gradient(145deg, var(--navy) 0%, #16385a 100%);
-    color: #fff; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; text-align: center; gap: 16px;
-  }}
-  .cover .rule {{ width: 56px; height: 2px; background: var(--accent); }}
-  .cover h1 {{ font-size: clamp(19px, 3vw, 32px); font-weight: normal; letter-spacing: 1px; line-height: 1.25; }}
-  .cover .sub {{ font-size: clamp(10px, 1.3vw, 14px); opacity: 0.85; font-style: italic; line-height: 1.5; }}
-  .cover .hint {{ position: absolute; bottom: 6%; font-size: 12px; opacity: 0.55; }}
-  .darkpage a {{ color: var(--accent); text-decoration: none; }}
-  .darkpage p {{ color: #e8edf3; }}
-
+  .back-cover-section h1 {{ font-weight: normal; font-size: 28px; }}
+  .back-cover-section a {{ color: var(--accent); }}
+  .back-cover-section .rule {{ width: 56px; height: 2px; background: var(--accent); margin: 0 auto 20px; }}
   .kicker {{
-    font-family: 'Trebuchet MS', Verdana, sans-serif;
-    font-size: clamp(8.5px, 0.95vw, 11.5px); letter-spacing: 2.2px; text-transform: uppercase;
-    color: var(--navy-2); margin-bottom: 3.2%;
+    font-family: 'Trebuchet MS', sans-serif; font-size: 12px; letter-spacing: 2px;
+    text-transform: uppercase; color: var(--navy-2); font-weight: bold; margin-bottom: 8px;
   }}
-  h2 {{ font-size: clamp(14.5px, 1.85vw, 22px); color: var(--navy); font-weight: normal; margin-bottom: 3.2%; line-height: 1.22; }}
-  p  {{ font-size: clamp(10px, 1.2vw, 14.5px); line-height: 1.56; color: var(--ink); margin-bottom: 3%; }}
-  .pgnum {{ position: absolute; bottom: 3.8%; font-size: 11px; color: #9a8f7a; }}
-  .page.left .pgnum, .face.back .pgnum {{ left: 6%; }}
-  .page.right .pgnum, .face.front .pgnum {{ right: 6%; }}
-
-  .stat-stack {{ display: flex; flex-direction: column; gap: 4.5%; height: 80%; justify-content: center; }}
-  .stat {{ border-left: 4px solid var(--navy-2); background: var(--tan); padding: 4% 6%; border-radius: 0 8px 8px 0; }}
-  .stat .num {{ font-size: clamp(19px, 2.8vw, 32px); color: var(--navy); }}
-  .stat .lbl {{ font-family: 'Trebuchet MS', sans-serif; font-size: clamp(8.5px, 1.05vw, 12px); color: #6d6353; margin-top: 2px; }}
-
-  .factor {{ background: var(--tan); border-radius: 8px; padding: 3.5% 5%; margin-bottom: 3.5%; }}
-  .factor b {{ display: block; font-family: 'Trebuchet MS', sans-serif; font-size: clamp(9.5px, 1.1vw, 13px); color: var(--navy); margin-bottom: 1%; }}
-  .factor span {{ font-size: clamp(9.5px, 1.15vw, 13.5px); line-height: 1.45; color: var(--ink); }}
+  h2 {{ color: var(--navy); font-weight: normal; font-size: 26px; margin: 8px 0 20px; }}
+  p {{ margin: 0 0 16px; font-size: 17px; }}
+  .factor {{ margin: 0 0 14px; }}
+  .factor b {{ color: var(--navy); margin-right: 6px; }}
+  .flaw {{ margin: 0 0 14px; }}
+  .flaw b {{ color: #b3543a; margin-right: 6px; }}
   .callout {{
-    margin-top: 4%; padding: 3.5% 5%; background: var(--navy); color: #fff;
-    border-radius: 8px; font-size: clamp(9.5px, 1.15vw, 13.5px); line-height: 1.5;
+    background: var(--navy); color: #fff; padding: 20px 24px; border-radius: 8px; margin: 20px 0;
   }}
-  .callout b {{ color: var(--accent); }}
+  .stat-stack {{ display: flex; flex-direction: column; gap: 16px; margin: 20px 0; }}
+  .stat {{ border-left: 3px solid var(--navy-2); padding-left: 16px; }}
+  .stat .num {{ font-size: 32px; color: var(--navy); }}
+  .stat .lbl {{ font-size: 14px; color: #6b6355; }}
+  table.btable, table.ps-table {{ width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 15px; }}
+  table.btable th, table.ps-table th {{ background: var(--navy-2); color: #fff; padding: 8px 10px; text-align: left; }}
+  table.btable td, table.ps-table td {{ padding: 8px 10px; border-bottom: 1px solid #e5ddc8; }}
+  .pgnum {{ display: none; }}
+  svg {{ max-width: 100%; height: auto; display: block; margin: 20px auto; }}
+  .mono {{ font-family: monospace; font-size: 13px; color: #8a7f6a; margin-top: 16px; }}
 
-  table.btable {{
-    width: 100%; border-collapse: collapse; margin-top: 2%;
-    font-family: 'Trebuchet MS', sans-serif; font-size: clamp(8.5px, 1.02vw, 12.5px);
-  }}
-  .btable th {{
-    background: var(--navy-2); color: #fff; padding: 2.2% 2%;
-    font-weight: bold; text-align: center; font-size: clamp(8px, 0.95vw, 11.5px);
-  }}
-  .btable td {{ padding: 2% 2%; text-align: center; border-bottom: 1px solid #e0d7c3; color: var(--ink); }}
-  .btable tr:nth-child(even) td {{ background: #f5efe1; }}
-  .btable tr.hl td {{ background: #eee3c5; font-weight: bold; }}
-
-  .bar {{ display: flex; align-items: center; gap: 8px; min-width: 110px; }}
-  .bar .track {{ flex: 1; position: relative; background: #e8dfc9; border-radius: 4px; height: 14px; }}
-  .bar .track span {{ position: absolute; left: 0; top: 0; bottom: 0; background: var(--navy-2); border-radius: 4px; }}
-  .bar em {{ font-style: normal; font-family: 'Trebuchet MS', sans-serif; font-size: 11.5px;
-             color: var(--navy); font-weight: bold; width: 30px; text-align: right; flex: none; }}
-
-  .flaw {{ background: var(--tan); border-left: 4px solid #b3543a; border-radius: 0 8px 8px 0;
-           padding: 3% 4.5%; margin-bottom: 3%; }}
-  .flaw b {{ display: block; font-family: 'Trebuchet MS', sans-serif; color: #8a3c26;
-             font-size: clamp(9px, 1.05vw, 12.5px); margin-bottom: 1%; }}
-  .flaw span {{ font-size: clamp(9px, 1.08vw, 13px); line-height: 1.42; }}
-
-  .phase {{ background: var(--tan); border-radius: 10px; padding: 4.5% 5.5%; margin-bottom: 4.5%;
-            border-top: 4px solid var(--accent); }}
-  .phase b {{ display: block; font-family: 'Trebuchet MS', sans-serif; color: var(--navy);
-              font-size: clamp(10.5px, 1.25vw, 14.5px); margin-bottom: 2%; }}
-  .phase span {{ font-size: clamp(9.5px, 1.15vw, 13.5px); line-height: 1.5; }}
-  .phase .metric {{ margin-top: 2.5%; font-family: 'Trebuchet MS', sans-serif;
-                    font-size: clamp(9px, 1.05vw, 12.5px); color: var(--navy-2); font-weight: bold; }}
-
-  .mono {{ font-family: 'Courier New', monospace; background: #efe7d2; border-radius: 6px;
-           padding: 3.5% 5%; font-size: clamp(9px, 1.1vw, 13px); line-height: 1.7; color: #4a4438;
-           margin-bottom: 3.5%; }}
-  .apx {{ background: repeating-linear-gradient(0deg, var(--paper), var(--paper) 26px, #f1ead9 27px); }}
-
-  .controls {{
-    margin-top: 20px; display: flex; align-items: center; gap: 18px;
-    color: #cfdae6; font-family: 'Trebuchet MS', sans-serif; font-size: 13px;
-  }}
-  .controls button {{
-    background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.3);
-    color: #fff; border-radius: 20px; padding: 7px 18px; cursor: pointer; font-size: 13px;
-  }}
-  .controls button:hover {{ background: rgba(255,255,255,0.25); }}
-  .controls button:disabled {{ opacity: 0.3; cursor: default; }}
-
-  @media (max-width: 640px) {{
-    .book {{ width: 94vw; aspect-ratio: 1 / 1.5; }}
-    .page.left {{ display: none; }}
-    .page.right, .face.front, .face.back {{ width: 100%; left: 0; right: auto; border-radius: 10px; }}
-    .sheet {{ left: 0; width: 100%; }}
-    .face.back .pgnum {{ left: auto; right: 6%; }}
-  }}
 </style>
 </head>
 <body>
+<div class="doc-wrap">
+<div class="section cover-section">
 
-<div class="book-wrap">
-  <div class="book" id="book">
+<div class="rule"></div>
+<h1>Can SAM<br/>Be Improved?</h1>
+<div class="rule"></div>
+<div class="sub">Using four years of shootout data to make<br/>every SAM session more competitive</div>
+<div class="sub" style="font-size:0.65em;opacity:0.65;margin-top:2%;">Snapshot as of July 21, 2026 — numbers reflect data through this date, not live</div>
+<div class="hint">click to open ›</div>
 
-    <div class="page left" id="baseLeft"></div>
+</div>
 
-    <!-- Back cover (revealed when all sheets are flipped) -->
-    <div class="page right darkpage">
-      <div class="rule" style="width:56px;height:2px;background:var(--accent);"></div>
-      <h1 style="font-size:clamp(16px,2.2vw,26px);font-weight:normal;">See Where You Stand</h1>
-      <p style="font-size:clamp(10px,1.25vw,14px);line-height:1.6;">
-        Every rating, every game in this book<br>is available live, updated after each play date:</p>
-      <p style="font-size:clamp(10px,1.3vw,14.5px);"><a href="https://billpollock1-hue.github.io/sam-pickleball/">Anthem SAM &middot; Live Results</a></p>
-      <p style="font-size:11px;opacity:0.6;margin-top:4%;">Data through {latest} &middot; {n_games:,} games</p>
-    </div>
+<div class="section">
 
-        <!-- sheet 0: COVER | p1 The Challenge: From Perception to Eviden -->
-    <div class="sheet">
-      <div class="face front cover">
-        <div class="rule"></div>
-        <h1>Can SAM<br>Be Improved?</h1>
-        <div class="rule"></div>
-        <div class="sub">Using four years of shootout data to make<br>every SAM session more competitive</div>
-        <div class="sub" style="font-size:0.65em;opacity:0.65;margin-top:2%;">Snapshot as of July 21, 2026 &mdash; numbers reflect data through this date, not live</div>
-        <div class="hint">click to open &#8250;</div>
-      </div>
-      <div class="face back">
-        <div class="kicker">Chapter One</div>
-        <h2>The Challenge: From Perception to Evidence</h2>
-        <p>Players in the SAM shootout have raised concerns about court competitiveness &mdash; too many lopsided games, courts that feel mismatched.</p>
-        <p>Perception is a starting point, but it is not enough to diagnose the problem or evaluate solutions. We need an objective metric: a way to measure the skill gap between teams in any given game, consistently, across thousands of games and multiple years.</p>
-        <p>Fortunately, we have exactly the raw material that requires: the historical SAM shootout data from Pickleball Den.</p>
-        <div class="pgnum">1</div>
-      </div>
-    </div>
+<div class="kicker">Chapter One</div>
+<h2>The Challenge: From Perception to Evidence</h2>
+<p>Players in the SAM shootout have raised concerns about court competitiveness — too many lopsided games, courts that feel mismatched.</p>
+<p>Perception is a starting point, but it is not enough to diagnose the problem or evaluate solutions. We need an objective metric: a way to measure the skill gap between teams in any given game, consistently, across thousands of games and multiple years.</p>
+<p>Fortunately, we have exactly the raw material that requires: the historical SAM shootout data from Pickleball Den.</p>
+<div class="pgnum">1</div>
 
-    <!-- sheet 1: p2 The Raw Material | p3 The Metric: Modified Elo -->
-    <div class="sheet">
-      <div class="face front">
-        <div class="kicker">The Raw Material</div>
-        <div class="stat-stack">
-          <div class="stat"><div class="num">{n_games:,}</div><div class="lbl">games recorded since {first_year}</div></div>
-          <div class="stat"><div class="num">{n_dates:,}</div><div class="lbl">play dates captured</div></div>
-          <div class="stat"><div class="num">{n_all_players}</div><div class="lbl">players who have taken the court</div></div>
-        </div>
-        <div class="pgnum">2</div>
-      </div>
-      <div class="face back">
-        <div class="kicker">Chapter Two</div>
-        <h2>The Metric: Modified Elo</h2>
-        <p>Elo is a rating system originally developed for chess and widely used in competitive sports. Every player starts at 1,000. After each game, all four players&rsquo; ratings update based on the result versus what the model predicted.</p>
-        <p>Your team&rsquo;s rating is the average of you and your partner. The bigger the rating gap between two teams, the more confidently the model expects the stronger side to win.</p>
-        <p>Ratings reflect your full career with no window and no reset, so long tenure carries no unearned advantage &mdash; there is nothing here to correct for. One adjustment, covered in the appendix, helps new players converge to an accurate rating quickly.</p>
-        <div class="pgnum">3</div>
-      </div>
-    </div>
+</div>
 
-    <!-- sheet 2: p4 Three Factors Drive Every Update | p5 Are Our Modified Elo Ratings Accurate? -->
-    <div class="sheet">
-      <div class="face front">
-        <div class="kicker">Three Factors Drive Every Update</div>
-        <div class="factor"><b>1 &middot; RESULT</b><span>Winning earns points; losing costs points.</span></div>
-        <div class="factor"><b>2 &middot; MARGIN</b><span>An 11&ndash;2 win moves ratings more than an 11&ndash;9 win.</span></div>
-        <div class="factor"><b>3 &middot; OPPONENT STRENGTH</b><span>Beating a strong team earns more than beating a weak one.</span></div>
-        <div class="callout">In observed SAM games, the higher-rated team wins <b>{pct_0_100}%</b> of games with a gap under 100 points, <b>{pct_101_200}%</b> in the 101&ndash;200 range, and <b>{pct_201_300}%</b> in the 201&ndash;300 range.</div>
-        <div class="pgnum">4</div>
-      </div>
-      <div class="face back">
-        <div class="kicker">Chapter Three</div>
-        <h2>Are Our Modified Elo Ratings Accurate?</h2>
-        <p>A rating is only useful if it predicts real outcomes. So before drawing any conclusions, we checked the model against every rated game in the dataset.</p>
-        <p>The pattern is exactly what a healthy rating system should show: the bigger the pre-game rating gap between two teams, the more often the favorite wins &mdash; and the more lopsided the score gets.</p>
-        <p>Small gaps produce coin-flip games decided by just a few points. Big gaps produce blowouts. The facing page shows the full relationship.</p>
-        <div class="pgnum">5</div>
-      </div>
-    </div>
+<div class="section">
 
-    <!-- sheet 3: p6 Three Factors vs. One and a Half | p7 Same Morning, Same Record, Different Rea -->
-    <div class="sheet">
-      <div class="face front">
-        <div class="kicker">Chapter Two, Continued</div>
-        <h2>Three Factors vs. One and a Half</h2>
-        <p>Elo&rsquo;s three inputs &mdash; result, margin, opponent strength &mdash; aren&rsquo;t optional extras. Opponent strength is the one that makes a rating mean anything: beat a strong team and you earn more; lose to one and you lose less. Without it, a win is just a win, with no sense of how hard it was.</p>
-        <p>Pickleball Den&rsquo;s court assignment metrics, Step and Percentage, never made that adjustment. Step is set from a player&rsquo;s last Shootout 2 finish: top two on a court moves them up a step, bottom two moves them down a step, based purely on finishing position. Picture two players who both finish bottom-two in their last Shootout 2, but against very different competition: one on a tough court, the other on a soft one. Both drop to the same Step for the next Shootout 1 &mdash; the system counts only where you finished, not who you finished behind. Percentage, the tiebreaker when Steps match, doesn&rsquo;t fix this either: it&rsquo;s just total points scored over a player&rsquo;s last 90 games, with no adjustment for who those points came against.</p>
-        <div class="callout">Elo asks three questions of every result: did you win, by how much, and against whom. DEN&rsquo;s system asks the first two and skips the third &mdash; the one that actually tells you how much a result should count.</div>
-        <div class="pgnum">6</div>
-      </div>
-      <div class="face back">
-        <div class="kicker">Chapter Two, Continued</div>
-        <h2>Same Morning, Same Record, Different Reality</h2>
-        <p>This isn&rsquo;t a hypothetical &mdash; it plays out constantly. Two players can each finish bottom-two on their court in the same Shootout 2 and land on the identical Step for the next Shootout 1, even though one of them lost to a much tougher field than the other.</p>
-        <p>Elo would separate them sharply: losing to strong competition is expected and costs the first player&rsquo;s rating very little, while the same finish against a weaker field is a real signal and costs the second player&rsquo;s rating meaningfully more. Step is simplistic &mdash; both players get the same step change, based purely on top-two/bottom-two finish, with no memory of who was actually across the net.</p>
-        <p>The result compounds every time it happens: players who consistently face tougher competition get systematically under-credited, while players who consistently face weaker competition get systematically over-credited &mdash; and neither shows up anywhere in Step or Percentage.</p>
-        <div class="pgnum">7</div>
-      </div>
-    </div>
+<div class="kicker">The Raw Material</div>
+<div class="stat-stack">
+<div class="stat"><div class="num">{n_games:,}</div><div class="lbl">games recorded since {first_year}</div></div>
+<div class="stat"><div class="num">{n_dates:,}</div><div class="lbl">play dates captured</div></div>
+<div class="stat"><div class="num">{n_all_players}</div><div class="lbl">players who have taken the court</div></div>
+</div>
+<div class="pgnum">2</div>
 
-    <!-- sheet 4: p8 Rating Gap vs. Real Outcomes | p9 The Evidence: A Growing Competitiveness  -->
-    <div class="sheet">
-      <div class="face front">
-        <div class="kicker">Rating Gap vs. Real Outcomes</div>
-        <table class="btable">
-          <tr><th>Team Rating Gap</th><th>Favorite Wins</th><th>Decided by 1&ndash;3 pts</th><th>Decided by 9&ndash;11 pts</th></tr>
+</div>
+
+<div class="section">
+
+<div class="kicker">Chapter Two</div>
+<h2>The Metric: Modified Elo</h2>
+<p>Elo is a rating system originally developed for chess and widely used in competitive sports. Every player starts at 1,000. After each game, all four players’ ratings update based on the result versus what the model predicted.</p>
+<p>Your team’s rating is the average of you and your partner. The bigger the rating gap between two teams, the more confidently the model expects the stronger side to win.</p>
+<p>One club-specific adjustment, covered in the appendix, helps new players converge to an accurate rating quickly.</p>
+<div class="pgnum">3</div>
+
+</div>
+
+<div class="section">
+
+<div class="kicker">Three Factors Drive Every Update</div>
+<div class="factor"><b>1 · RESULT</b><span>Winning earns points; losing costs points.</span></div>
+<div class="factor"><b>2 · MARGIN</b><span>An 11–2 win moves ratings more than an 11–9 win.</span></div>
+<div class="factor"><b>3 · OPPONENT STRENGTH</b><span>Beating a strong team earns more than beating a weak one.</span></div>
+<div class="callout">In observed SAM games, the higher-rated team wins <b>{pct_0_100}%</b> of games with a gap under 100 points, <b>{pct_101_200}%</b> in the 101–200 range, and <b>{pct_201_300}%</b> in the 201–300 range.</div>
+<div class="pgnum">4</div>
+
+</div>
+
+<div class="section">
+
+<div class="kicker">Chapter Three</div>
+<h2>Are Our Modified Elo Ratings Accurate?</h2>
+<p>A rating is only useful if it predicts real outcomes. So before drawing any conclusions, we checked the model against every rated game in the dataset.</p>
+<p>The pattern is exactly what a healthy rating system should show: the bigger the pre-game rating gap between two teams, the more often the favorite wins — and the more lopsided the score gets.</p>
+<p>Small gaps produce coin-flip games decided by just a few points. Big gaps produce blowouts. The facing page shows the full relationship.</p>
+<div class="pgnum">5</div>
+
+</div>
+
+<div class="section">
+
+<div class="kicker">Chapter Two, Continued</div>
+<h2>Three Factors vs. One and a Half</h2>
+<p>Elo’s three inputs — result, margin, opponent strength — aren’t optional extras. Opponent strength is the one that makes a rating mean anything: beat a strong team and you earn more; lose to one and you lose less. Without it, a win is just a win, with no sense of how hard it was.</p>
+<p>Pickleball Den’s court assignment metrics, Step and Percentage, never make that adjustment. Step is set from a player’s last Shootout 2 finish: top two on a court moves them toward the top court next time, bottom two moves them toward the bottom — based purely on finishing position. Picture two players on the same date: one finishes bottom-two on the toughest court and moves toward a worse court next time; another finishes top-two on the weakest court and moves toward a better court next time. Both land on the same Step for the next Shootout 1 — despite one facing that day’s toughest competition and the other its weakest. Percentage, the tiebreaker when Steps match, doesn’t fix this either: it’s just total points scored over a player’s last 90 games, with no adjustment for who those points came against.</p>
+<div class="callout">Elo asks three questions of every result: did you win, by how much, and against whom. DEN’s system fully answers the first and only partially answers the second — Percentage counts total points, not points earned against strong or weak competition — and skips the third entirely: the one that actually tells you how much a result should count.</div>
+<div class="pgnum">6</div>
+
+</div>
+
+<div class="section">
+
+<div class="kicker">Chapter Two, Continued</div>
+<h2>Same Morning, Same Record, Different Reality</h2>
+<p>This isn’t a hypothetical — it plays out constantly. Two players can each finish bottom-two on the same-numbered court, on different play dates, and land on the identical Step for their next Shootout 1 — even though one faced a much tougher field that day than the other did.</p>
+<p>Elo would separate them sharply: losing to strong competition is expected and costs the first player’s rating very little, while the same finish against a weaker field is a real signal and costs the second player’s rating meaningfully more. Step is simplistic — both players get the same step change, based purely on top-two/bottom-two finish, with no memory of who was actually across the net.</p>
+<p>The result compounds every time it happens: players who consistently face tougher competition get systematically under-credited, while players who consistently face weaker competition get systematically over-credited — and neither shows up anywhere in Step or Percentage.</p>
+<div class="pgnum">7</div>
+
+</div>
+
+<div class="section">
+
+<div class="kicker">Rating Gap vs. Real Outcomes</div>
+<table class="btable">
+<tr><th>Team Rating Gap</th><th>Favorite Wins</th><th>Decided by 1–3 pts</th><th>Decided by 9–11 pts</th></tr>
           {gap_rows}
         </table>
-        <p style="font-size:clamp(8.5px,1vw,12px);color:#8a7f6a;margin-top:3%;">All rated games, {first_year}&ndash;present. Close games fade and blowouts grow as the gap widens.</p>
-        <div class="pgnum">8</div>
-      </div>
-      <div class="face back">
-        <div class="kicker">Chapter Four</div>
-        <h2>The Evidence: A Growing Competitiveness Problem</h2>
-        <p>With a trustworthy measuring stick, we can now measure match quality directly. &ldquo;Match gap&rdquo; is the rating difference between the two teams in a game &mdash; smaller means more evenly matched.</p>
-        <p>The trend is unmistakable. The average match gap {gap_change_phrase} since early {first_year + 0 if first_year >= 2022 else 2022}, and games that qualify as closely matched &mdash; a gap under 200 points &mdash; have fallen from {pct_lt200_first}% of all games to {pct_lt200_last}%.</p>
-        <p>Raw scores tell a quieter version of the same story: games decided by 3 points or less have {'fallen' if pct_close_last <= pct_close_first else 'risen'} from {pct_close_first}% to {pct_close_last}% of all matches, while blowouts (9+ points) have {'risen' if pct_blowout_last >= pct_blowout_first else 'fallen'} from {pct_blowout_first}% to {pct_blowout_last}%.</p>
-        <p>Mismatched games are no longer rare exceptions. They are now the norm for roughly 4 in 10 matches.</p>
-        <div class="pgnum">9</div>
-      </div>
-    </div>
+<p style="font-size:clamp(8.5px,1vw,12px);color:#8a7f6a;margin-top:3%;">All rated games, {first_year}–present. Close games fade and blowouts grow as the gap widens.</p>
+<div class="pgnum">8</div>
 
-    <!-- sheet 5: p10 Average Match Gap by Quarter | p11 The Root Cause: A Wider Player Pool -->
-    <div class="sheet">
-      <div class="face front">
-        <div class="kicker">Average Match Gap by Quarter</div>
-        <table class="btable">
-          <tr><th>Quarter</th><th>Avg Match Gap</th><th>Games &lt;200 Gap</th></tr>
-          {balance_rows}
-        </table>
-        <div class="callout" style="margin-top:5%;">The average court matchup today is {gap_uneven_phrase} as it was in early {first_year if first_year >= 2022 else 2022}.</div>
-        <div class="pgnum">10</div>
-      </div>
-      <div class="face back">
-        <div class="kicker">Chapter Five</div>
-        <h2>The Root Cause: A Wider Player Pool</h2>
-        <p>The driver is not a shortage of strong players &mdash; it is that the SAM player pool has grown dramatically more diverse in skill.</p>
-        <p>Today&rsquo;s leaderboard spans {n_active} active players &mdash; those with at least 24 rated games played within the past 180 days. The rating spread across that group is {lb_range:,} points, top to bottom.</p>
-        <p>At that dispersion, the strongest player would be expected to beat the bottom of the leaderboard well over 99% of the time. Placing 12&ndash;20 players of this range onto 3&ndash;5 courts is genuinely hard &mdash; and the current assignment method wasn&rsquo;t built for it.</p>
-        <div class="pgnum">11</div>
-      </div>
-    </div>
+</div>
 
-    <!-- sheet 6: p12 Then vs. Now | p13 How Courts Are Assigned Today -->
-    <div class="sheet">
-      <div class="face front">
-        <div class="kicker">Then vs. Now</div>
-        <div class="stat-stack">
-          <div class="stat"><div class="num">{round(q_first['Avg Gap'])} &rarr; {round(q_last['Avg Gap'])}</div><div class="lbl">average match gap, {show_q[0]} vs. {show_q[-1]}</div></div>
-          <div class="stat"><div class="num">~26 &rarr; {n_active}</div><div class="lbl">active leaderboard players</div></div>
-          <div class="stat"><div class="num">{lb_range:,} pts</div><div class="lbl">rating spread across today's leaderboard</div></div>
-        </div>
-        <div class="pgnum">12</div>
-      </div>
-      <div class="face back">
-        <div class="kicker">Chapter Six</div>
-        <h2>How Courts Are Assigned Today</h2>
-        <p>The DEN makes Shootout 1 court assignments using two numbers. <b>Step</b> is a court-movement counter: finish in the top two of your court and it ticks down; finish in the bottom two and it ticks up &mdash; based entirely on your <i>last</i> play date, however long ago that was.</p>
-        <p><b>Percentage</b> breaks ties within a step: total points scored divided by maximum possible, over your last 90 games (~15 play dates), all weighted equally.</p>
-        <p>For Shootout 2, SAM currently has the DEN set to move the top two on each court up a court and the bottom two down &mdash; the &ldquo;2-up/2-back&rdquo; rule. It&rsquo;s a choice, not the only option: the DEN also offers &ldquo;1-up/1-back/2-stay,&rdquo; which SAM isn&rsquo;t currently using.</p>
-        <div style="margin-top:4%;">
-          <div style="font-family:'Trebuchet MS',sans-serif;font-size:clamp(8.5px,1vw,11px);color:var(--navy);font-weight:bold;text-align:center;margin-bottom:2%;">Step values in circulation after Shootout 2, by court count</div>
-          <svg viewBox="0 0 420 230" width="100%" style="display:block;">
-            <text x="60" y="14" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="10" font-weight="bold" fill="var(--navy)">2 courts</text>
-            <rect x="39" y="128" width="12" height="42" rx="2" fill="var(--navy-2)"/>
-            <text x="45" y="122" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
-            <text x="45" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">1</text>
-            <rect x="54" y="149" width="12" height="21" rx="2" fill="#b3543a"/>
-            <text x="60" y="143" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">2</text>
-            <text x="60" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">2</text>
-            <rect x="69" y="149" width="12" height="21" rx="2" fill="#b3543a"/>
-            <text x="75" y="143" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">2</text>
-            <text x="75" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">3</text>
-            <text x="60" y="204" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="#8a7f6a">3 step values</text>
-            <text x="60" y="68" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="9.5" font-weight="bold" fill="var(--navy)">avg step 1.75</text>
+<div class="section">
 
-            <text x="160" y="14" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="10" font-weight="bold" fill="var(--navy)">3 courts</text>
-            <rect x="131.5" y="128" width="12" height="42" rx="2" fill="var(--navy-2)"/>
-            <text x="137.5" y="122" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
-            <text x="137.5" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">1</text>
-            <rect x="146.5" y="128" width="12" height="42" rx="2" fill="var(--navy-2)"/>
-            <text x="152.5" y="122" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
-            <text x="152.5" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">2</text>
-            <rect x="161.5" y="149" width="12" height="21" rx="2" fill="#b3543a"/>
-            <text x="167.5" y="143" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">2</text>
-            <text x="167.5" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">3</text>
-            <rect x="176.5" y="149" width="12" height="21" rx="2" fill="#b3543a"/>
-            <text x="182.5" y="143" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">2</text>
-            <text x="182.5" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
-            <text x="160" y="204" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="#8a7f6a">4 step values</text>
-            <text x="160" y="68" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="9.5" font-weight="bold" fill="var(--navy)">avg step 2.17</text>
+<div class="kicker">Chapter Four</div>
+<h2>The Evidence: A Growing Competitiveness Problem</h2>
+<p>With a trustworthy measuring stick, we can now measure match quality directly. “Match gap” is the rating difference between the two teams in a game — smaller means more evenly matched.</p>
+<p>The trend is unmistakable. The average match gap {gap_change_phrase} since early {first_year + 0 if first_year >= 2022 else 2022}, and games that qualify as closely matched — a gap under 200 points — have fallen from {pct_lt200_first}% of all games to {pct_lt200_last}%.</p>
+<p>Raw scores tell a quieter version of the same story: games decided by 3 points or less have {'fallen' if pct_close_last <= pct_close_first else 'risen'} from {pct_close_first}% to {pct_close_last}% of all matches, while blowouts (9+ points) have {'risen' if pct_blowout_last >= pct_blowout_first else 'fallen'} from {pct_blowout_first}% to {pct_blowout_last}%.</p>
+<p>Mismatched games are no longer rare exceptions. They are now the norm for roughly 4 in 10 matches.</p>
+<div class="pgnum">9</div>
 
-            <text x="260" y="14" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="10" font-weight="bold" fill="var(--navy)">4 courts</text>
-            <rect x="224" y="128" width="12" height="42" rx="2" fill="var(--navy-2)"/>
-            <text x="230" y="122" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
-            <text x="230" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">1</text>
-            <rect x="239" y="128" width="12" height="42" rx="2" fill="var(--navy-2)"/>
-            <text x="245" y="122" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
-            <text x="245" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">2</text>
-            <rect x="254" y="128" width="12" height="42" rx="2" fill="var(--navy-2)"/>
-            <text x="260" y="122" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
-            <text x="260" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">3</text>
-            <rect x="269" y="149" width="12" height="21" rx="2" fill="#b3543a"/>
-            <text x="275" y="143" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">2</text>
-            <text x="275" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
-            <rect x="284" y="149" width="12" height="21" rx="2" fill="#b3543a"/>
-            <text x="290" y="143" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">2</text>
-            <text x="290" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">5</text>
-            <text x="260" y="204" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="#8a7f6a">5 step values</text>
-            <text x="260" y="68" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="9.5" font-weight="bold" fill="var(--navy)">avg step 2.63</text>
+</div>
 
-            <text x="360" y="14" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="10" font-weight="bold" fill="var(--navy)">5 courts</text>
-            <rect x="316.5" y="128" width="12" height="42" rx="2" fill="var(--navy-2)"/>
-            <text x="322.5" y="122" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
-            <text x="322.5" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">1</text>
-            <rect x="331.5" y="128" width="12" height="42" rx="2" fill="var(--navy-2)"/>
-            <text x="337.5" y="122" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
-            <text x="337.5" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">2</text>
-            <rect x="346.5" y="128" width="12" height="42" rx="2" fill="var(--navy-2)"/>
-            <text x="352.5" y="122" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
-            <text x="352.5" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">3</text>
-            <rect x="361.5" y="128" width="12" height="42" rx="2" fill="var(--navy-2)"/>
-            <text x="367.5" y="122" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
-            <text x="367.5" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">4</text>
-            <rect x="376.5" y="149" width="12" height="21" rx="2" fill="#b3543a"/>
-            <text x="382.5" y="143" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">2</text>
-            <text x="382.5" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">5</text>
-            <rect x="391.5" y="149" width="12" height="21" rx="2" fill="#b3543a"/>
-            <text x="397.5" y="143" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">2</text>
-            <text x="397.5" y="186" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="var(--ink)">6</text>
-            <text x="360" y="204" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="8.5" fill="#8a7f6a">6 step values</text>
-            <text x="360" y="68" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="9.5" font-weight="bold" fill="var(--navy)">avg step 3.10</text>
-          </svg>
-          <div style="font-family:'Trebuchet MS',sans-serif;font-size:clamp(7.5px,0.85vw,9.5px);color:#8a7f6a;text-align:center;margin-top:1%;">Players per step (top) &middot; step number (bottom). More courts means more step values &mdash; and a higher average step &mdash; in play.</div>
-        </div>
-        <div class="pgnum">13</div>
-      </div>
-    </div>
+<div class="section">
 
-    <!-- sheet 7: p14 Structural Weaknesses | p15 The Net Result -->
-    <div class="sheet">
-      <div class="face front">
-        <div class="kicker">Structural Weaknesses</div>
-        <div class="flaw"><b>SINGLE-EVENT MEMORY</b><span>Step is always tied to one event &mdash; the second shootout of your last session &mdash; not any broader track record.</span></div>
-        <div class="flaw"><b>COURT-COUNT BLIND</b><span>A step earned on a 5-court day can penalize you when your next match is on a 3-court day. High-turnout days systematically punish; low-turnout days reward.</span></div>
-        <div class="flaw"><b>OPPONENT BLIND</b><span>A tough loss to the strongest players and an easy win over the weakest can land you on the same Step. Points scored are never adjusted for who you played or partnered with.</span></div>
-        <div class="flaw"><b>NO RECENCY REQUIREMENT</b><span>The step factor can be derived from a shootout that took place yesterday or three months ago.</span></div>
-        <div class="pgnum">14</div>
-      </div>
-      <div class="face back">
-        <div class="kicker">Chapter Seven</div>
-        <h2>The Net Result</h2>
-        <p>We replayed the last 90 days of actual sessions and measured the skill spread inside each court &mdash; lower means the four players on a court are more evenly matched.</p>
-        <p>Under the current system, courts average a {den_s1}-point rating spread in Shootout 1. After the 2-up/2-back shuffle &mdash; which moves about {den_move} of all players &mdash; the spread <i>widens</i> to {den_s2}.</p>
-        <p>Read that again: the movement rule designed to sort players actually leaves courts <b>less balanced</b> than they started. Most of that movement is mechanical, not earned.</p>
-        <div class="pgnum">15</div>
-      </div>
-    </div>
+<div class="kicker">Average Match Gap by Quarter</div>
+<div style="font-family:'Trebuchet MS',sans-serif;font-size:clamp(8.5px,1vw,11px);color:var(--navy);font-weight:bold;text-align:center;margin-bottom:2%;">Average match rating gap, by quarter</div>
+        {gap_trend_svg}
+        <div class="callout" style="margin-top:5%;">The trendline shows the average match gap growing steadily — {gap_uneven_phrase} today as it was in early {first_year if first_year >= 2022 else 2022} — despite real quarter-to-quarter noise.</div>
+<div class="pgnum">10</div>
 
-    <!-- sheet 8: p16 Chapter Seven, Continued - Case Study, A | p17 Case Study - May 4, 2026 -->
-    <div class="sheet">
-      <div class="face front">
-        <div class="kicker">Chapter Seven, Continued &mdash; Case Study, April 2, 2026</div>
-        <p>April 2, 2026 was a three-court day in SAM. The DEN&rsquo;s court assignments were a mess.</p>
-        <svg viewBox="0 0 420 500" width="100%" style="display:block;">
-          <text x="135" y="14" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="12" font-weight="bold" fill="var(--navy)">True rank before S1</text>
-          <text x="340" y="14" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="12" font-weight="bold" fill="var(--navy)">Shootout 1 pools</text>
-          <rect x="270" y="26" width="140" height="140" rx="6" fill="var(--tan)" stroke="var(--navy-2)" stroke-width="0.75"/>
-          <text x="280" y="42" font-family="'Trebuchet MS',sans-serif" font-size="11" font-weight="bold" fill="var(--navy)">Pool 1</text>
-          <rect x="270" y="181" width="140" height="140" rx="6" fill="var(--tan)" stroke="var(--navy-2)" stroke-width="0.75"/>
-          <text x="280" y="197" font-family="'Trebuchet MS',sans-serif" font-size="11" font-weight="bold" fill="var(--navy)">Pool 2</text>
-          <rect x="270" y="336" width="140" height="140" rx="6" fill="var(--tan)" stroke="var(--navy-2)" stroke-width="0.75"/>
-          <text x="280" y="352" font-family="'Trebuchet MS',sans-serif" font-size="11" font-weight="bold" fill="var(--navy)">Pool 3</text>
-          <line x1="135" y1="30" x2="290" y2="275" stroke="#E8871E" stroke-width="2"/>
-          <line x1="135" y1="70" x2="290" y2="307" stroke="#E8871E" stroke-width="2"/>
-          <line x1="135" y1="110" x2="290" y2="462" stroke="#b3543a" stroke-width="2.25"/>
-          <line x1="135" y1="150" x2="290" y2="211" stroke="#E8871E" stroke-width="2"/>
-          <line x1="135" y1="190" x2="290" y2="366" stroke="#E8871E" stroke-width="2"/>
-          <line x1="135" y1="230" x2="290" y2="120" stroke="#E8871E" stroke-width="2"/>
-          <line x1="135" y1="270" x2="290" y2="56" stroke="#E8871E" stroke-width="2"/>
-          <line x1="135" y1="310" x2="290" y2="88" stroke="#E8871E" stroke-width="2"/>
-          <line x1="135" y1="350" x2="290" y2="152" stroke="#b3543a" stroke-width="2.25"/>
-          <line x1="135" y1="390" x2="290" y2="430" stroke="#1E8449" stroke-width="1.5"/>
-          <line x1="135" y1="430" x2="290" y2="398" stroke="#1E8449" stroke-width="1.5"/>
-          <line x1="135" y1="470" x2="290" y2="243" stroke="#E8871E" stroke-width="2"/>
-          <text x="125" y="30" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">L. Zolnierczyk</text>
-          <text x="125" y="70" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">B. Pollock</text>
-          <text x="125" y="110" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">A. Nagyova</text>
-          <text x="125" y="150" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">C. McCormick</text>
-          <text x="125" y="190" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">D. Grubb</text>
-          <text x="125" y="230" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">T. Orr</text>
-          <text x="125" y="270" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">P. Barnett</text>
-          <text x="125" y="310" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">G. Egli</text>
-          <text x="125" y="350" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">J. Milberg</text>
-          <text x="125" y="390" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">W. Carroll</text>
-          <text x="125" y="430" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">D. Witulski</text>
-          <text x="125" y="470" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">J. Peterson</text>
-          <circle cx="135" cy="30" r="2.5" fill="var(--navy)"/>
-          <circle cx="135" cy="70" r="2.5" fill="var(--navy)"/>
-          <circle cx="135" cy="110" r="2.5" fill="var(--navy)"/>
-          <circle cx="135" cy="150" r="2.5" fill="var(--navy)"/>
-          <circle cx="135" cy="190" r="2.5" fill="var(--navy)"/>
-          <circle cx="135" cy="230" r="2.5" fill="var(--navy)"/>
-          <circle cx="135" cy="270" r="2.5" fill="var(--navy)"/>
-          <circle cx="135" cy="310" r="2.5" fill="var(--navy)"/>
-          <circle cx="135" cy="350" r="2.5" fill="var(--navy)"/>
-          <circle cx="135" cy="390" r="2.5" fill="var(--navy)"/>
-          <circle cx="135" cy="430" r="2.5" fill="var(--navy)"/>
-          <circle cx="135" cy="470" r="2.5" fill="var(--navy)"/>
-          <circle cx="290" cy="56" r="2.5" fill="var(--navy)"/>
-          <circle cx="290" cy="88" r="2.5" fill="var(--navy)"/>
-          <circle cx="290" cy="120" r="2.5" fill="var(--navy)"/>
-          <circle cx="290" cy="152" r="2.5" fill="var(--navy)"/>
-          <circle cx="290" cy="211" r="2.5" fill="var(--navy)"/>
-          <circle cx="290" cy="243" r="2.5" fill="var(--navy)"/>
-          <circle cx="290" cy="275" r="2.5" fill="var(--navy)"/>
-          <circle cx="290" cy="307" r="2.5" fill="var(--navy)"/>
-          <circle cx="290" cy="366" r="2.5" fill="var(--navy)"/>
-          <circle cx="290" cy="398" r="2.5" fill="var(--navy)"/>
-          <circle cx="290" cy="430" r="2.5" fill="var(--navy)"/>
-          <circle cx="290" cy="462" r="2.5" fill="var(--navy)"/>
-          <text x="210" y="488" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="10.5" fill="var(--ink)">Green: matched &#183; Amber: 1 tier off &#183; Red: 2 tiers off</text>
-        </svg>
-        <div class="pgnum">16</div>
-      </div>
-      <div class="face back">
-        <div class="kicker">Case Study &mdash; May 4, 2026</div>
-        <svg viewBox="0 0 420 500" width="100%" style="display:block;">
-          <text x="135" y="14" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="12" font-weight="bold" fill="var(--navy)">True rank after S1</text>
-          <text x="340" y="14" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="12" font-weight="bold" fill="var(--navy)">Shootout 2 pools</text>
-          <rect x="270" y="26" width="140" height="140" rx="6" fill="var(--tan)" stroke="var(--navy-2)" stroke-width="0.75"/>
-          <text x="280" y="42" font-family="'Trebuchet MS',sans-serif" font-size="11" font-weight="bold" fill="var(--navy)">Pool 1</text>
-          <rect x="270" y="181" width="140" height="140" rx="6" fill="var(--tan)" stroke="var(--navy-2)" stroke-width="0.75"/>
-          <text x="280" y="197" font-family="'Trebuchet MS',sans-serif" font-size="11" font-weight="bold" fill="var(--navy)">Pool 2</text>
-          <rect x="270" y="336" width="140" height="140" rx="6" fill="var(--tan)" stroke="var(--navy-2)" stroke-width="0.75"/>
-          <text x="280" y="352" font-family="'Trebuchet MS',sans-serif" font-size="11" font-weight="bold" fill="var(--navy)">Pool 3</text>
-          <line x1="135" y1="30" x2="290" y2="56" stroke="#1E8449" stroke-width="1.5"/>
-          <line x1="135" y1="70" x2="290" y2="88" stroke="#1E8449" stroke-width="1.5"/>
-          <line x1="135" y1="110" x2="290" y2="307" stroke="#E8871E" stroke-width="2"/>
-          <line x1="135" y1="150" x2="290" y2="243" stroke="#E8871E" stroke-width="2"/>
-          <line x1="135" y1="190" x2="290" y2="366" stroke="#E8871E" stroke-width="2"/>
-          <line x1="135" y1="230" x2="290" y2="152" stroke="#E8871E" stroke-width="2"/>
-          <line x1="135" y1="270" x2="290" y2="120" stroke="#E8871E" stroke-width="2"/>
-          <line x1="135" y1="310" x2="290" y2="430" stroke="#E8871E" stroke-width="2"/>
-          <line x1="135" y1="350" x2="290" y2="211" stroke="#E8871E" stroke-width="2"/>
-          <line x1="135" y1="390" x2="290" y2="462" stroke="#1E8449" stroke-width="1.5"/>
-          <line x1="135" y1="430" x2="290" y2="275" stroke="#E8871E" stroke-width="2"/>
-          <line x1="135" y1="470" x2="290" y2="398" stroke="#1E8449" stroke-width="1.5"/>
-          <text x="125" y="30" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">E. Kramer</text>
-          <text x="125" y="70" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">P. Barnett</text>
-          <text x="125" y="110" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">P. Rillero</text>
-          <text x="125" y="150" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">S. Ludick</text>
-          <text x="125" y="190" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">J. Barroso</text>
-          <text x="125" y="230" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">L. Zolnierczyk</text>
-          <text x="125" y="270" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">D. Christensen</text>
-          <text x="125" y="310" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">C. McCormick</text>
-          <text x="125" y="350" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">K. Backstrom</text>
-          <text x="125" y="390" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">A. Tinstman</text>
-          <text x="125" y="430" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">N. Whitson</text>
-          <text x="125" y="470" text-anchor="end" dominant-baseline="central" font-family="'Trebuchet MS',sans-serif" font-size="11" fill="var(--ink)">P. Batie</text>
-          <circle cx="135" cy="30" r="2.5" fill="var(--navy)"/>
-          <circle cx="135" cy="70" r="2.5" fill="var(--navy)"/>
-          <circle cx="135" cy="110" r="2.5" fill="var(--navy)"/>
-          <circle cx="135" cy="150" r="2.5" fill="var(--navy)"/>
-          <circle cx="135" cy="190" r="2.5" fill="var(--navy)"/>
-          <circle cx="135" cy="230" r="2.5" fill="var(--navy)"/>
-          <circle cx="135" cy="270" r="2.5" fill="var(--navy)"/>
-          <circle cx="135" cy="310" r="2.5" fill="var(--navy)"/>
-          <circle cx="135" cy="350" r="2.5" fill="var(--navy)"/>
-          <circle cx="135" cy="390" r="2.5" fill="var(--navy)"/>
-          <circle cx="135" cy="430" r="2.5" fill="var(--navy)"/>
-          <circle cx="135" cy="470" r="2.5" fill="var(--navy)"/>
-          <circle cx="290" cy="56" r="2.5" fill="var(--navy)"/>
-          <circle cx="290" cy="88" r="2.5" fill="var(--navy)"/>
-          <circle cx="290" cy="307" r="2.5" fill="var(--navy)"/>
-          <circle cx="290" cy="243" r="2.5" fill="var(--navy)"/>
-          <circle cx="290" cy="366" r="2.5" fill="var(--navy)"/>
-          <circle cx="290" cy="152" r="2.5" fill="var(--navy)"/>
-          <circle cx="290" cy="120" r="2.5" fill="var(--navy)"/>
-          <circle cx="290" cy="430" r="2.5" fill="var(--navy)"/>
-          <circle cx="290" cy="211" r="2.5" fill="var(--navy)"/>
-          <circle cx="290" cy="462" r="2.5" fill="var(--navy)"/>
-          <circle cx="290" cy="275" r="2.5" fill="var(--navy)"/>
-          <circle cx="290" cy="398" r="2.5" fill="var(--navy)"/>
-          <text x="210" y="488" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-size="10.5" fill="var(--ink)">Green: matched &#183; Amber: 1 tier off</text>
-        </svg>
-        <div class="pgnum">17</div>
-      </div>
-    </div>
+</div>
 
-    <!-- sheet 9: p18 Perfect, Then Scrambled | p19 Pool 1 Isn't Pool 1 -->
-    <div class="sheet">
-      <div class="face front">
-        <div class="kicker">Chapter Seven, Continued</div>
-        <h2>Perfect, Then Scrambled</h2>
-        <p>On May 4, 2026, the DEN got the Shootout 1 court assignments exactly right. Every one of twelve players landed in the pool matching their true skill rank &mdash; zero mismatches. Step and Percentage worked as designed.</p>
-        <p>Then 2-up/2-back moved players for Shootout 2, using only that morning's three games as its signal. The result: eight of twelve players &mdash; two-thirds of the field &mdash; landed in the wrong pool.</p>
-        <p>Pool 1 shows the damage directly. Eric Kramer and Peter Barnett, the two highest-rated players in the field, ended up paired together by the shuffle and beat Dwight Christensen and Lidia Zolnierczyk &mdash; correctly separated into a lower tier just one session earlier &mdash; <b>11&ndash;4</b>. The movement rule undid a correct assignment using less information than the assignment it replaced.</p>
-        <div class="pgnum">18</div>
-      </div>
-      <div class="face back">
-        <div class="kicker">Chapter Seven, Continued</div>
-        <h2>Pool 1 Isn&rsquo;t Pool 1</h2>
-        <p>On a two-court day, reaching Pool 1 means finishing in the top half of eight players. On a three-court day, it means the top third of twelve. On a five-court day, it means the top fifth of twenty &mdash; a genuinely higher bar.</p>
-        <p>Step doesn&rsquo;t know the difference. A step earned in Pool 1 on a slow, low-turnout day carries the same weight as one earned in Pool 1 on a big, high-turnout day, even though the second is a meaningfully harder accomplishment.</p>
-        <p>The same blindness runs the other direction too: falling to the bottom pool on a big day assigns a higher step number outright than falling to the bottom pool on a small day ever can, even though both are the same relative result &mdash; last place in the pool. That gap only closes at your next play date, once a fresh top-two or bottom-two finish moves the counter again.</p>
-        <div class="pgnum">19</div>
-      </div>
-    </div>
+<div class="section">
 
-    <!-- sheet 10: p20 What We Tested - and How We Scored It | p21 Within-Court Skill Spread - Current Syst -->
-    <div class="sheet">
-      <div class="face front">
-        <div class="kicker">Chapter Eight</div>
-        <h2>What We Tested &mdash; and How We Scored It</h2>
-        <p>There is no shortage of ideas for assigning courts. To compare them fairly, we replayed the last 90 days of actual shootouts &mdash; same players, same signups, same court counts &mdash; under each candidate method.</p>
-        <p>Every method gets two scores. <b>Court tightness:</b> how close in skill the four players on each court are &mdash; a smaller spread means fairer games. <b>Shuffle:</b> what share of players change courts between the two sessions &mdash; some movement is healthy; constant mechanical reshuffling is not.</p>
-        <p>Today&rsquo;s system is the baseline to beat: a combined spread of {den_comb}, with {den_move} of players moving mid-morning.</p>
-        <div class="pgnum">20</div>
-      </div>
-      <div class="face back">
-        <div class="kicker">Within-Court Skill Spread &mdash; Current System</div>
-        <div class="stat-stack" style="height:72%;">
-          <div class="stat"><div class="num">{den_s1}</div><div class="lbl">Shootout 1 average spread (DEN step / percentage)</div></div>
-          <div class="stat" style="border-left-color:#b3543a;"><div class="num">{den_s2}</div><div class="lbl">Shootout 2 average spread (after 2-up/2-back)</div></div>
-          <div class="stat"><div class="num">{den_comb}</div><div class="lbl">combined baseline &mdash; the number to beat</div></div>
-        </div>
-        <div class="pgnum">21</div>
-      </div>
-    </div>
+<div class="kicker">Chapter Five</div>
+<h2>The Root Cause: A Wider Player Pool</h2>
+<p>The driver is not a shortage of strong players — it is that the SAM player pool has grown dramatically more diverse in skill.</p>
+<p>Today’s leaderboard spans {n_active} active players — those with at least 24 rated games played within the past 180 days. The rating spread across that group is {lb_range:,} points, top to bottom.</p>
+<p>At that dispersion, the strongest player would be expected to beat the bottom of the leaderboard well over 99% of the time. Placing 12–20 players of this range onto 3–5 courts is genuinely hard — and the current assignment method wasn’t built for it.</p>
+<div class="pgnum">11</div>
 
-    <!-- sheet 11: p22 Four Families of Ideas | p23 How to Read the Scorecard -->
-    <div class="sheet">
-      <div class="face front">
-        <div class="kicker">Four Families of Ideas</div>
-        <div class="factor"><b>1 &middot; FIX THE STARTING LINEUP</b><span>Build Shootout 1 courts from player ratings instead of step and percentage. The morning starts fair; everything else stays exactly as it is.</span></div>
-        <div class="factor"><b>2 &middot; SOFTEN THE SHUFFLE</b><span>Keep movement between sessions, but move one player up and one down per court instead of two. Less churn, same reward for winning.</span></div>
-        <div class="factor"><b>3 &middot; LET RESULTS DRIVE SHOOTOUT 2</b><span>Re-rank everyone using their Shootout 1 results &mdash; weighted by who they faced &mdash; and rebuild the courts. A dial controls how strongly one morning moves you: steady, balanced, or fast.</span></div>
-        <div class="factor"><b>4 &middot; TARGETED SWAPS ONLY</b><span>Leave courts alone except in special cases: two players nearly tied at a court boundary, or someone dramatically out-playing or under-playing their rating.</span></div>
-        <div class="pgnum">22</div>
-      </div>
-      <div class="face back">
-        <div class="kicker">Chapter Eight, continued</div>
-        <h2>How to Read the Scorecard</h2>
-        <p><b>Better-matched courts</b> is the improvement in court tightness versus today. +37% means the skill spread inside a typical court shrinks by more than a third.</p>
-        <p><b>Players changing courts</b> is the share of players sitting on a different court in Shootout 2 than Shootout 1. Today&rsquo;s 2-up/2-back moves about {den_move} &mdash; the most of anything we tested.</p>
-        <p><b>Effort:</b> &ldquo;Already automated&rdquo; rows run through the rating engine this project already builds and runs, unattended, after every play date &mdash; nothing new to build. &ldquo;New automation&rdquo; rows would need new tooling, triggered live on-site in the tight window between Shootout 1 and Shootout 2.</p>
-        <p>The two &#9733; rows are the recommendation &mdash; a starting step and a destination.</p>
-        <div class="pgnum">23</div>
-      </div>
-    </div>
+</div>
 
-    <!-- sheet 12: p24 The Scorecard | p25 The Recommendation: Two Phases -->
-    <div class="sheet">
-      <div class="face front">
-        <div class="kicker">The Scorecard</div>
-        <table class="btable">
-          <tr><th style="text-align:left;">Approach</th><th>Better-Matched Courts</th><th>Players Changing Courts</th><th>Effort</th></tr>
+<div class="section">
+
+<div class="kicker">Then vs. Now</div>
+<div class="stat-stack">
+<div class="stat"><div class="num">{round(q_first['Avg Gap'])} → {round(q_last['Avg Gap'])}</div><div class="lbl">average match gap, {show_q[0]} vs. {show_q[-1]}</div></div>
+<div class="stat"><div class="num">~26 → {n_active}</div><div class="lbl">active leaderboard players</div></div>
+<div class="stat"><div class="num">{lb_range:,} pts</div><div class="lbl">rating spread across today's leaderboard</div></div>
+</div>
+<div class="pgnum">12</div>
+
+</div>
+
+<div class="section">
+
+<div class="kicker">Chapter Six</div>
+<h2>How Courts Are Assigned Today</h2>
+<p>The DEN makes Shootout 1 court assignments using two numbers. <b>Step</b> is a court-movement counter: finish in the top two of your court and it ticks down; finish in the bottom two and it ticks up — based entirely on your <i>last</i> play date, however long ago that was.</p>
+<p><b>Percentage</b> breaks ties within a step: total points scored divided by maximum possible, over your last 90 games (~15 play dates), all weighted equally.</p>
+<p>For Shootout 2, SAM currently has the DEN set to move the top two on each court up a court and the bottom two down — the “2-up/2-back” rule. It’s a choice, not the only option: the DEN also offers “1-up/1-back/2-stay,” which SAM isn’t currently using.</p>
+<div style="margin-top:4%;">
+<div style="font-family:'Trebuchet MS',sans-serif;font-size:clamp(8.5px,1vw,11px);color:var(--navy);font-weight:bold;text-align:center;margin-bottom:2%;">Step values in circulation after Shootout 2, by court count</div>
+<svg style="display:block;" viewbox="0 0 420 230" width="100%">
+<text fill="var(--navy)" font-family="'Trebuchet MS',sans-serif" font-size="10" font-weight="bold" text-anchor="middle" x="60" y="14">2 courts</text>
+<rect fill="var(--navy-2)" height="42" rx="2" width="12" x="39" y="128"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="45" y="122">4</text>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="45" y="186">1</text>
+<rect fill="#b3543a" height="21" rx="2" width="12" x="54" y="149"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="60" y="143">2</text>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="60" y="186">2</text>
+<rect fill="#b3543a" height="21" rx="2" width="12" x="69" y="149"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="75" y="143">2</text>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="75" y="186">3</text>
+<text fill="#8a7f6a" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="60" y="204">3 step values</text>
+<text fill="var(--navy)" font-family="'Trebuchet MS',sans-serif" font-size="9.5" font-weight="bold" text-anchor="middle" x="60" y="68">avg step 1.75</text>
+<text fill="var(--navy)" font-family="'Trebuchet MS',sans-serif" font-size="10" font-weight="bold" text-anchor="middle" x="160" y="14">3 courts</text>
+<rect fill="var(--navy-2)" height="42" rx="2" width="12" x="131.5" y="128"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="137.5" y="122">4</text>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="137.5" y="186">1</text>
+<rect fill="var(--navy-2)" height="42" rx="2" width="12" x="146.5" y="128"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="152.5" y="122">4</text>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="152.5" y="186">2</text>
+<rect fill="#b3543a" height="21" rx="2" width="12" x="161.5" y="149"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="167.5" y="143">2</text>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="167.5" y="186">3</text>
+<rect fill="#b3543a" height="21" rx="2" width="12" x="176.5" y="149"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="182.5" y="143">2</text>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="182.5" y="186">4</text>
+<text fill="#8a7f6a" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="160" y="204">4 step values</text>
+<text fill="var(--navy)" font-family="'Trebuchet MS',sans-serif" font-size="9.5" font-weight="bold" text-anchor="middle" x="160" y="68">avg step 2.17</text>
+<text fill="var(--navy)" font-family="'Trebuchet MS',sans-serif" font-size="10" font-weight="bold" text-anchor="middle" x="260" y="14">4 courts</text>
+<rect fill="var(--navy-2)" height="42" rx="2" width="12" x="224" y="128"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="230" y="122">4</text>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="230" y="186">1</text>
+<rect fill="var(--navy-2)" height="42" rx="2" width="12" x="239" y="128"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="245" y="122">4</text>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="245" y="186">2</text>
+<rect fill="var(--navy-2)" height="42" rx="2" width="12" x="254" y="128"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="260" y="122">4</text>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="260" y="186">3</text>
+<rect fill="#b3543a" height="21" rx="2" width="12" x="269" y="149"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="275" y="143">2</text>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="275" y="186">4</text>
+<rect fill="#b3543a" height="21" rx="2" width="12" x="284" y="149"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="290" y="143">2</text>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="290" y="186">5</text>
+<text fill="#8a7f6a" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="260" y="204">5 step values</text>
+<text fill="var(--navy)" font-family="'Trebuchet MS',sans-serif" font-size="9.5" font-weight="bold" text-anchor="middle" x="260" y="68">avg step 2.63</text>
+<text fill="var(--navy)" font-family="'Trebuchet MS',sans-serif" font-size="10" font-weight="bold" text-anchor="middle" x="360" y="14">5 courts</text>
+<rect fill="var(--navy-2)" height="42" rx="2" width="12" x="316.5" y="128"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="322.5" y="122">4</text>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="322.5" y="186">1</text>
+<rect fill="var(--navy-2)" height="42" rx="2" width="12" x="331.5" y="128"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="337.5" y="122">4</text>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="337.5" y="186">2</text>
+<rect fill="var(--navy-2)" height="42" rx="2" width="12" x="346.5" y="128"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="352.5" y="122">4</text>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="352.5" y="186">3</text>
+<rect fill="var(--navy-2)" height="42" rx="2" width="12" x="361.5" y="128"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="367.5" y="122">4</text>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="367.5" y="186">4</text>
+<rect fill="#b3543a" height="21" rx="2" width="12" x="376.5" y="149"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="382.5" y="143">2</text>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="382.5" y="186">5</text>
+<rect fill="#b3543a" height="21" rx="2" width="12" x="391.5" y="149"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="397.5" y="143">2</text>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="397.5" y="186">6</text>
+<text fill="#8a7f6a" font-family="'Trebuchet MS',sans-serif" font-size="8.5" text-anchor="middle" x="360" y="204">6 step values</text>
+<text fill="var(--navy)" font-family="'Trebuchet MS',sans-serif" font-size="9.5" font-weight="bold" text-anchor="middle" x="360" y="68">avg step 3.10</text>
+</svg>
+<div style="font-family:'Trebuchet MS',sans-serif;font-size:clamp(7.5px,0.85vw,9.5px);color:#8a7f6a;text-align:center;margin-top:1%;">Players per step (top) · step number (bottom). More courts means more step values — and a higher average step — in play.</div>
+</div>
+<div class="pgnum">13</div>
+
+</div>
+
+<div class="section">
+
+<div class="kicker">Structural Weaknesses</div>
+<div class="flaw"><b>SINGLE-EVENT MEMORY</b><span>Step is always tied to one event — the second shootout of your last session — not any broader track record.</span></div>
+<div class="flaw"><b>COURT-COUNT BLIND</b><span>A step earned on a 5-court day can penalize you when your next match is on a 3-court day. High-turnout days systematically punish; low-turnout days reward.</span></div>
+<div class="flaw"><b>OPPONENT BLIND</b><span>A tough loss to the strongest players and an easy win over the weakest can land you on the same Step. Points scored are never adjusted for who you played or partnered with.</span></div>
+<div class="flaw"><b>NO RECENCY REQUIREMENT</b><span>The step factor can be derived from a shootout that took place yesterday or three months ago.</span></div>
+<div class="pgnum">14</div>
+
+</div>
+
+<div class="section">
+
+<div class="kicker">Chapter Seven</div>
+<h2>Not All Step 1s Are Equal</h2>
+<p>On a two-court day, starting on Court 1 means finishing in the top half of eight players. On a three-court day, it means the top third of twelve. On a five-court day, it means the top fifth of twenty — a genuinely higher bar.</p>
+<p>Step doesn’t know the difference. A step earned on Court 1 on a slow, low-turnout day carries the same weight as one earned on Court 1 on a big, high-turnout day, even though the second is a meaningfully harder accomplishment.</p>
+<p>The same blindness runs the other direction too: falling to the bottom court on a big day assigns a higher step number outright than falling to the bottom court on a small day ever can, even though both are the same relative result — last place on the court. That gap only closes at your next play date, once a fresh top-two or bottom-two finish moves the counter again.</p>
+<div class="pgnum">15</div>
+
+</div>
+
+<div class="section">
+
+<div class="kicker">Chapter Seven, continued</div>
+<p>We replayed the last 90 days of actual sessions and measured the skill spread inside each court — lower means the four players on a court are more evenly matched.</p>
+<p>Under the current system, courts average a {den_s1}-point rating spread in Shootout 1. </p>
+<div class="pgnum">16</div>
+
+</div>
+
+<div class="section">
+
+<div class="kicker">Chapter Seven, Continued — Case Study, April 2, 2026</div>
+<p>April 2, 2026 was a three-court day in SAM. The DEN’s court assignments were a mess.</p>
+<svg style="display:block;" viewbox="0 0 420 500" width="100%">
+<text fill="var(--navy)" font-family="'Trebuchet MS',sans-serif" font-size="12" font-weight="bold" text-anchor="middle" x="135" y="14">True rank before S1</text>
+<text fill="var(--navy)" font-family="'Trebuchet MS',sans-serif" font-size="12" font-weight="bold" text-anchor="middle" x="340" y="14">Shootout 1 courts</text>
+<rect fill="var(--tan)" height="140" rx="6" stroke="var(--navy-2)" stroke-width="0.75" width="140" x="270" y="26"></rect>
+<text fill="var(--navy)" font-family="'Trebuchet MS',sans-serif" font-size="11" font-weight="bold" x="280" y="42">Court 1</text>
+<rect fill="var(--tan)" height="140" rx="6" stroke="var(--navy-2)" stroke-width="0.75" width="140" x="270" y="181"></rect>
+<text fill="var(--navy)" font-family="'Trebuchet MS',sans-serif" font-size="11" font-weight="bold" x="280" y="197">Court 2</text>
+<rect fill="var(--tan)" height="140" rx="6" stroke="var(--navy-2)" stroke-width="0.75" width="140" x="270" y="336"></rect>
+<text fill="var(--navy)" font-family="'Trebuchet MS',sans-serif" font-size="11" font-weight="bold" x="280" y="352">Court 3</text>
+<line stroke="#E8871E" stroke-width="2" x1="135" x2="290" y1="30" y2="275"></line>
+<line stroke="#E8871E" stroke-width="2" x1="135" x2="290" y1="70" y2="307"></line>
+<line stroke="#b3543a" stroke-width="2.25" x1="135" x2="290" y1="110" y2="462"></line>
+<line stroke="#E8871E" stroke-width="2" x1="135" x2="290" y1="150" y2="211"></line>
+<line stroke="#E8871E" stroke-width="2" x1="135" x2="290" y1="190" y2="366"></line>
+<line stroke="#E8871E" stroke-width="2" x1="135" x2="290" y1="230" y2="120"></line>
+<line stroke="#E8871E" stroke-width="2" x1="135" x2="290" y1="270" y2="56"></line>
+<line stroke="#E8871E" stroke-width="2" x1="135" x2="290" y1="310" y2="88"></line>
+<line stroke="#b3543a" stroke-width="2.25" x1="135" x2="290" y1="350" y2="152"></line>
+<line stroke="#1E8449" stroke-width="1.5" x1="135" x2="290" y1="390" y2="430"></line>
+<line stroke="#1E8449" stroke-width="1.5" x1="135" x2="290" y1="430" y2="398"></line>
+<line stroke="#E8871E" stroke-width="2" x1="135" x2="290" y1="470" y2="243"></line>
+<text dominant-baseline="central" fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" text-anchor="end" x="125" y="30">L. Zolnierczyk</text>
+<text dominant-baseline="central" fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" text-anchor="end" x="125" y="70">B. Pollock</text>
+<text dominant-baseline="central" fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" text-anchor="end" x="125" y="110">A. Nagyova</text>
+<text dominant-baseline="central" fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" text-anchor="end" x="125" y="150">C. McCormick</text>
+<text dominant-baseline="central" fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" text-anchor="end" x="125" y="190">D. Grubb</text>
+<text dominant-baseline="central" fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" text-anchor="end" x="125" y="230">T. Orr</text>
+<text dominant-baseline="central" fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" text-anchor="end" x="125" y="270">P. Barnett</text>
+<text dominant-baseline="central" fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" text-anchor="end" x="125" y="310">G. Egli</text>
+<text dominant-baseline="central" fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" text-anchor="end" x="125" y="350">J. Milberg</text>
+<text dominant-baseline="central" fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" text-anchor="end" x="125" y="390">W. Carroll</text>
+<text dominant-baseline="central" fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" text-anchor="end" x="125" y="430">D. Witulski</text>
+<text dominant-baseline="central" fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" text-anchor="end" x="125" y="470">J. Peterson</text>
+<circle cx="135" cy="30" fill="var(--navy)" r="2.5"></circle>
+<circle cx="135" cy="70" fill="var(--navy)" r="2.5"></circle>
+<circle cx="135" cy="110" fill="var(--navy)" r="2.5"></circle>
+<circle cx="135" cy="150" fill="var(--navy)" r="2.5"></circle>
+<circle cx="135" cy="190" fill="var(--navy)" r="2.5"></circle>
+<circle cx="135" cy="230" fill="var(--navy)" r="2.5"></circle>
+<circle cx="135" cy="270" fill="var(--navy)" r="2.5"></circle>
+<circle cx="135" cy="310" fill="var(--navy)" r="2.5"></circle>
+<circle cx="135" cy="350" fill="var(--navy)" r="2.5"></circle>
+<circle cx="135" cy="390" fill="var(--navy)" r="2.5"></circle>
+<circle cx="135" cy="430" fill="var(--navy)" r="2.5"></circle>
+<circle cx="135" cy="470" fill="var(--navy)" r="2.5"></circle>
+<circle cx="290" cy="56" fill="var(--navy)" r="2.5"></circle>
+<circle cx="290" cy="88" fill="var(--navy)" r="2.5"></circle>
+<circle cx="290" cy="120" fill="var(--navy)" r="2.5"></circle>
+<circle cx="290" cy="152" fill="var(--navy)" r="2.5"></circle>
+<circle cx="290" cy="211" fill="var(--navy)" r="2.5"></circle>
+<circle cx="290" cy="243" fill="var(--navy)" r="2.5"></circle>
+<circle cx="290" cy="275" fill="var(--navy)" r="2.5"></circle>
+<circle cx="290" cy="307" fill="var(--navy)" r="2.5"></circle>
+<circle cx="290" cy="366" fill="var(--navy)" r="2.5"></circle>
+<circle cx="290" cy="398" fill="var(--navy)" r="2.5"></circle>
+<circle cx="290" cy="430" fill="var(--navy)" r="2.5"></circle>
+<circle cx="290" cy="462" fill="var(--navy)" r="2.5"></circle>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="10.5" text-anchor="middle" x="210" y="488">Green: matched · Amber: 1 tier off · Red: 2 tiers off</text>
+</svg>
+<div class="pgnum">17</div>
+
+</div>
+
+<div class="section">
+
+<div class="kicker">Chapter Seven, continued</div>
+<p>After the 2-up/2-back shuffle — which moves about {den_move} of all players — the spread <i>widens</i> to {den_s2}.</p>
+<p>Read that again: the movement rule designed to sort players actually leaves courts <b>less balanced</b> than they started. Most of that movement is mechanical, not earned.</p>
+<div class="pgnum">18</div>
+
+</div>
+
+<div class="section">
+
+<div class="kicker">Case Study — May 4, 2026</div>
+<svg style="display:block;" viewbox="0 0 420 500" width="100%">
+<text fill="var(--navy)" font-family="'Trebuchet MS',sans-serif" font-size="12" font-weight="bold" text-anchor="middle" x="135" y="14">True rank after S1</text>
+<text fill="var(--navy)" font-family="'Trebuchet MS',sans-serif" font-size="12" font-weight="bold" text-anchor="middle" x="340" y="14">Shootout 2 courts</text>
+<rect fill="var(--tan)" height="140" rx="6" stroke="var(--navy-2)" stroke-width="0.75" width="140" x="270" y="26"></rect>
+<text fill="var(--navy)" font-family="'Trebuchet MS',sans-serif" font-size="11" font-weight="bold" x="280" y="42">Court 1</text>
+<rect fill="var(--tan)" height="140" rx="6" stroke="var(--navy-2)" stroke-width="0.75" width="140" x="270" y="181"></rect>
+<text fill="var(--navy)" font-family="'Trebuchet MS',sans-serif" font-size="11" font-weight="bold" x="280" y="197">Court 2</text>
+<rect fill="var(--tan)" height="140" rx="6" stroke="var(--navy-2)" stroke-width="0.75" width="140" x="270" y="336"></rect>
+<text fill="var(--navy)" font-family="'Trebuchet MS',sans-serif" font-size="11" font-weight="bold" x="280" y="352">Court 3</text>
+<line stroke="#1E8449" stroke-width="1.5" x1="135" x2="290" y1="30" y2="56"></line>
+<line stroke="#1E8449" stroke-width="1.5" x1="135" x2="290" y1="70" y2="88"></line>
+<line stroke="#E8871E" stroke-width="2" x1="135" x2="290" y1="110" y2="307"></line>
+<line stroke="#E8871E" stroke-width="2" x1="135" x2="290" y1="150" y2="243"></line>
+<line stroke="#E8871E" stroke-width="2" x1="135" x2="290" y1="190" y2="366"></line>
+<line stroke="#E8871E" stroke-width="2" x1="135" x2="290" y1="230" y2="152"></line>
+<line stroke="#E8871E" stroke-width="2" x1="135" x2="290" y1="270" y2="120"></line>
+<line stroke="#E8871E" stroke-width="2" x1="135" x2="290" y1="310" y2="430"></line>
+<line stroke="#E8871E" stroke-width="2" x1="135" x2="290" y1="350" y2="211"></line>
+<line stroke="#1E8449" stroke-width="1.5" x1="135" x2="290" y1="390" y2="462"></line>
+<line stroke="#E8871E" stroke-width="2" x1="135" x2="290" y1="430" y2="275"></line>
+<line stroke="#1E8449" stroke-width="1.5" x1="135" x2="290" y1="470" y2="398"></line>
+<text dominant-baseline="central" fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" text-anchor="end" x="125" y="30">E. Kramer</text>
+<text dominant-baseline="central" fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" text-anchor="end" x="125" y="70">P. Barnett</text>
+<text dominant-baseline="central" fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" text-anchor="end" x="125" y="110">P. Rillero</text>
+<text dominant-baseline="central" fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" text-anchor="end" x="125" y="150">S. Ludick</text>
+<text dominant-baseline="central" fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" text-anchor="end" x="125" y="190">J. Barroso</text>
+<text dominant-baseline="central" fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" text-anchor="end" x="125" y="230">L. Zolnierczyk</text>
+<text dominant-baseline="central" fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" text-anchor="end" x="125" y="270">D. Christensen</text>
+<text dominant-baseline="central" fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" text-anchor="end" x="125" y="310">C. McCormick</text>
+<text dominant-baseline="central" fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" text-anchor="end" x="125" y="350">K. Backstrom</text>
+<text dominant-baseline="central" fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" text-anchor="end" x="125" y="390">A. Tinstman</text>
+<text dominant-baseline="central" fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" text-anchor="end" x="125" y="430">N. Whitson</text>
+<text dominant-baseline="central" fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" text-anchor="end" x="125" y="470">P. Batie</text>
+<circle cx="135" cy="30" fill="var(--navy)" r="2.5"></circle>
+<circle cx="135" cy="70" fill="var(--navy)" r="2.5"></circle>
+<circle cx="135" cy="110" fill="var(--navy)" r="2.5"></circle>
+<circle cx="135" cy="150" fill="var(--navy)" r="2.5"></circle>
+<circle cx="135" cy="190" fill="var(--navy)" r="2.5"></circle>
+<circle cx="135" cy="230" fill="var(--navy)" r="2.5"></circle>
+<circle cx="135" cy="270" fill="var(--navy)" r="2.5"></circle>
+<circle cx="135" cy="310" fill="var(--navy)" r="2.5"></circle>
+<circle cx="135" cy="350" fill="var(--navy)" r="2.5"></circle>
+<circle cx="135" cy="390" fill="var(--navy)" r="2.5"></circle>
+<circle cx="135" cy="430" fill="var(--navy)" r="2.5"></circle>
+<circle cx="135" cy="470" fill="var(--navy)" r="2.5"></circle>
+<circle cx="290" cy="56" fill="var(--navy)" r="2.5"></circle>
+<circle cx="290" cy="88" fill="var(--navy)" r="2.5"></circle>
+<circle cx="290" cy="307" fill="var(--navy)" r="2.5"></circle>
+<circle cx="290" cy="243" fill="var(--navy)" r="2.5"></circle>
+<circle cx="290" cy="366" fill="var(--navy)" r="2.5"></circle>
+<circle cx="290" cy="152" fill="var(--navy)" r="2.5"></circle>
+<circle cx="290" cy="120" fill="var(--navy)" r="2.5"></circle>
+<circle cx="290" cy="430" fill="var(--navy)" r="2.5"></circle>
+<circle cx="290" cy="211" fill="var(--navy)" r="2.5"></circle>
+<circle cx="290" cy="462" fill="var(--navy)" r="2.5"></circle>
+<circle cx="290" cy="275" fill="var(--navy)" r="2.5"></circle>
+<circle cx="290" cy="398" fill="var(--navy)" r="2.5"></circle>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="10.5" text-anchor="middle" x="210" y="488">Green: matched · Amber: 1 tier off</text>
+</svg>
+<div class="pgnum">19</div>
+
+</div>
+
+<div class="section">
+
+<div class="kicker">Chapter Seven, Continued</div>
+<h2>Perfect, Then Scrambled</h2>
+<p>On May 4, 2026, the DEN got the Shootout 1 court assignments exactly right. Every one of twelve players landed on the court matching their true skill rank — zero mismatches. Step and Percentage worked as designed.</p>
+<p>Then 2-up/2-back moved players for Shootout 2, using only that morning's three games as its signal. The result: eight of twelve players — two-thirds of the field — landed in the wrong pool.</p>
+<p>Court 1 shows the damage directly. Eric Kramer and Peter Barnett, the two highest-rated players in the field, ended up paired together by the shuffle and beat Dwight Christensen and Lidia Zolnierczyk — correctly separated into a lower tier just one session earlier — <b>11–4</b>. The movement rule undid a correct assignment using less information than the assignment it replaced.</p>
+<div class="pgnum">20</div>
+
+</div>
+
+<div class="section">
+
+<div class="kicker">Chapter Seven, continued</div>
+<p style="opacity:0.6;font-style:italic;">Reserved for future content.</p>
+<div class="pgnum">21</div>
+
+</div>
+
+<div class="section">
+
+<div class="kicker">Chapter Eight</div>
+<h2>What We Tested — and How We Scored It</h2>
+<p>There is no shortage of ideas for assigning courts. To compare them fairly, we replayed the last 90 days of actual shootouts — same players, same signups, same court counts — under each candidate method.</p>
+<p>Every method gets two scores. <b>Court tightness:</b> how close in skill the four players on each court are — a smaller spread means fairer games. <b>Shuffle:</b> what share of players change courts between the two sessions — some movement is healthy; constant mechanical reshuffling is not.</p>
+<p>Today’s system is the baseline to beat: a combined spread of {den_comb}, with {den_move} of players moving mid-morning.</p>
+<div class="pgnum">22</div>
+
+</div>
+
+<div class="section">
+
+<div class="kicker">Within-Court Skill Spread — Current System</div>
+<div class="stat-stack" style="height:72%;">
+<div class="stat"><div class="num">{den_s1}</div><div class="lbl">Shootout 1 average spread (DEN step / percentage)</div></div>
+<div class="stat" style="border-left-color:#b3543a;"><div class="num">{den_s2}</div><div class="lbl">Shootout 2 average spread (after 2-up/2-back)</div></div>
+<div class="stat"><div class="num">{den_comb}</div><div class="lbl">combined baseline — the number to beat</div></div>
+</div>
+<div class="pgnum">23</div>
+
+</div>
+
+<div class="section">
+
+<div class="kicker">Four Families of Ideas</div>
+<div class="factor"><b>1 · FIX THE STARTING LINEUP</b><span>Build Shootout 1 courts from player ratings instead of step and percentage. The morning starts fair; everything else stays exactly as it is.</span></div>
+<div class="factor"><b>2 · SOFTEN THE SHUFFLE</b><span>Keep movement between sessions, but move one player up and one down per court instead of two. Less churn, same reward for winning.</span></div>
+<div class="factor"><b>3 · LET RESULTS DRIVE SHOOTOUT 2</b><span>Re-rank everyone using their Shootout 1 results — weighted by who they faced — and rebuild the courts. A dial controls how strongly one morning moves you: steady, balanced, or fast.</span></div>
+<div class="factor"><b>4 · TARGETED SWAPS ONLY</b><span>Leave courts alone except in special cases: two players nearly tied at a court boundary, or someone dramatically out-playing or under-playing their rating.</span></div>
+<div class="pgnum">24</div>
+
+</div>
+
+<div class="section">
+
+<div class="kicker">Chapter Eight, continued</div>
+<h2>How to Read the Scorecard</h2>
+<p><b>Better-matched courts</b> is the improvement in court tightness versus today. +37% means the skill spread inside a typical court shrinks by more than a third.</p>
+<p><b>Players changing courts</b> is the share of players sitting on a different court in Shootout 2 than Shootout 1. Today’s 2-up/2-back moves about {den_move} — the most of anything we tested.</p>
+<p><b>Effort:</b> “Already automated” rows run through the rating engine this project already builds and runs, unattended, after every play date — nothing new to build. “New automation” rows would need new tooling, triggered live on-site in the tight window between Shootout 1 and Shootout 2.</p>
+<p>The two ★ rows are the recommendation — a starting step and a destination.</p>
+<div class="pgnum">25</div>
+
+</div>
+
+<div class="section">
+
+<div class="kicker">The Scorecard</div>
+<table class="btable">
+<tr><th style="text-align:left;">Approach</th><th>Better-Matched Courts</th><th>Players Changing Courts</th><th>Effort</th></tr>
           {option_rows}
         </table>
-        <p style="font-size:clamp(8.5px,1vw,12px);color:#8a7f6a;margin-top:3%;">Scored across the last 90 days of real sessions. Today&rsquo;s system: {den_comb} combined spread, {den_move} of players moving.</p>
-        <div class="pgnum">24</div>
-      </div>
-      <div class="face back">
-        <div class="kicker">Chapter Nine</div>
-        <h2>The Recommendation: Two Phases</h2>
-        <div class="phase">
-          <b>PHASE 1 &mdash; Rating-seeded start, gentler shuffle</b>
-          <span>Seed Shootout 1 by rating instead of step and percentage; soften the mid-morning shuffle to one-up/one-back. Runs unattended overnight &mdash; Elo-based seedings load automatically after midnight, before anyone&rsquo;s on the courts. Already built, tested, and validated end to end.</span>
-          <div class="metric">{ph1_vs} better-matched courts &middot; combined spread {ph1_comb}</div>
-        </div>
-        <div class="phase">
-          <b>PHASE 2 &mdash; Results-driven Shootout 2, balanced dial</b>
-          <span>Shootout 2 courts rebuilt from Shootout 1 results, weighted by opponent strength &mdash; movement is earned, not mechanical. Unlike Phase 1, this can&rsquo;t run unattended: it has to be triggered in the narrow window right after Shootout 1 wraps, from the courts, by someone with access. (For the technically curious: appendix A.)</span>
-          <div class="metric">{ph2_vs} better-matched courts &middot; combined spread {ph2_comb}</div>
-        </div>
-        <div class="pgnum">25</div>
-      </div>
-    </div>
+<p style="font-size:clamp(8.5px,1vw,12px);color:#8a7f6a;margin-top:3%;">Scored across the last 90 days of real sessions. Today’s system: {den_comb} combined spread, {den_move} of players moving.</p>
+<div class="pgnum">26</div>
 
-    <!-- sheet 13: p26 This Isn't a Settings Toggle | p27 What Changes for a Player -->
-    <div class="sheet">
-      <div class="face front">
-        <div class="kicker">Chapter Nine, Continued</div>
-        <h2>This Isn&rsquo;t a Settings Toggle</h2>
-        <p>Everything on the previous page is possible because of work already done, not work still theoretical. DEN has no setting for rating-based seeding or results-driven reshuffling &mdash; both phases require quietly overriding DEN&rsquo;s own numbers from the outside.</p>
-        <p>The technique: write a synthetic value into DEN&rsquo;s own Ladder Step field for each player, then let DEN&rsquo;s own &ldquo;Seed Players&rdquo; button do the actual grouping. DEN never needs to know a rating model is behind the number it&rsquo;s reading.</p>
-        <p>Phase 1 (rating-seeded Shootout 1) is proven &mdash; tested live against a real signup sheet, full removal-to-Start-Event flow, working end to end. Phase 2 extends the same technique to Shootout 2: after Shootout 1&rsquo;s games post, replay them through the rating engine, then write fresh synthetic Step values reflecting that recalculation before Shootout 2 seeds.</p>
-        <p>The two phases differ in more than scope, though. Phase 1 finishes before anyone checks in &mdash; the seeding is already loaded and waiting when the first player arrives. Phase 2 can&rsquo;t work that way: it has to fire live, on the spot, in the gap between Shootout 1&rsquo;s last game and Shootout 2&rsquo;s first. That makes its remaining hurdle a question of who&rsquo;s there to trigger it, not whether the code works.</p>
-        <div class="pgnum">26</div>
-      </div>
-      <div class="face back">
-        <div class="kicker">What Changes for a Player</div>
-        <div class="factor"><b>YOUR FIRST COURT FITS</b><span>Shootout 1 placement reflects how you&rsquo;ve actually been playing &mdash; not where you stood one bad morning three weeks ago.</span></div>
-        <div class="factor"><b>MOVEMENT MEANS SOMETHING</b><span>Moving up is earned by beating expectations, weighted by who you faced &mdash; not by finishing top-two on an easy court.</span></div>
-        <div class="factor"><b>EVERY GAME COUNTS</b><span>Your rating updates after every game, with recent play weighted most.</span></div>
-        <div class="factor"><b>NOTHING ELSE CHANGES</b><span>Same courts, same times, same shootout format. Only the seeding logic improves.</span></div>
-        <div class="pgnum">27</div>
-      </div>
-    </div>
+</div>
 
-    <!-- sheet 14: p28 The Model Mechanics | p29 Technical Appendix &middot; A, continued -->
-    <div class="sheet">
-      <div class="face front apx">
-        <div class="kicker" style="color:#8a7f6a;">Technical Appendix &middot; A</div>
-        <h2>The Model Mechanics</h2>
-        <p style="font-size:clamp(9.5px,1.12vw,13.5px);">For readers who want the nitty gritty. Every rating update follows one formula:</p>
-        <div class="mono">&Delta;R = K &times; (S &minus; E) &times; M<br><br>
-S &nbsp;= result (1 win, 0 loss)<br>
-E &nbsp;= expected win prob = 1 / (1 + 10^((R<sub>opp</sub> &minus; R<sub>team</sub>)/400))<br>
+<div class="section">
+
+<div class="kicker">Chapter Nine</div>
+<h2>The Recommendation: Two Phases</h2>
+<div class="phase">
+<b>PHASE 1 — Rating-seeded start, gentler shuffle</b>
+<span>Seed Shootout 1 by rating instead of step and percentage; soften the mid-morning shuffle to one-up/one-back. Runs unattended overnight — Elo-based seedings load automatically after midnight, before anyone’s on the courts. Already built, tested, and validated end to end.</span>
+<div class="metric">{ph1_vs} better-matched courts · combined spread {ph1_comb}</div>
+</div>
+<div class="phase">
+<b>PHASE 2 — Results-driven Shootout 2, balanced dial</b>
+<span>Shootout 2 courts rebuilt from Shootout 1 results, weighted by opponent strength — movement is earned, not mechanical. Unlike Phase 1, this can’t run unattended: it has to be triggered in the narrow window right after Shootout 1 wraps, from the courts, by someone with access. (For the technically curious: appendix A.)</span>
+<div class="metric">{ph2_vs} better-matched courts · combined spread {ph2_comb}</div>
+</div>
+<div class="pgnum">27</div>
+
+</div>
+
+<div class="section">
+
+<div class="kicker">Chapter Nine, Continued</div>
+<h2>This Isn’t a Settings Toggle</h2>
+<p>Everything on the previous page is possible because of work already done, not work still theoretical. DEN has no setting for rating-based seeding or results-driven reshuffling — both phases require quietly overriding DEN’s own numbers from the outside.</p>
+<p>The technique: write a synthetic value into DEN’s own Ladder Step field for each player, then let DEN’s own “Seed Players” button do the actual grouping. DEN never needs to know a rating model is behind the number it’s reading.</p>
+<p>Phase 1 (rating-seeded Shootout 1) is proven — tested live against a real signup sheet, full removal-to-Start-Event flow, working end to end. Phase 2 extends the same technique to Shootout 2: after Shootout 1’s games post, replay them through the rating engine, then write fresh synthetic Step values reflecting that recalculation before Shootout 2 seeds.</p>
+<p>The two phases differ in more than scope, though. Phase 1 finishes before anyone checks in — the seeding is already loaded and waiting when the first player arrives. Phase 2 can’t work that way: it has to fire live, on the spot, in the gap between Shootout 1’s last game and Shootout 2’s first. That makes its remaining hurdle a question of who’s there to trigger it, not whether the code works.</p>
+<div class="pgnum">28</div>
+
+</div>
+
+<div class="section">
+
+<div class="kicker">What Changes for a Player</div>
+<div class="factor"><b>YOUR FIRST COURT FITS</b><span>Shootout 1 placement reflects how you’ve actually been playing — not where you stood one bad morning three weeks ago.</span></div>
+<div class="factor"><b>MOVEMENT MEANS SOMETHING</b><span>Moving up is earned by beating expectations, weighted by who you faced — not by finishing top-two on an easy court.</span></div>
+<div class="factor"><b>EVERY GAME COUNTS</b><span>Your rating updates after every game, with recent play weighted most.</span></div>
+<div class="factor"><b>NOTHING ELSE CHANGES</b><span>Same courts, same times, same shootout format. Only the seeding logic improves.</span></div>
+<div class="pgnum">29</div>
+
+</div>
+
+<div class="section">
+
+<div class="kicker" style="color:#8a7f6a;">Technical Appendix · A</div>
+<h2>The Model Mechanics</h2>
+<p style="font-size:clamp(9.5px,1.12vw,13.5px);">For readers who want the nitty gritty. Every rating update follows one formula:</p>
+<div class="mono">ΔR = K × (S − E) × M<br/><br/>
+S  = result (1 win, 0 loss)<br/>
+E  = expected win prob = 1 / (1 + 10^((R<sub>opp</sub> − R<sub>team</sub>)/400))<br/>
 M = margin multiplier = ln(margin + 1)</div>
-        <p style="font-size:clamp(9px,1.08vw,13px);">Team ratings are the average of the two partners; all four players update after every rated game.</p>
-        <div class="pgnum">28</div>
-      </div>
-      <div class="face back apx">
-        <div class="kicker" style="color:#8a7f6a;">Technical Appendix &middot; A, continued</div>
-        <div class="factor"><b>FULL CUMULATIVE HISTORY</b><span>Your rating reflects your entire rated career &mdash; no window, no reset. Long tenure carries no unearned inflation; your full track record simply counts, for better or worse.</span></div>
-        <div class="factor"><b>PROVISIONAL K</b><span>K starts at 40 for a player&rsquo;s first game and declines linearly to 20 by game 60, then holds. New players converge quickly; established ratings stay stable.</span></div>
-        <div class="factor"><b>FRESHNESS WINDOW</b><span>Eligibility and freshness are judged separately from your rating, using only your own last 60 real games &mdash; never blended with anyone else&rsquo;s. This determines your Freshness Tier, not your rating itself.</span></div>
-        <div class="pgnum">29</div>
-      </div>
-    </div>
+<p style="font-size:clamp(9px,1.08vw,13px);">Team ratings are the average of the two partners; all four players update after every rated game.</p>
+<div class="pgnum">30</div>
 
-    <!-- sheet 15: p30 Data Hygiene &amp; Display | p31 Technical Appendix &middot; B, continued -->
-    <div class="sheet">
-      <div class="face front apx">
-        <div class="kicker" style="color:#8a7f6a;">Technical Appendix &middot; B</div>
-        <h2>Data Hygiene &amp; Display</h2>
-        <div class="factor"><b>WHAT COUNTS</b><span>Every posted shootout game since Jan {first_year}. Placeholder entries (tryouts, drop-ins), guest players, and flagged data errors are excluded from ratings; known name glitches are corrected at load.</span></div>
-        <div class="factor"><b>SHARED-NAME PLACEHOLDER</b><span>&ldquo;New Player Tryout&rdquo; games are excluded from ratings entirely, not just flagged. Different people play under that same placeholder name from week to week, so there is no way to attribute those results to any one consistent player&rsquo;s skill.</span></div>
-        <div class="factor"><b>LEADERBOARD QUALIFICATION</b><span>At least 24 rated games within the past 180 days. Everyone else still carries a rating &mdash; shown with reduced confidence, pulled toward 1,000 in proportion to sample size.</span></div>
-        <div class="factor"><b>FRESHNESS</b><span>No continuous penalty &mdash; freshness is a hard cutoff, not a haircut. Very Fresh (0&ndash;90 days) and Mature (91&ndash;180 days) players appear on the main leaderboard; Stale and Very Stale players are shown separately, ratings unaffected.</span></div>
-        <div class="pgnum">30</div>
-      </div>
-      <div class="face back apx">
-        <div class="kicker" style="color:#8a7f6a;">Technical Appendix &middot; B, continued</div>
-        <div class="factor"><b>EXPECTATION COMPRESSION</b><span>Affects what is shown, not what is earned: displayed win probabilities compress the rating gap by 0.92 before the logistic, matching observed SAM outcomes ({pct_0_100} / {pct_101_200} / {pct_201_300}%). The actual rating calculation does not use this compressed figure at all.</span></div>
-        <div class="factor"><b>VALIDATION</b><span>Predictions are checked against outcomes across the full pool every run. Gaps between individual actual and expected win rates reflect normal variance and close as games accumulate; aggregate calibration is what the model is tuned for.</span></div>
-        <div class="factor"><b>SCENARIO REPLAY</b><span>Assignment alternatives were tested against the last 90 days of real sessions &mdash; same signups, same court counts &mdash; not simulations of hypothetical players.</span></div>
-        <div class="mono" style="margin-top:3%;">Every number in this book was computed from the underlying rating engine as of the snapshot date on the cover. It is not a live document -- re-run the report to produce a new dated snapshot after major changes.</div>
-                <p style="font-style:italic;opacity:0.75;">&mdash; end &mdash;</p>
-        <div class="pgnum">31</div>
-      </div>
-    </div>
+</div>
 
-<script>
-  const sheets = Array.from(document.querySelectorAll('.sheet'));
-  const N = sheets.length;
-  let flipped = 0;
+<div class="section">
 
-  const spreadNames = ["Cover", "The Challenge", "The Metric", "Proof", "Opponent Blind",
-                       "The Evidence", "Root Cause", "Today's System", "Net Result", "Case Studies",
-                       "Skill Spread", "What We Tested", "The Scorecard",
-                       "Recommendation", "Appendix A", "Appendix B", "Back Cover"];
+<div class="kicker" style="color:#8a7f6a;">Technical Appendix · A, continued</div>
+<div class="factor"><b>FULL CUMULATIVE HISTORY</b><span>Your rating reflects your entire rated career — no window, no reset. Long tenure carries no unearned inflation; your full track record simply counts, for better or worse.</span></div>
+<div class="factor"><b>PROVISIONAL K</b><span>K starts at 40 for a player’s first game and declines linearly to 20 by game 60, then holds. New players converge quickly; established ratings stay stable.</span></div>
+<div class="factor"><b>FRESHNESS WINDOW</b><span>Eligibility and freshness are judged separately from your rating, using only your own last 60 real games — never blended with anyone else’s. This determines your Freshness Tier, not your rating itself.</span></div>
+<div class="factor"><b>STEP ARITHMETIC</b><span>Step for your next playdate is your current court number, minus one for a top-two finish (floored at 1 — the best court has nowhere higher to go), plus one for a bottom-two finish (uncapped). A 3-court, 12-player day produces exactly four players at Step 1, four at Step 2, two at Step 3, and two at Step 4 — the bottom performers on the worst court carry a Step higher than any court that day actually had, into whatever court count shows up next time.</span></div>
+<div class="factor"><b>STEP ARITHMETIC</b><span>Step for your next playdate is your current court number, minus one for a top-two finish (floored at 1 — the best court has nowhere higher to go), plus one for a bottom-two finish (uncapped). A 3-court, 12-player day produces exactly four players at Step 1, four at Step 2, two at Step 3, and two at Step 4 — the bottom performers on the worst court carry a Step higher than any court that day actually had, into whatever court count shows up next time.</span></div>
+<div class="pgnum">31</div>
 
-  function render() {{
-    sheets.forEach((s, i) => {{
-      s.classList.toggle('flipped', i < flipped);
-      s.style.zIndex = (i < flipped) ? (i + 1) : (N - i + 10);
-    }});
-    document.getElementById('btnBack').disabled = (flipped === 0);
-    document.getElementById('btnFwd').disabled = (flipped === N);
-    document.getElementById('pageInfo').textContent =
-      spreadNames[Math.min(flipped, spreadNames.length - 1)] + "  ·  " + flipped + " / " + N;
-  }}
+</div>
 
-  function turn(dir) {{
-    flipped = Math.min(N, Math.max(0, flipped + dir));
-    render();
-  }}
+<div class="section">
 
-  document.getElementById('book').addEventListener('click', (e) => {{
-    const rect = e.currentTarget.getBoundingClientRect();
-    turn(e.clientX - rect.left > rect.width / 2 ? 1 : -1);
-  }});
-  document.addEventListener('keydown', (e) => {{
-    if (e.key === 'ArrowRight' || e.key === ' ') turn(1);
-    if (e.key === 'ArrowLeft') turn(-1);
-  }});
-  let touchX = null;
-  document.addEventListener('touchstart', e => touchX = e.touches[0].clientX, {{passive: true}});
-  document.addEventListener('touchend', e => {{
-    if (touchX === null) return;
-    const dx = e.changedTouches[0].clientX - touchX;
-    if (Math.abs(dx) > 40) turn(dx < 0 ? 1 : -1);
-    touchX = null;
-  }}, {{passive: true}});
+<div class="kicker" style="color:#8a7f6a;">Technical Appendix · B</div>
+<h2>Data Hygiene &amp; Display</h2>
+<div class="factor"><b>WHAT COUNTS</b><span>Every posted shootout game since Jan {first_year}. Placeholder entries (tryouts, drop-ins), guest players, and flagged data errors are excluded from ratings; known name glitches are corrected at load.</span></div>
+<div class="factor"><b>SHARED-NAME PLACEHOLDER</b><span>“New Player Tryout” games are excluded from ratings entirely, not just flagged. Different people play under that same placeholder name from week to week, so there is no way to attribute those results to any one consistent player’s skill.</span></div>
+<div class="factor"><b>LEADERBOARD QUALIFICATION</b><span>At least 24 rated games within the past 180 days. Everyone else still carries a rating — shown with reduced confidence, pulled toward 1,000 in proportion to sample size.</span></div>
+<div class="factor"><b>FRESHNESS</b><span>No continuous penalty — freshness is a hard cutoff, not a haircut. Very Fresh (0–90 days) and Mature (91–180 days) players appear on the main leaderboard; Stale and Very Stale players are shown separately, ratings unaffected.</span></div>
+<div class="pgnum">32</div>
 
-  render();
-</script>
+</div>
+
+<div class="section">
+
+<div class="kicker" style="color:#8a7f6a;">Technical Appendix · B, continued</div>
+<div class="factor"><b>EXPECTATION COMPRESSION</b><span>Affects what is shown, not what is earned: displayed win probabilities compress the rating gap by 0.92 before the logistic, matching observed SAM outcomes ({pct_0_100} / {pct_101_200} / {pct_201_300}%). The actual rating calculation does not use this compressed figure at all.</span></div>
+<div class="factor"><b>VALIDATION</b><span>Predictions are checked against outcomes across the full pool every run. Gaps between individual actual and expected win rates reflect normal variance and close as games accumulate; aggregate calibration is what the model is tuned for.</span></div>
+<div class="factor"><b>SCENARIO REPLAY</b><span>Assignment alternatives were tested against the last 90 days of real sessions — same signups, same court counts — not simulations of hypothetical players.</span></div>
+<div class="mono" style="margin-top:3%;">Every number in this book was computed from the underlying rating engine as of the snapshot date on the cover. It is not a live document -- re-run the report to produce a new dated snapshot after major changes.</div>
+<p style="font-style:italic;opacity:0.75;">— end —</p>
+<div class="pgnum">33</div>
+
+</div>
+
+<div class="section back-cover-section">
+
+<div class="rule" style="width:56px;height:2px;background:var(--accent);"></div>
+<h1 style="font-size:clamp(16px,2.2vw,26px);font-weight:normal;">See Where You Stand</h1>
+<p style="font-size:clamp(10px,1.25vw,14px);line-height:1.6;">
+        Every rating, every game in this book<br/>is available live, updated after each play date:</p>
+<p style="font-size:clamp(10px,1.3vw,14.5px);"><a href="https://billpollock1-hue.github.io/sam-pickleball/">Anthem SAM · Live Results</a></p>
+<p style="font-size:11px;opacity:0.6;margin-top:4%;">Data through {latest} · {n_games:,} games</p>
+
+</div>
+</div>
 </body>
-</html>
-"""
+</html>"""
 
-OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 OUT_PATH.write_text(html, encoding="utf-8")
 print(f"Saved: {OUT_PATH}")

@@ -223,12 +223,20 @@ def confidence_tier(games_used):
     return "Emerging"
 
 
-def trend_icon(trend_value):
+def trend_icon(trend_value, hot_threshold=None, cold_threshold=None):
+    """Fire/ice/dash badge. Added 2026-07-21 alongside the rating-delta trend
+    switch: hot_threshold/cold_threshold are computed dynamically each run
+    as the 85th/15th percentile of Rating Delta (24) among currently-active,
+    24+-game players -- not fixed constants -- since a fixed threshold would
+    need re-tuning as participation rises and falls over time. Falls back to
+    dash if thresholds are unavailable (e.g. too few eligible players)."""
     if trend_value is None or pd.isna(trend_value):
         return "N/A"
-    if trend_value >= 0.06:
+    if hot_threshold is None or cold_threshold is None:
+        return "—"
+    if trend_value >= hot_threshold:
         return "\U0001f525"
-    if trend_value <= -0.06:
+    if trend_value <= cold_threshold:
         return "\U0001f9ca"
     return "—"
 
@@ -1151,6 +1159,22 @@ def build_recent_trends(player_log, leaderboard, as_of):
             else None
         )
 
+        # Rating Delta (24) -- added 2026-07-21, replaces the win%-gap Trend
+        # metric as the leaderboard's hot/cold badge source. Simpler and more
+        # transparent to players ("your rating moved by X over your last 24
+        # games") than comparing two non-overlapping win-percentage windows.
+        # Same 14-day recency guard as the old Trend metric (a badge implies
+        # CURRENT form), but only requires 24 games, not a full 60 -- 24
+        # games is 4 play dates (6 games/date: 3 in S1, 3 in S2).
+        is_recent_24 = (
+            len(sub) >= 24
+            and last_game_date is not None
+            and (as_of - last_game_date).days <= 14
+        )
+        rating_delta_24 = (
+            float(sub.tail(24)["rating_change"].sum()) if is_recent_24 else None
+        )
+
         rows.append(
             {
                 "Player": player,
@@ -1160,6 +1184,7 @@ def build_recent_trends(player_log, leaderboard, as_of):
                 "Prior 45 Gap": prior45_gap,
                 "Trend": trend,
                 "Rating Delta (Last 15)": rating_delta,
+                "Rating Delta (24)": rating_delta_24,
             }
         )
 
@@ -2856,8 +2881,30 @@ def main():
     recent_trends = build_recent_trends(full_player_log, leaderboard, as_of)
 
     if not recent_trends.empty and not leaderboard.empty:
-        trend_map = dict(zip(recent_trends["Player"], recent_trends["Trend"]))
-        leaderboard.insert(2, "Trend", leaderboard["Player"].map(trend_map).apply(trend_icon))
+        # Leaderboard trend badge switched 2026-07-21 from a win%-gap metric
+        # to Rating Delta (24) -- simpler for players to understand ("your
+        # rating moved by X over your last 24 games") and equally valid,
+        # since neither metric was ever a strong predictor of future
+        # performance (Step 2 tested 8 alternatives, all weak); the honest
+        # goal is describing recent form, not forecasting it. Hot/cold
+        # thresholds are computed fresh each run as the 85th/15th percentile
+        # of Rating Delta (24) among currently-eligible players (24+ games,
+        # played within 14 days) rather than fixed constants, so the badge
+        # self-calibrates as participation rises and falls rather than
+        # needing periodic re-tuning.
+        delta_map = dict(zip(recent_trends["Player"], recent_trends["Rating Delta (24)"]))
+        eligible_deltas = recent_trends["Rating Delta (24)"].dropna()
+        if len(eligible_deltas) >= 10:
+            hot_threshold = eligible_deltas.quantile(0.85)
+            cold_threshold = eligible_deltas.quantile(0.15)
+        else:
+            hot_threshold = cold_threshold = None
+        leaderboard.insert(
+            2, "Trend",
+            leaderboard["Player"].map(delta_map).apply(
+                lambda v: trend_icon(v, hot_threshold, cold_threshold)
+            )
+        )
 
     game_consistency = build_game_consistency(full_player_log, leaderboard)  # own internal last-60-game window, unrelated to the rating source
 

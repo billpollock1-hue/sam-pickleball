@@ -168,6 +168,7 @@ gap_rows = ""
 for _, r in gap_dist.iterrows():
     gap_rows += f"""
       <tr><td>{r['Rating Gap']}</td><td>{r['% Won by Higher-Rated Team']}</td>
+      <td>{r.get('Avg Margin','—')}</td>
       <td>{r.get('Margin 1–3','—')}</td><td>{r.get('Margin 9–11','—')}</td></tr>"""
 
 # Effort labels corrected 2026-07-21: "Settings only" wrongly implied
@@ -393,7 +394,6 @@ html = f"""<!DOCTYPE html>
 
 <div class="section">
 
-<div class="kicker">Chapter One</div>
 <h2>The Challenge: From Perception to Evidence</h2>
 <p>Players in the SAM shootout have raised concerns about court competitiveness — too many lopsided games, courts that feel mismatched.</p>
 <p>Perception is a starting point, but it is not enough to diagnose the problem or evaluate solutions. We need an objective metric: a way to measure the skill gap between teams in any given game, consistently, across thousands of games and multiple years.</p>
@@ -416,7 +416,6 @@ html = f"""<!DOCTYPE html>
 
 <div class="section">
 
-<div class="kicker">Chapter Two</div>
 <h2>The Metric: Modified Elo</h2>
 <p>Elo is a rating system originally developed for chess and widely used in competitive sports. Every player starts at 1,000. After each game, all four players’ ratings update based on the result versus what the model predicted.</p>
 <p>Your team’s rating is the average of you and your partner. The bigger the rating gap between two teams, the more confidently the model expects the stronger side to win.</p>
@@ -438,18 +437,6 @@ html = f"""<!DOCTYPE html>
 
 <div class="section">
 
-<div class="kicker">Chapter Three</div>
-<h2>Are Our Modified Elo Ratings Accurate?</h2>
-<p>A rating is only useful if it predicts real outcomes. So before drawing any conclusions, we checked the model against every rated game in the dataset.</p>
-<p>The pattern is exactly what a healthy rating system should show: the bigger the pre-game rating gap between two teams, the more often the favorite wins — and the more lopsided the score gets.</p>
-<p>Small gaps produce coin-flip games decided by just a few points. Big gaps produce blowouts. The facing page shows the full relationship.</p>
-<div class="pgnum">5</div>
-
-</div>
-
-<div class="section">
-
-<div class="kicker">Chapter Two, Continued</div>
 <h2>Three Factors vs. One and a Half</h2>
 <p>Elo’s three inputs — result, margin, opponent strength — aren’t optional extras. Opponent strength is the one that makes a rating mean anything: beat a strong team and you earn more; lose to one and you lose less. Without it, a win is just a win, with no sense of how hard it was.</p>
 <p>Pickleball Den’s court assignment metrics, Step and Percentage, never make that adjustment. Step is set from a player’s last Shootout 2 finish: top two on a court moves them toward the top court next time, bottom two moves them toward the bottom — based purely on finishing position. Picture two players on the same date: one finishes bottom-two on the toughest court and moves toward a worse court next time; another finishes top-two on the weakest court and moves toward a better court next time. Both land on the same Step for the next Shootout 1 — despite one facing that day’s toughest competition and the other its weakest. Percentage, the tiebreaker when Steps match, doesn’t fix this either: it’s just total points scored over a player’s last 90 games, with no adjustment for who those points came against.</p>
@@ -460,7 +447,6 @@ html = f"""<!DOCTYPE html>
 
 <div class="section">
 
-<div class="kicker">Chapter Two, Continued</div>
 <h2>Same Morning, Same Record, Different Reality</h2>
 <p>This isn’t a hypothetical — it plays out constantly. Two players can each finish bottom-two on the same-numbered court, on different play dates, and land on the identical Step for their next Shootout 1 — even though one faced a much tougher field that day than the other did.</p>
 <p>Elo would separate them sharply: losing to strong competition is expected and costs the first player’s rating very little, while the same finish against a weaker field is a real signal and costs the second player’s rating meaningfully more. Step is simplistic — both players get the same step change, based purely on top-two/bottom-two finish, with no memory of who was actually across the net.</p>
@@ -471,9 +457,19 @@ html = f"""<!DOCTYPE html>
 
 <div class="section">
 
+<h2>Are Our Modified Elo Ratings Accurate?</h2>
+<p>A rating is only useful if it predicts real outcomes. So before drawing any conclusions, we checked the model against every rated game in the dataset.</p>
+<p>The pattern is exactly what a healthy rating system should show: the bigger the pre-game rating gap between two teams, the more often the favorite wins — and the more lopsided the score gets.</p>
+<p>Small gaps produce coin-flip games decided by just a few points. Big gaps produce blowouts. The facing page shows the full relationship.</p>
+<div class="pgnum">5</div>
+
+</div>
+
+<div class="section">
+
 <div class="kicker">Rating Gap vs. Real Outcomes</div>
 <table class="btable">
-<tr><th>Team Rating Gap</th><th>Favorite Wins</th><th>Decided by 1–3 pts</th><th>Decided by 9–11 pts</th></tr>
+<tr><th>Team Rating Gap</th><th>Favorite Wins</th><th>Avg Margin</th><th>Decided by 1–3 pts</th><th>Decided by 9–11 pts</th></tr>
           {gap_rows}
         </table>
 <p style="font-size:clamp(8.5px,1vw,12px);color:#8a7f6a;margin-top:3%;">All rated games, {first_year}–present. Close games fade and blowouts grow as the gap widens.</p>
@@ -483,7 +479,6 @@ html = f"""<!DOCTYPE html>
 
 <div class="section">
 
-<div class="kicker">Chapter Four</div>
 <h2>The Evidence: A Growing Competitiveness Problem</h2>
 <p>With a trustworthy measuring stick, we can now measure match quality directly. “Match gap” is the rating difference between the two teams in a game — smaller means more evenly matched.</p>
 <p>The trend is unmistakable. The average match gap {gap_change_phrase} since early {first_year + 0 if first_year >= 2022 else 2022}, and games that qualify as closely matched — a gap under 200 points — have fallen from {pct_lt200_first}% of all games to {pct_lt200_last}%.</p>
@@ -505,7 +500,6 @@ html = f"""<!DOCTYPE html>
 
 <div class="section">
 
-<div class="kicker">Chapter Five</div>
 <h2>The Root Cause: A Wider Player Pool</h2>
 <p>The driver is not a shortage of strong players — it is that the SAM player pool has grown dramatically more diverse in skill.</p>
 <p>Today’s leaderboard spans {n_active} active players — those with at least 24 rated games played within the past 180 days. The rating spread across that group is {lb_range:,} points, top to bottom.</p>
@@ -528,7 +522,6 @@ html = f"""<!DOCTYPE html>
 
 <div class="section">
 
-<div class="kicker">Chapter Six</div>
 <h2>How Courts Are Assigned Today</h2>
 <p>The DEN makes Shootout 1 court assignments using two numbers. <b>Step</b> is a court-movement counter: finish in the top two of your court and it ticks down; finish in the bottom two and it ticks up — based entirely on your <i>last</i> play date, however long ago that was.</p>
 <p><b>Percentage</b> breaks ties within a step: total points scored divided by maximum possible, over your last 90 games (~15 play dates), all weighted equally.</p>
@@ -622,7 +615,6 @@ html = f"""<!DOCTYPE html>
 
 <div class="section">
 
-<div class="kicker">Chapter Seven</div>
 <h2>Not All Step 1s Are Equal</h2>
 <p>On a two-court day, starting on Court 1 means finishing in the top half of eight players. On a three-court day, it means the top third of twelve. On a five-court day, it means the top fifth of twenty — a genuinely higher bar.</p>
 <p>Step doesn’t know the difference. A step earned on Court 1 on a slow, low-turnout day carries the same weight as one earned on Court 1 on a big, high-turnout day, even though the second is a meaningfully harder accomplishment.</p>
@@ -633,8 +625,8 @@ html = f"""<!DOCTYPE html>
 
 <div class="section">
 
-<div class="kicker">Chapter Seven, continued</div>
-<p>We replayed the last 90 days of actual sessions and measured the skill spread inside each court — lower means the four players on a court are more evenly matched.</p>
+<div class="kicker">Shootout 1: The Setup</div>
+<p>We replayed the last 90 days of actual sessions and measured “spread” — the rating gap between the highest- and lowest-rated player assigned to a court — before anyone is paired into teams. Lower means the four players on a court are more evenly matched. (This is different from “gap,” used earlier: gap measures the two paired teams’ averages against each other, after pairing has already balanced the matchup.)</p>
 <p>Under the current system, courts average a {den_s1}-point rating spread in Shootout 1. </p>
 <div class="pgnum">16</div>
 
@@ -642,7 +634,7 @@ html = f"""<!DOCTYPE html>
 
 <div class="section">
 
-<div class="kicker">Chapter Seven, Continued — Case Study, April 2, 2026</div>
+<div class="kicker">Case Study, April 2, 2026</div>
 <p>April 2, 2026 was a three-court day in SAM. The DEN’s court assignments were a mess.</p>
 <svg style="display:block;" viewbox="0 0 420 500" width="100%">
 <text fill="var(--navy)" font-family="'Trebuchet MS',sans-serif" font-size="12" font-weight="bold" text-anchor="middle" x="135" y="14">True rank before S1</text>
@@ -701,7 +693,7 @@ html = f"""<!DOCTYPE html>
 <circle cx="290" cy="398" fill="var(--navy)" r="2.5"></circle>
 <circle cx="290" cy="430" fill="var(--navy)" r="2.5"></circle>
 <circle cx="290" cy="462" fill="var(--navy)" r="2.5"></circle>
-<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="10.5" text-anchor="middle" x="210" y="488">Green: matched · Amber: 1 tier off · Red: 2 tiers off</text>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="10.5" text-anchor="middle" x="210" y="488">Green: matched · Gold: 1 tier off · Red: 2 tiers off</text>
 </svg>
 <div class="pgnum">17</div>
 
@@ -709,10 +701,20 @@ html = f"""<!DOCTYPE html>
 
 <div class="section">
 
-<div class="kicker">Chapter Seven, continued</div>
+<div class="kicker">Shootout 2: The Shuffle</div>
 <p>After the 2-up/2-back shuffle — which moves about {den_move} of all players — the spread <i>widens</i> to {den_s2}.</p>
 <p>Read that again: the movement rule designed to sort players actually leaves courts <b>less balanced</b> than they started. Most of that movement is mechanical, not earned.</p>
 <div class="pgnum">18</div>
+
+</div>
+
+<div class="section">
+
+<h2>Perfect, Then Scrambled</h2>
+<p>On May 4, 2026, the DEN got the Shootout 1 court assignments exactly right. Every one of twelve players landed on the court matching their true skill rank — zero mismatches. Step and Percentage worked as designed.</p>
+<p>Then 2-up/2-back moved players for Shootout 2, using only that morning's three games as its signal. The result: eight of twelve players — two-thirds of the field — landed in the wrong pool.</p>
+<p>Court 1 shows the damage directly. Eric Kramer and Peter Barnett, the two highest-rated players in the field, ended up paired together by the shuffle and beat Dwight Christensen and Lidia Zolnierczyk — correctly separated into a lower tier just one session earlier — <b>11–4</b>. The movement rule undid a correct assignment using less information than the assignment it replaced.</p>
+<div class="pgnum">20</div>
 
 </div>
 
@@ -776,7 +778,7 @@ html = f"""<!DOCTYPE html>
 <circle cx="290" cy="462" fill="var(--navy)" r="2.5"></circle>
 <circle cx="290" cy="275" fill="var(--navy)" r="2.5"></circle>
 <circle cx="290" cy="398" fill="var(--navy)" r="2.5"></circle>
-<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="10.5" text-anchor="middle" x="210" y="488">Green: matched · Amber: 1 tier off</text>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="10.5" text-anchor="middle" x="210" y="488">Green: matched · Gold: 1 tier off</text>
 </svg>
 <div class="pgnum">19</div>
 
@@ -784,18 +786,7 @@ html = f"""<!DOCTYPE html>
 
 <div class="section">
 
-<div class="kicker">Chapter Seven, Continued</div>
-<h2>Perfect, Then Scrambled</h2>
-<p>On May 4, 2026, the DEN got the Shootout 1 court assignments exactly right. Every one of twelve players landed on the court matching their true skill rank — zero mismatches. Step and Percentage worked as designed.</p>
-<p>Then 2-up/2-back moved players for Shootout 2, using only that morning's three games as its signal. The result: eight of twelve players — two-thirds of the field — landed in the wrong pool.</p>
-<p>Court 1 shows the damage directly. Eric Kramer and Peter Barnett, the two highest-rated players in the field, ended up paired together by the shuffle and beat Dwight Christensen and Lidia Zolnierczyk — correctly separated into a lower tier just one session earlier — <b>11–4</b>. The movement rule undid a correct assignment using less information than the assignment it replaced.</p>
-<div class="pgnum">20</div>
-
-</div>
-
-<div class="section">
-
-<div class="kicker">Chapter Seven, continued</div>
+<div class="kicker">Reserved</div>
 <p style="opacity:0.6;font-style:italic;">Reserved for future content.</p>
 <div class="pgnum">21</div>
 
@@ -803,7 +794,6 @@ html = f"""<!DOCTYPE html>
 
 <div class="section">
 
-<div class="kicker">Chapter Eight</div>
 <h2>What We Tested — and How We Scored It</h2>
 <p>There is no shortage of ideas for assigning courts. To compare them fairly, we replayed the last 90 days of actual shootouts — same players, same signups, same court counts — under each candidate method.</p>
 <p>Every method gets two scores. <b>Court tightness:</b> how close in skill the four players on each court are — a smaller spread means fairer games. <b>Shuffle:</b> what share of players change courts between the two sessions — some movement is healthy; constant mechanical reshuffling is not.</p>
@@ -837,7 +827,6 @@ html = f"""<!DOCTYPE html>
 
 <div class="section">
 
-<div class="kicker">Chapter Eight, continued</div>
 <h2>How to Read the Scorecard</h2>
 <p><b>Better-matched courts</b> is the improvement in court tightness versus today. +37% means the skill spread inside a typical court shrinks by more than a third.</p>
 <p><b>Players changing courts</b> is the share of players sitting on a different court in Shootout 2 than Shootout 1. Today’s 2-up/2-back moves about {den_move} — the most of anything we tested.</p>
@@ -861,7 +850,6 @@ html = f"""<!DOCTYPE html>
 
 <div class="section">
 
-<div class="kicker">Chapter Nine</div>
 <h2>The Recommendation: Two Phases</h2>
 <div class="phase">
 <b>PHASE 1 — Rating-seeded start, gentler shuffle</b>
@@ -879,7 +867,6 @@ html = f"""<!DOCTYPE html>
 
 <div class="section">
 
-<div class="kicker">Chapter Nine, Continued</div>
 <h2>This Isn’t a Settings Toggle</h2>
 <p>Everything on the previous page is possible because of work already done, not work still theoretical. DEN has no setting for rating-based seeding or results-driven reshuffling — both phases require quietly overriding DEN’s own numbers from the outside.</p>
 <p>The technique: write a synthetic value into DEN’s own Ladder Step field for each player, then let DEN’s own “Seed Players” button do the actual grouping. DEN never needs to know a rating model is behind the number it’s reading.</p>

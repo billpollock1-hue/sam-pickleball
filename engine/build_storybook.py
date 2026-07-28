@@ -101,7 +101,7 @@ lb_min, lb_max = int(lb["Player Rating"].min()), int(lb["Player Rating"].max())
 lb_range = lb_max - lb_min
 
 print("Running court-assignment scenarios (90 days)...")
-_, scenario_summary, _ = build_court_assignment_analysis(raw, player_log, days=90)
+_, scenario_summary, court_distribution = build_court_assignment_analysis(raw, player_log, days=90)
 print("Scenarios:", scenario_summary["Scenario"].tolist())
 
 def scen(*needle_sets):
@@ -193,6 +193,17 @@ for label, vs, mv, impl in options:
     option_rows += f"""
       <tr class="{'hl' if star else ''}"><td style="text-align:left;">{label}</td>
       <td>{vs}</td><td>{mv}</td><td>{impl}</td></tr>"""
+
+court_spread_rows = ""
+for _, r in court_distribution.iterrows():
+    if r["Courts"] == "Wtd Avg":
+        continue
+    spread_val = r.get("Avg S1 Spread")
+    if spread_val is None or pd.isna(spread_val):
+        continue
+    flag = " *" if r["Days"] < 5 else ""
+    court_spread_rows += f"""
+      <tr><td>{r['Courts']}{flag}</td><td>{r['Days']}</td><td>{round(spread_val)}</td></tr>"""
 
 den_s1 = sv(den, "S1 Avg Spread")
 den_s2 = sv(den, "S2 Avg Spread")
@@ -627,7 +638,12 @@ html = f"""<!DOCTYPE html>
 
 <div class="kicker">Shootout 1: The Setup</div>
 <p>We replayed the last 90 days of actual sessions and measured “spread” — the rating gap between the highest- and lowest-rated player assigned to a court — before anyone is paired into teams. Lower means the four players on a court are more evenly matched. (This is different from “gap,” used earlier: gap measures the two paired teams’ averages against each other, after pairing has already balanced the matchup.)</p>
-<p>Under the current system, courts average a {den_s1}-point rating spread in Shootout 1. </p>
+<p>Under the current system, courts average a {den_s1}-point rating spread in Shootout 1 — but that average hides a real pattern by court count:</p>
+<table class="btable">
+<tr><th>Courts</th><th>Days</th><th>Avg Spread</th></tr>
+{court_spread_rows}
+</table>
+<p style="font-size:clamp(8.5px,1vw,12px);color:#8a7f6a;margin-top:1%;">* Very few days in this range window — treat with caution.</p>
 <div class="pgnum">16</div>
 
 </div>

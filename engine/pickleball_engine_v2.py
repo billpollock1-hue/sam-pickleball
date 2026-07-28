@@ -721,8 +721,14 @@ def build_rating_gap_distribution(player_log):
     games["fav_won"] = (games["team_pre_rating"] >= games["opp_team_pre_rating"]).astype(int)
     games["pt_diff"] = games["margin"]  # positive — winner rows only
 
-    gap_bins   = [0, 100, 200, 300, 400, float("inf")]
-    gap_labels = ["0–100", "101–200", "201–300", "301–400", "401+"]
+    # 401+ split into three finer buckets 2026-07-27: the aggregate 401+ row
+    # (92.1% favorite-win rate) was masking a real continuation of the same
+    # monotonic trend visible in the other rows -- checked against real data:
+    # 401-500 (n=730) 89.6%, 501-600 (n=322) 95.3%, 601+ (n=175, combining
+    # the former 601-800 and 800+ splits, since 800+ alone was only 16 games
+    # -- too thin to trust as its own row) ~96.5%.
+    gap_bins   = [0, 100, 200, 300, 400, 500, 600, float("inf")]
+    gap_labels = ["0–100", "101–200", "201–300", "301–400", "401–500", "501–600", "601+"]
     games["gap_bucket"] = pd.cut(games["rating_gap"], bins=gap_bins, labels=gap_labels, right=True)
 
     diff_bins   = [0, 3, 6, 8, float("inf")]
@@ -736,17 +742,19 @@ def build_rating_gap_distribution(player_log):
         if n == 0:
             continue
         fav_pct = round(100 * g["fav_won"].sum() / n, 1)
+        avg_margin = round(g["pt_diff"].mean(), 1)
         row = {
             "Rating Gap": bucket,
             "Games": n,
             "% Won by Higher-Rated Team": f"{fav_pct}%",
+            "Avg Margin": avg_margin,
         }
         for dl in diff_labels:
             cnt = (g["diff_bucket"] == dl).sum()
             row[f"Margin {dl}"] = f"{round(100 * cnt / n, 1)}%"
         rows.append(row)
 
-    cols = ["Rating Gap", "Games", "% Won by Higher-Rated Team"] + [f"Margin {dl}" for dl in diff_labels]
+    cols = ["Rating Gap", "Games", "% Won by Higher-Rated Team", "Avg Margin"] + [f"Margin {dl}" for dl in diff_labels]
     return pd.DataFrame(rows, columns=cols)
 
 
@@ -2760,6 +2768,7 @@ def build_court_assignment_analysis(raw_df, player_log, days=90):
         df.groupby(["date", "num_courts"])["player"].count()
         .groupby("num_courts").mean()
     )
+    avg_spread_by_nc = df.groupby("num_courts")["den_s1_spread"].mean()
     dist_rows = []
     for nc in sorted(nc_days.index):
         days = int(nc_days[nc])
@@ -2773,6 +2782,7 @@ def build_court_assignment_analysis(raw_df, player_log, days=90):
             "Avg Players": round(avg_p, 1),
             "2u2b % Moving": f"{pct_2u2b}%",
             "1u1b % Moving": f"{pct_1u1b}%",
+            "Avg S1 Spread": round(avg_spread_by_nc.get(nc, float("nan"))),
         })
     wtd_2u2b = round(sum(nc_days[nc] * (nc - 1) / nc for nc in nc_days.index) / total_days_nc * 100)
     wtd_1u1b = round(sum(nc_days[nc] * (nc - 1) / (2 * nc) for nc in nc_days.index) / total_days_nc * 100)

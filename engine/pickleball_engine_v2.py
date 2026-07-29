@@ -105,6 +105,7 @@ MANUAL_NAME_FIXES = {
     ("2026-03-20", "DEN New Player Tryout"): "Jonathan Ernst",
     ("2026-03-26", "Karen Carter"): "Kenneth Whipple",
     ("2026-03-26", "DEN New Player Tryout"): "Logan Brannon",
+    ("2026-07-29", "Den New Player Tryout"): "David Roming",
 }
 
 

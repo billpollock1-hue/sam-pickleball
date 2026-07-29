@@ -2,6 +2,7 @@
 
 import argparse
 import math
+import re
 from collections import defaultdict
 from pathlib import Path
 
@@ -128,8 +129,13 @@ def apply_manual_fix(team, posted_dt):
         return team
     date_key = pd.Timestamp(posted_dt).strftime("%Y-%m-%d")
     for (fix_date, old_name), new_name in MANUAL_NAME_FIXES.items():
-        if fix_date == date_key and old_name in team:
-            team = team.replace(old_name, new_name)
+        if fix_date != date_key:
+            continue
+        # Case-insensitive match (DEN's own scraped casing drifts, e.g.
+        # "Den New Player Tryout" vs "DEN New Player Tryout") -- the
+        # replacement text itself keeps exactly the casing written above.
+        pattern = re.compile(re.escape(old_name), re.IGNORECASE)
+        team = pattern.sub(new_name, team)
     return norm(team)
 
 

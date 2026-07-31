@@ -749,12 +749,6 @@ html = f"""<!DOCTYPE html>
 
 <div class="section">
 
-<div class="kicker">Reserved</div>
-<p style="opacity:0.6;font-style:italic;">Reserved for future content.</p>
-</div>
-
-<div class="section">
-
 <h2>What We Tested — and How We Scored It</h2>
 <p>There is no shortage of ideas for assigning courts. To compare them fairly, we replayed the last 90 days of actual shootouts — same players, same signups, same court counts — under each candidate method.</p>
 <p>Every method gets two scores. <b>Court tightness:</b> how close in skill the four players on each court are — a smaller spread means fairer games. <b>Shuffle:</b> what share of players change courts between the two sessions — some movement is healthy; constant mechanical reshuffling is not.</p>

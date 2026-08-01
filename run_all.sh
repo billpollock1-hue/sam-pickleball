@@ -227,6 +227,10 @@ else
   python3 engine/build_session_viewer.py
 
   echo ""
+  echo "5a2. Building player history..."
+  python3 engine/build_player_history.py
+
+  echo ""
   echo "5b. Building storybook..."
   python3 engine/build_storybook.py
 
@@ -247,6 +251,7 @@ echo ""
 echo "6. Updating docs/ for GitHub Pages..."
 mkdir -p docs
 cp output/session_viewer.html docs/
+cp output/player_history.html docs/
 cp output/rating_history.html docs/
 cp output/leaderboard.html docs/
 cp assignments/output/court_assignments_viewer.html docs/court_assignments.html

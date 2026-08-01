@@ -218,30 +218,38 @@ function renderBreakdowns(games) {
   const partners = {};
   games.forEach(g => {
     if (!g.partner) return;
-    if (!partners[g.partner]) partners[g.partner] = { name: g.partner, games: 0, wins: 0, losses: 0, pf: 0, pa: 0 };
+    if (!partners[g.partner]) partners[g.partner] = { name: g.partner, games: 0, wins: 0, losses: 0, pf: 0, pa: 0, changeSum: 0, adjustedCount: 0 };
     const p = partners[g.partner];
     p.games++;
     g.win ? p.wins++ : p.losses++;
     p.pf += g.pf;
     p.pa += g.pa;
+    if (g.adjusted) { p.changeSum += g.change; p.adjustedCount++; }
   });
   const partnerRows = Object.values(partners).sort((a,b) => b.games - a.games);
 
   let ph = `<table>
     <thead><tr>
       <th class="left">Partner</th>
-      <th>Games</th><th>Wins</th><th>Losses</th>
+      <th>Games</th><th>Wins</th><th>Losses</th><th>Win %</th>
       <th>Points For</th><th>Points Against</th><th>Net Margin</th>
+      <th>Avg Margin</th><th>Avg Rating Change</th>
     </tr></thead><tbody>`;
   partnerRows.forEach(p => {
+    const pWinPct = p.games ? Math.round((p.wins / p.games) * 100) : 0;
+    const pAvgMargin = p.games ? Math.round(((p.pf - p.pa) / p.games) * 10) / 10 : 0;
+    const pAvgChange = p.adjustedCount ? Math.round((p.changeSum / p.adjustedCount) * 10) / 10 : null;
     ph += `<tr>
       <td class="left">${p.name}</td>
       <td>${p.games}</td>
       <td class="win-badge">${p.wins}</td>
       <td class="loss-badge">${p.losses}</td>
+      <td>${pWinPct}%</td>
       <td>${p.pf}</td>
       <td>${p.pa}</td>
       <td>${fmt(p.pf - p.pa)}</td>
+      <td>${fmt(pAvgMargin)}</td>
+      <td>${pAvgChange !== null ? fmt(pAvgChange) : '<span class="zero">—</span>'}</td>
     </tr>`;
   });
   ph += "</tbody></table>";
@@ -251,12 +259,13 @@ function renderBreakdowns(games) {
   games.forEach(g => {
     [g.opp1, g.opp2].forEach(oppName => {
       if (!oppName) return;
-      if (!opponents[oppName]) opponents[oppName] = { name: oppName, games: 0, wins: 0, losses: 0, pf: 0, pa: 0 };
+      if (!opponents[oppName]) opponents[oppName] = { name: oppName, games: 0, wins: 0, losses: 0, pf: 0, pa: 0, changeSum: 0, adjustedCount: 0 };
       const o = opponents[oppName];
       o.games++;
       g.win ? o.wins++ : o.losses++;
       o.pf += g.pf;
       o.pa += g.pa;
+      if (g.adjusted) { o.changeSum += g.change; o.adjustedCount++; }
     });
   });
   const opponentRows = Object.values(opponents).sort((a,b) => b.games - a.games);
@@ -264,18 +273,25 @@ function renderBreakdowns(games) {
   let oh = `<table>
     <thead><tr>
       <th class="left">Opponent</th>
-      <th>Games</th><th>Wins</th><th>Losses</th>
+      <th>Games</th><th>Wins</th><th>Losses</th><th>Win %</th>
       <th>Points For</th><th>Points Against</th><th>Net Margin</th>
+      <th>Avg Margin</th><th>Avg Rating Change</th>
     </tr></thead><tbody>`;
   opponentRows.forEach(o => {
+    const oWinPct = o.games ? Math.round((o.wins / o.games) * 100) : 0;
+    const oAvgMargin = o.games ? Math.round(((o.pf - o.pa) / o.games) * 10) / 10 : 0;
+    const oAvgChange = o.adjustedCount ? Math.round((o.changeSum / o.adjustedCount) * 10) / 10 : null;
     oh += `<tr>
       <td class="left">${o.name}</td>
       <td>${o.games}</td>
       <td class="win-badge">${o.wins}</td>
       <td class="loss-badge">${o.losses}</td>
+      <td>${oWinPct}%</td>
       <td>${o.pf}</td>
       <td>${o.pa}</td>
       <td>${fmt(o.pf - o.pa)}</td>
+      <td>${fmt(oAvgMargin)}</td>
+      <td>${oAvgChange !== null ? fmt(oAvgChange) : '<span class="zero">—</span>'}</td>
     </tr>`;
   });
   oh += "</tbody></table>";
@@ -305,25 +321,32 @@ function render() {
     `<span class="pill">${wins}-${losses}</span>` +
     `<span class="pill">Margin ${netMargin >= 0 ? "+" : ""}${netMargin}</span>`;
 
+  const winPct = games.length ? Math.round((wins / games.length) * 100) : 0;
+  const avgMargin = games.length ? Math.round((netMargin / games.length) * 10) / 10 : 0;
+  const avgChange = adjustedGames.length ? Math.round((totalChange / adjustedGames.length) * 10) / 10 : null;
+
   let sh = `<table>
     <thead><tr>
       <th class="left">Player</th>
-      <th>Games</th><th>Wins</th><th>Losses</th>
+      <th>Games</th><th>Wins</th><th>Losses</th><th>Win %</th>
       <th>Entering Rating</th><th>Current Rating</th>
-      <th>Career Change</th>
-      <th>Points For</th><th>Points Against</th><th>Net Margin</th>
+      <th>Career Change</th><th>Avg Rating Change</th>
+      <th>Points For</th><th>Points Against</th><th>Net Margin</th><th>Avg Margin</th>
     </tr></thead><tbody>`;
   sh += `<tr>
     <td class="left">${player}</td>
     <td>${games.length}</td>
     <td class="win-badge">${wins}</td>
     <td class="loss-badge">${losses}</td>
+    <td>${winPct}%</td>
     <td>${entering !== null ? entering : '<span class="zero">—</span>'}</td>
     <td>${current !== null ? current : '<span class="zero">—</span>'}</td>
     <td>${totalChange !== null ? fmt(totalChange) : '<span class="zero">—</span>'}</td>
+    <td>${avgChange !== null ? fmt(avgChange) : '<span class="zero">—</span>'}</td>
     <td>${totalPF}</td>
     <td>${totalPA}</td>
     <td>${fmt(netMargin)}</td>
+    <td>${fmt(avgMargin)}</td>
   </tr>`;
   sh += "</tbody></table>";
   document.getElementById("summaryTable").innerHTML = games.length ? sh : '<p class="no-data">No games found for this player.</p>';

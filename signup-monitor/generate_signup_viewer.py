@@ -479,26 +479,42 @@ function arizonaNow() {
 const az = arizonaNow();
 const cutoffPassed = (az.hour > 8) || (az.hour === 8 && az.minute >= 15);
 
-// Filter dropdown to the true next play date and beyond, sorted nearest first
+// Keep a rolling 7-day lookback plus every future date; drop anything older.
+function shiftDate(dateStr, days) {
+  const d = new Date(dateStr + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+const sevenDaysAgoStr = shiftDate(az.dateStr, -7);
 const allOpts = Array.from(sel.options);
 allOpts.forEach(opt => {
-  if (opt.value < az.dateStr) { opt.remove(); return; }
-  if (opt.value === az.dateStr && cutoffPassed) { opt.remove(); return; }
+  if (opt.value < sevenDaysAgoStr) opt.remove();
 });
-// Reverse remaining options so nearest date is first
+// Options arrive sorted newest-first (see generate_viewer()); reverse so the
+// dropdown reads chronologically, oldest (7 days back) through furthest future.
 const remaining = Array.from(sel.options);
 sel.innerHTML = '';
 remaining.reverse().forEach(opt => sel.appendChild(opt));
-// Fallback: if all dates removed, restore the most recent past one
+// Fallback: if the lookback window removed everything, restore the most
+// recent date on record so the page isn't blank.
 if (sel.options.length === 0 && DATES.length > 0) {
   const opt = document.createElement('option');
   opt.value = DATES[DATES.length - 1];
   opt.text = DATES[DATES.length - 1];
   sel.appendChild(opt);
 }
-// Ensure the first (nearest upcoming) date is the one actually selected —
-// reordering options in the DOM does not change which one is marked selected.
-sel.selectedIndex = 0;
+// Default selection: the next upcoming play date -- today before the 8:15 AM
+// MST cutoff (that session hasn't been played yet), otherwise the first date
+// strictly after today. Falls back to the latest date on record if nothing
+// in the future exists yet.
+function isUpcoming(v) {
+  if (v > az.dateStr) return true;
+  if (v === az.dateStr && !cutoffPassed) return true;
+  return false;
+}
+let defaultIdx = Array.from(sel.options).findIndex(o => isUpcoming(o.value));
+if (defaultIdx === -1) defaultIdx = sel.options.length - 1;
+sel.selectedIndex = defaultIdx;
 
 // Restore a manually-selected date carried over from a periodic auto-reload
 // (see setInterval below), if that date still appears in the dropdown --

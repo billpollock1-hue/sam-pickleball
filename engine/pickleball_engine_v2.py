@@ -3086,7 +3086,7 @@ def main():
         ]
     ].copy()
 
-    player_log_trim = full_player_log[pd.to_datetime(full_player_log["posted"]).dt.year >= 2025].copy()
+    player_log_trim = full_player_log.copy()  # all history, no year cutoff -- session_viewer.html shows every play date in master_history_raw.csv
 
     # Guest/special-case players should appear only on Raw_Data and Quarterly Participation.
     # Their games remain in rating calculations so partners/opponents are handled correctly.
@@ -4548,11 +4548,6 @@ def main():
     if args.with_history and not eod_df.empty and "Player" in eod_df.columns:
         build_rating_history_html(eod_df, leaderboard, output_path.parent / "rating_history.html")
 
-    build_competitive_balance_html(
-        competitive_balance_by_quarter, player_pool_by_quarter,
-        output_path.parent / "competitive_balance.html")
-    build_recent_trends_html(recent_trends, output_path.parent / "recent_trends.html")
-    build_consistency_html(game_consistency, output_path.parent / "consistency.html")
 
 
 def _inject_back_to_menu(output_path):
@@ -4565,183 +4560,6 @@ def _inject_back_to_menu(output_path):
         output_path.write_text(html, encoding="utf-8")
     except Exception as e:
         print(f"Could not inject back-to-menu link into {output_path}: {e}")
-
-
-def build_competitive_balance_html(cb, pool, output_path):
-    try:
-        import plotly.graph_objects as go
-        from plotly.subplots import make_subplots
-    except ImportError:
-        return
-
-    if cb.empty or pool.empty:
-        return
-
-    merged = cb.merge(pool[["Quarter", "Unique Players"]], on="Quarter", how="left")
-    pct = (merged["% 300+"] * 100).round(1)
-    pct_min = max(0, pct.min() - 3)
-    pct_max = min(100, pct.max() + 3)
-
-    fig = make_subplots(
-        rows=2, cols=1,
-        shared_xaxes=True,
-        row_heights=[0.65, 0.35],
-        vertical_spacing=0.06,
-        specs=[[{"secondary_y": True}], [{"secondary_y": False}]],
-    )
-
-    # Top panel — Avg Match Gap (left axis)
-    fig.add_trace(go.Scatter(
-        x=merged["Quarter"],
-        y=merged["Avg Gap"].round(0),
-        name="Avg Match Gap",
-        mode="lines+markers",
-        line=dict(color="#d94f3d", width=2.5),
-        marker=dict(size=6),
-        hovertemplate="<b>%{x}</b><br>Avg Match Gap: %{y:.0f}<extra></extra>",
-    ), row=1, col=1, secondary_y=False)
-
-    # Top panel — % Games <200 (right axis, tightened range)
-    fig.add_trace(go.Scatter(
-        x=merged["Quarter"],
-        y=pct,
-        name="% Games with Gap > 300",
-        mode="lines+markers",
-        line=dict(color="#2ca05a", width=2.5, dash="dot"),
-        marker=dict(size=6),
-        hovertemplate="<b>%{x}</b><br>% Games with Gap &gt;300: %{y:.1f}%<extra></extra>",
-    ), row=1, col=1, secondary_y=True)
-
-    # Bottom panel — Unique Players bars
-    fig.add_trace(go.Bar(
-        x=merged["Quarter"],
-        y=merged["Unique Players"],
-        name="Unique Players",
-        marker_color="rgba(100, 160, 220, 0.55)",
-        hovertemplate="<b>%{x}</b><br>Unique Players: %{y}<extra></extra>",
-    ), row=2, col=1)
-
-    fig.update_layout(
-        title=dict(text="Competitive Balance & Player Pool by Quarter", font=dict(size=17)),
-        hovermode="x unified",
-        height=620,
-        template="plotly_white",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=70, r=80, t=80, b=60),
-    )
-
-    # Top panel axes
-    fig.update_yaxes(
-        title_text="Avg Match Gap",
-        title_font=dict(color="#d94f3d"), tickfont=dict(color="#d94f3d"),
-        row=1, col=1, secondary_y=False)
-    fig.update_yaxes(
-        title_text="% Games with Gap > 300",
-        title_font=dict(color="#2ca05a"), tickfont=dict(color="#2ca05a"),
-        ticksuffix="%", range=[pct_min, pct_max],
-        row=1, col=1, secondary_y=True)
-
-    # Bottom panel axes
-    fig.update_yaxes(
-        title_text="Unique Players",
-        range=[20, merged["Unique Players"].max() * 1.08],
-        row=2, col=1)
-    fig.update_xaxes(tickangle=-45, row=2, col=1)
-
-    fig.write_html(output_path, include_plotlyjs="cdn")
-    _inject_back_to_menu(output_path)
-    print(f"Competitive balance chart: {output_path}")
-
-
-def build_recent_trends_html(recent_trends, output_path):
-    try:
-        import plotly.graph_objects as go
-    except ImportError:
-        return
-
-    df = recent_trends.dropna(subset=["Rating Delta (Last 15)"]).copy()
-    if df.empty:
-        return
-
-    df = df.sort_values("Rating Delta (Last 15)")
-    colors = ["#d94f3d" if v < 0 else "#2ca05a" for v in df["Rating Delta (Last 15)"]]
-
-    fig = go.Figure(go.Bar(
-        x=df["Rating Delta (Last 15)"].round(1),
-        y=df["Player"],
-        orientation="h",
-        marker_color=colors,
-        customdata=df[["Current Rating", "Games Used"]].values,
-        hovertemplate=(
-            "<b>%{y}</b><br>"
-            "Rating change (last 15): %{x:+.1f}<br>"
-            "Current rating: %{customdata[0]:.0f}<br>"
-            "Games used: %{customdata[1]}<extra></extra>"
-        ),
-    ))
-
-    fig.add_vline(x=0, line_width=1, line_color="black")
-
-    fig.update_layout(
-        title=dict(text="Rating Trend — Last 15 Rated Games", font=dict(size=17)),
-        xaxis_title="Rating Points Gained / Lost",
-        yaxis_title="",
-        height=max(500, len(df) * 22),
-        template="plotly_white",
-        margin=dict(l=160, r=40, t=60, b=50),
-    )
-
-    fig.write_html(output_path, include_plotlyjs="cdn")
-    _inject_back_to_menu(output_path)
-    print(f"Recent trends chart: {output_path}")
-
-
-def build_consistency_html(game_consistency, output_path):
-    try:
-        import plotly.graph_objects as go
-    except ImportError:
-        return
-
-    df = game_consistency.dropna(subset=["Consistency Score"]).copy()
-    if df.empty:
-        return
-
-    color_map = {"\U0001f3af Steady": "#2ca05a", "— Average": "#f5a623", "\U0001f3b2 Variable": "#d94f3d"}
-    colors = df["Classification"].map(color_map).fillna("#aaaaaa")
-
-    fig = go.Figure()
-
-    for label, grp in df.groupby("Classification"):
-        fig.add_trace(go.Scatter(
-            x=grp["Leaderboard Rank"],
-            y=grp["Consistency Score"].round(2),
-            mode="markers+text",
-            name=label,
-            marker=dict(size=10, color=color_map.get(label, "#aaaaaa")),
-            text=grp["Player"],
-            textposition="top center",
-            textfont=dict(size=10),
-            customdata=grp[["Player", "Leaderboard Rank", "Consistency Score"]].values,
-            hovertemplate=(
-                "<b>%{customdata[0]}</b><br>"
-                "Leaderboard rank: %{customdata[1]}<br>"
-                "Consistency score: %{customdata[2]:.2f}<extra></extra>"
-            ),
-        ))
-
-    fig.update_layout(
-        title=dict(text="Player Consistency — Std Dev of Point Margin (Last 60 Games)", font=dict(size=17)),
-        xaxis=dict(title="Leaderboard Rank", autorange="reversed"),
-        yaxis_title="Consistency Score (lower = steadier)",
-        height=560,
-        template="plotly_white",
-        margin=dict(l=60, r=40, t=70, b=60),
-        legend=dict(title="Classification"),
-    )
-
-    fig.write_html(output_path, include_plotlyjs="cdn")
-    _inject_back_to_menu(output_path)
-    print(f"Consistency chart: {output_path}")
 
 
 def build_rating_history_html(eod_df, leaderboard, output_path):

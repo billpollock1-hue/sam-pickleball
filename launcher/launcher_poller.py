@@ -95,13 +95,14 @@ def save_config(cfg):
     CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
 
 
-def append_log(status, seeding_basis, players_removed, message=""):
+def append_log(status, seeding_basis, players_removed, message="", court_assignments=None):
     entry = {
         "timestamp": datetime.now(MST).strftime("%Y-%m-%d %H:%M:%S MST"),
         "status": status,
         "seeding_basis": seeding_basis,
         "players_removed": players_removed or [],
         "message": message,
+        "court_assignments": court_assignments or [],
     }
     with LOG_PATH.open("a") as f:
         f.write(json.dumps(entry) + "\n")
@@ -156,15 +157,19 @@ def run_launch(mode):
             cwd=str(Path(script_path).parent),
         )
         players_removed = []
+        court_assignments = []
         match = re.search(r"LAUNCH_RESULT:\s*(\{.*\})", result.stdout)
         if match:
             try:
-                players_removed = json.loads(match.group(1)).get("players_removed", [])
+                launch_result = json.loads(match.group(1))
+                players_removed = launch_result.get("players_removed", [])
+                court_assignments = launch_result.get("court_assignments", [])
             except json.JSONDecodeError:
                 pass
 
         if result.returncode == 0:
-            append_log("success", seeding_basis, players_removed)
+            append_log("success", seeding_basis, players_removed,
+                        court_assignments=court_assignments)
             return True
         else:
             append_log("error", seeding_basis, players_removed,

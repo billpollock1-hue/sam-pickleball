@@ -822,6 +822,35 @@ def main():
             eligible_signups = signups.iloc[:eligible_count].copy()
             computed_assignments, _ = assign_courts(eligible_signups, ratings)
 
+            # Capture each player's REAL DEN Step/% + final court assignment
+            # for the launch log, before Step gets overwritten below with a
+            # synthetic court-based value for the seeding audit.
+            court_assignments_log = [
+                {
+                    "player": clean_name(r["Player"]),
+                    "den_step": (None if pd.isna(r["Step"]) else int(r["Step"])),
+                    "den_pct": (None if pd.isna(r["Percent"]) else round(float(r["Percent"]), 1)),
+                    "court": int(r["Court"]),
+                }
+                for _, r in computed_assignments.sort_values(["Court", "CourtPosition"]).iterrows()
+            ]
+
+            # Convert each player's REAL DEN Step to a synthetic, purely
+            # court-based value before the seeding audit -- Court 1's four
+            # players all get Step 1, Court 2's four get Step 2, and so on,
+            # irrespective of their real Step. DEN's own Seed Players action
+            # groups strictly by matching Step value, so auditing against
+            # each player's real (individual) Step -- as this used to do --
+            # left multiple real Step values sitting inside the same
+            # computed court group, which DEN would then seed incorrectly.
+            # Same technique already used in create_shootout_rating_seeded.py.
+            # Local to this script's own copy only -- assign_courts() itself
+            # (shared with generate_assignments_viewer.py's real Step/%
+            # display) is untouched.
+            computed_assignments["Step"] = (
+                computed_assignments["Court"] - computed_assignments["Court"].min() + 1
+            )
+
             # Back to the signup sheet to actually create the shootout.
             page.goto(SIGNUP_URL, wait_until="domcontentloaded")
             automate_signup_search_today(page)
@@ -834,7 +863,7 @@ def main():
 
             context.storage_state(path=SESSION_FILE)
             print(f"\n✓ Shootout created and started for {play_date_display}.")
-            print(f"LAUNCH_RESULT: {json.dumps({'players_removed': excess_names})}")
+            print(f"LAUNCH_RESULT: {json.dumps({'players_removed': excess_names, 'court_assignments': court_assignments_log})}")
 
         except ShootoutAlreadyExistsError as e:
             print(f"\n✓ {e}")

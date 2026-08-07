@@ -780,6 +780,19 @@ def main():
             # Convert that into a synthetic Step group number starting at 1:
             # top PLAYERS_PER_COURT-ranked players -> Step 1, next -> Step 2, etc.
             computed_assignments = rating_assignments.copy()
+
+            # Capture each player's REAL model Rating + final court
+            # assignment for the launch log, before Step gets overwritten
+            # below with a synthetic court-based value for the seeding audit.
+            court_assignments_log = [
+                {
+                    "player": clean_name(r["Player"]),
+                    "rating": (None if pd.isna(r["Rating"]) else round(float(r["Rating"]))),
+                    "court": int(r["Court"]),
+                }
+                for _, r in computed_assignments.sort_values(["Court", "CourtPosition"]).iterrows()
+            ]
+
             computed_assignments["Step"] = (
                 computed_assignments["Court"] - computed_assignments["Court"].min() + 1
             )
@@ -797,7 +810,7 @@ def main():
             context.storage_state(path=SESSION_FILE)
             print(f"\n✓ Shootout created and started for {play_date_display} "
                   f"(Modified ELO seeding).")
-            print(f"LAUNCH_RESULT: {json.dumps({'players_removed': excess_names})}")
+            print(f"LAUNCH_RESULT: {json.dumps({'players_removed': excess_names, 'court_assignments': court_assignments_log})}")
 
         except Exception as e:
             print(f"\n✗ Automated shootout creation failed: {e}")

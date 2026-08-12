@@ -60,6 +60,8 @@ for _, r in pgl.sort_values("posted_dt").iterrows():
         "opp2":       opp2,
         "win":        is_win,
         "score":      score,
+        "pf":         pf,
+        "pa":         pa,
         "teamRating": int(team),
         "oppRating":  int(opp),
         "gap":        int(gap),
@@ -139,7 +141,7 @@ html = f"""<!DOCTYPE html>
   .refresh-btn:hover {{ background: #163a5c; }}
   #freshness-hint {{ padding: 6px 28px; font-size: 11px; color: #888;
                      background: #fafafa; border-bottom: 1px solid var(--border); }}
-  .sec-head {{ display: flex; align-items: center; gap: 10px; }}
+  .sec-head {{ display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }}
   .sec-head h2 {{ flex: 1; }}
   .sec-head label {{ font-weight: bold; color: var(--blue-dark); font-size: 13px; }}
   .sec-head select {{
@@ -186,6 +188,8 @@ html = f"""<!DOCTYPE html>
     white-space: nowrap;
   }}
   th.left {{ text-align: left; }}
+  th.sortable {{ cursor: pointer; user-select: none; }}
+  th.sortable:hover {{ background: #245f8f; }}
   td {{
     padding: 6px 10px;
     border-bottom: 1px solid var(--border);
@@ -226,7 +230,7 @@ html = f"""<!DOCTYPE html>
   <button class="refresh-btn" onclick="forceRefresh()">&#8635;&nbsp;Refresh</button>
   <div class="stat-pills" id="statPills"></div>
 </div>
-<div id="freshness-hint">💡 Tap Refresh anytime to make sure you're seeing the latest data.</div>
+<div id="freshness-hint">💡 Tap Refresh anytime to make sure you're seeing the latest data. Click a column header to sort by it.</div>
 
 <main>
   <section>
@@ -234,8 +238,20 @@ html = f"""<!DOCTYPE html>
     <div id="summaryTable"></div>
   </section>
   <section>
+    <h2>Record by Partner</h2>
+    <div id="partnerTable"></div>
+  </section>
+  <section>
+    <h2>Record by Opponent</h2>
+    <div id="opponentTable"></div>
+  </section>
+  <section>
     <div class="sec-head">
       <h2>Game by Game</h2>
+      <label for="partnerSelect">Partner:</label>
+      <select id="partnerSelect" onchange="partnerFilter = this.value; applyGameFilters();"></select>
+      <label for="opponentSelect">Opponent:</label>
+      <select id="opponentSelect" onchange="opponentFilter = this.value; applyGameFilters();"></select>
     </div>
     <div id="gameTable"></div>
   </section>
@@ -252,7 +268,19 @@ html = f"""<!DOCTYPE html>
 
 const DATA    = {data_json};
 const PLAYERS = {players_json};
-let yearFilter = "ALL";
+let yearFilter     = "ALL";
+let partnerFilter  = "ALL";
+let opponentFilter = "ALL";
+
+let currentGameRows     = [];
+let currentPartnerRows  = [];
+let currentOpponentRows = [];
+
+const sortState = {{
+  game:     {{ key: "date",  dir: -1 }},
+  partner:  {{ key: "games", dir: -1 }},
+  opponent: {{ key: "games", dir: -1 }}
+}};
 
 const psel = document.getElementById("playerSelect");
 PLAYERS.forEach(p => {{
@@ -285,6 +313,126 @@ function fmt(n) {{
     : `<span class="neg">${{n}}</span>`;
 }}
 
+// ── Generic sortable table renderer ─────────────────────────────────────────
+// columns: [{{ key, label, align, sortVal(row), render(row) }}]
+function renderTable(containerId, tableKey, columns, rows) {{
+  const state = sortState[tableKey];
+  const col   = columns.find(c => c.key === state.key) || columns[0];
+  const sorted = [...rows].sort((a,b) => {{
+    const av = col.sortVal(a);
+    const bv = col.sortVal(b);
+    if (av < bv) return -1 * state.dir;
+    if (av > bv) return  1 * state.dir;
+    return 0;
+  }});
+
+  let h = "<table><thead><tr>";
+  columns.forEach(c => {{
+    const arrow = state.key === c.key ? (state.dir === 1 ? " \u25b2" : " \u25bc") : "";
+    const cls = c.align === "left" ? "left sortable" : "sortable";
+    h += `<th class="${{cls}}" onclick="setSort('${{tableKey}}','${{c.key}}')">${{c.label}}${{arrow}}</th>`;
+  }});
+  h += "</tr></thead><tbody>";
+  sorted.forEach(row => {{
+    h += "<tr>";
+    columns.forEach(c => {{
+      const cls = c.align === "left" ? "left" : "";
+      h += `<td class="${{cls}}">${{c.render(row)}}</td>`;
+    }});
+    h += "</tr>";
+  }});
+  h += "</tbody></table>";
+  document.getElementById(containerId).innerHTML = sorted.length ? h : '<p class="no-data">No data for this selection.</p>';
+}}
+
+function setSort(tableKey, key) {{
+  const state = sortState[tableKey];
+  if (state.key === key) {{
+    state.dir = -state.dir;
+  }} else {{
+    state.key = key;
+    state.dir = -1;
+  }}
+  if (tableKey === "game")      renderTable("gameTable", "game", gameColumns, currentGameRows);
+  if (tableKey === "partner")   renderTable("partnerTable", "partner", partnerColumns, currentPartnerRows);
+  if (tableKey === "opponent")  renderTable("opponentTable", "opponent", opponentColumns, currentOpponentRows);
+}}
+
+// ── Column definitions ──────────────────────────────────────────────────────
+const partnerColumns = [
+  {{ key: "name",      label: "Partner",            align: "left",   sortVal: r => r.name,      render: r => r.name }},
+  {{ key: "games",     label: "Games",               align: "center", sortVal: r => r.games,     render: r => r.games }},
+  {{ key: "wins",      label: "Wins",                align: "center", sortVal: r => r.wins,      render: r => `<span class="win-badge">${{r.wins}}</span>` }},
+  {{ key: "losses",    label: "Losses",              align: "center", sortVal: r => r.losses,    render: r => `<span class="loss-badge">${{r.losses}}</span>` }},
+  {{ key: "winPct",    label: "Win %",               align: "center", sortVal: r => r.winPct,    render: r => `${{r.winPct}}%` }},
+  {{ key: "pf",        label: "Points For",          align: "center", sortVal: r => r.pf,        render: r => r.pf }},
+  {{ key: "pa",        label: "Points Against",      align: "center", sortVal: r => r.pa,        render: r => r.pa }},
+  {{ key: "netMargin", label: "Net Margin",          align: "center", sortVal: r => r.pf - r.pa, render: r => fmt(r.pf - r.pa) }},
+  {{ key: "avgMargin", label: "Avg Margin",          align: "center", sortVal: r => r.avgMargin, render: r => fmt(r.avgMargin) }},
+  {{ key: "avgChange", label: "Avg Rating Change",   align: "center", sortVal: r => r.avgChange === null ? -Infinity : r.avgChange, render: r => r.avgChange !== null ? fmt(r.avgChange) : '<span class="zero">—</span>' }}
+];
+const opponentColumns = partnerColumns.map(c => c.key === "name" ? {{ ...c, label: "Opponent" }} : c);
+
+const gameColumns = [
+  {{ key: "date",       label: "Date",       align: "center", sortVal: g => g.date + g.time,          render: g => formatDate(g.date) }},
+  {{ key: "time",       label: "Time",       align: "center", sortVal: g => g.time,                    render: g => g.time }},
+  {{ key: "pool",       label: "Pool",       align: "center", sortVal: g => g.pool,                    render: g => g.pool }},
+  {{ key: "shootout",   label: "Shootout",   align: "center", sortVal: g => g.shootout,                render: g => g.shootout }},
+  {{ key: "partner",    label: "Partner",    align: "left",   sortVal: g => g.partner,                 render: g => g.partner }},
+  {{ key: "opponents",  label: "Opponents",  align: "left",   sortVal: g => g.opp1 + g.opp2,           render: g => g.opp1 + (g.opp2 ? " / " + g.opp2 : "") }},
+  {{ key: "win",        label: "W/L",        align: "center", sortVal: g => g.win ? 1 : 0,             render: g => `<span class="${{g.win ? "win-badge" : "loss-badge"}}">${{g.win ? "W" : "L"}}</span>` }},
+  {{ key: "score",      label: "Score",      align: "center", sortVal: g => g.pf - g.pa,               render: g => g.score }},
+  {{ key: "teamRating", label: "Team Rtg",   align: "center", sortVal: g => g.teamRating,              render: g => g.teamRating }},
+  {{ key: "oppRating",  label: "Opp Rtg",    align: "center", sortVal: g => g.oppRating,               render: g => g.oppRating }},
+  {{ key: "gap",        label: "Gap",        align: "center", sortVal: g => g.gap,                     render: g => fmt(g.gap) }},
+  {{ key: "pre",        label: "Pre-Game",   align: "center", sortVal: g => g.pre === null ? -Infinity : g.pre,       render: g => g.adjusted ? g.pre : '<span class="unadj-cell">Unadj.</span>' }},
+  {{ key: "change",     label: "Change",     align: "center", sortVal: g => g.change === null ? -Infinity : g.change, render: g => g.adjusted ? fmt(g.change) : '<span class="unadj-cell">—</span>' }},
+  {{ key: "post",       label: "Post-Game",  align: "center", sortVal: g => g.post === null ? -Infinity : g.post,     render: g => g.adjusted ? g.post : '<span class="unadj-cell">—</span>' }}
+];
+
+// ── Partner/Opponent summary breakdown (respects Year filter only) ─────────
+function renderBreakdowns(games) {{
+  const partners = {{}};
+  games.forEach(g => {{
+    if (!g.partner) return;
+    if (!partners[g.partner]) partners[g.partner] = {{ name: g.partner, games: 0, wins: 0, losses: 0, pf: 0, pa: 0, changeSum: 0, adjustedCount: 0 }};
+    const p = partners[g.partner];
+    p.games++;
+    g.win ? p.wins++ : p.losses++;
+    p.pf += g.pf;
+    p.pa += g.pa;
+    if (g.adjusted) {{ p.changeSum += g.change; p.adjustedCount++; }}
+  }});
+  currentPartnerRows = Object.values(partners).map(p => ({{
+    ...p,
+    winPct: p.games ? Math.round((p.wins / p.games) * 100) : 0,
+    avgMargin: p.games ? Math.round(((p.pf - p.pa) / p.games) * 10) / 10 : 0,
+    avgChange: p.adjustedCount ? Math.round((p.changeSum / p.adjustedCount) * 10) / 10 : null
+  }}));
+  renderTable("partnerTable", "partner", partnerColumns, currentPartnerRows);
+
+  const opponents = {{}};
+  games.forEach(g => {{
+    [g.opp1, g.opp2].forEach(oppName => {{
+      if (!oppName) return;
+      if (!opponents[oppName]) opponents[oppName] = {{ name: oppName, games: 0, wins: 0, losses: 0, pf: 0, pa: 0, changeSum: 0, adjustedCount: 0 }};
+      const o = opponents[oppName];
+      o.games++;
+      g.win ? o.wins++ : o.losses++;
+      o.pf += g.pf;
+      o.pa += g.pa;
+      if (g.adjusted) {{ o.changeSum += g.change; o.adjustedCount++; }}
+    }});
+  }});
+  currentOpponentRows = Object.values(opponents).map(o => ({{
+    ...o,
+    winPct: o.games ? Math.round((o.wins / o.games) * 100) : 0,
+    avgMargin: o.games ? Math.round(((o.pf - o.pa) / o.games) * 10) / 10 : 0,
+    avgChange: o.adjustedCount ? Math.round((o.changeSum / o.adjustedCount) * 10) / 10 : null
+  }}));
+  renderTable("opponentTable", "opponent", opponentColumns, currentOpponentRows);
+}}
+
 function render() {{
   const player = psel.value;
   const games  = (DATA[player] || []).slice().sort((a,b) => (a.date + a.time).localeCompare(b.date + b.time));
@@ -299,25 +447,41 @@ function render() {{
     ? Math.round(adjustedGames.reduce((sum, g) => sum + g.change, 0))
     : null;
 
+  const totalPF = games.reduce((sum, g) => sum + g.pf, 0);
+  const totalPA = games.reduce((sum, g) => sum + g.pa, 0);
+  const netMargin = totalPF - totalPA;
+
   document.getElementById("statPills").innerHTML =
     `<span class="pill">${{games.length}} Games</span>` +
-    `<span class="pill">${{wins}}-${{losses}}</span>`;
+    `<span class="pill">${{wins}}-${{losses}}</span>` +
+    `<span class="pill">Margin ${{netMargin >= 0 ? "+" : ""}}${{netMargin}}</span>`;
+
+  const winPct = games.length ? Math.round((wins / games.length) * 100) : 0;
+  const avgMargin = games.length ? Math.round((netMargin / games.length) * 10) / 10 : 0;
+  const avgChange = adjustedGames.length ? Math.round((totalChange / adjustedGames.length) * 10) / 10 : null;
 
   let sh = `<table>
     <thead><tr>
       <th class="left">Player</th>
-      <th>Games</th><th>Wins</th><th>Losses</th>
-      <th>Entering Rating</th><th>Current Rating</th>
-      <th>Career Change</th>
+      <th>Games</th><th>Wins</th><th>Losses</th><th>Win %</th>
+      <th>Entering Rating</th><th>Current Rating</v>
+      <th>Career Change</th><th>Avg Rating Change</th>
+      <th>Points For</th><th>Points Against</th><th>Net Margin</th><th>Avg Margin</th>
     </tr></thead><tbody>`;
   sh += `<tr>
     <td class="left">${{player}}</td>
     <td>${{games.length}}</td>
     <td class="win-badge">${{wins}}</td>
     <td class="loss-badge">${{losses}}</td>
+    <td>${{winPct}}%</td>
     <td>${{entering !== null ? entering : '<span class="zero">—</span>'}}</td>
     <td>${{current !== null ? current : '<span class="zero">—</span>'}}</td>
     <td>${{totalChange !== null ? fmt(totalChange) : '<span class="zero">—</span>'}}</td>
+    <td>${{avgChange !== null ? fmt(avgChange) : '<span class="zero">—</span>'}}</td>
+    <td>${{totalPF}}</td>
+    <td>${{totalPA}}</td>
+    <td>${{fmt(netMargin)}}</td>
+    <td>${{fmt(avgMargin)}}</td>
   </tr>`;
   sh += "</tbody></table>";
   document.getElementById("summaryTable").innerHTML = games.length ? sh : '<p class="no-data">No games found for this player.</p>';
@@ -340,44 +504,63 @@ function render() {{
   renderGames();
 }}
 
+// Recomputes the Year-filtered game set (used for the breakdown tables and
+// to repopulate the Partner/Opponent filter dropdown lists), then applies
+// the Partner/Opponent filter on top of that for the Game-by-Game table.
 function renderGames() {{
   const player = psel.value;
   let games = (DATA[player] || []).slice();
   if (yearFilter !== "ALL") games = games.filter(g => g.year === yearFilter);
 
-  // Most recent first
-  const sorted = games.sort((a,b) => (b.date + b.time).localeCompare(a.date + a.time));
+  renderBreakdowns(games);
 
-  let gh = `<table>
-    <thead><tr>
-      <th>Date</th><th>Time</th><th>Pool</th><th>Shootout</th>
-      <th class="left">Partner</th>
-      <th class="left">Opponents</th>
-      <th>W/L</th><th>Score</th>
-      <th>Team Rtg</th><th>Opp Rtg</th><th>Gap</th>
-      <th>Pre-Game</th><th>Change</th><th>Post-Game</th>
-    </tr></thead><tbody>`;
-  sorted.forEach(g => {{
-    const ratingCells = g.adjusted
-      ? `<td>${{g.pre}}</td><td>${{fmt(g.change)}}</td><td>${{g.post}}</td>`
-      : `<td class="unadj-cell" colspan="3" title="Match involved a placeholder (e.g. Den New Player Tryout) -- not counted toward ratings">Unadjusted</td>`;
-    gh += `<tr>
-      <td>${{formatDate(g.date)}}</td>
-      <td>${{g.time}}</td>
-      <td>${{g.pool}}</td>
-      <td>${{g.shootout}}</td>
-      <td class="left">${{g.partner}}</td>
-      <td class="left">${{g.opp1}}${{g.opp2 ? " / " + g.opp2 : ""}}</td>
-      <td class="${{g.win ? "win-badge" : "loss-badge"}}">${{g.win ? "W" : "L"}}</td>
-      <td>${{g.score}}</td>
-      <td>${{g.teamRating}}</td>
-      <td>${{g.oppRating}}</td>
-      <td>${{fmt(g.gap)}}</td>
-      ${{ratingCells}}
-    </tr>`;
+  const psel2 = document.getElementById("partnerSelect");
+  const partnerNames = [...new Set(games.map(g => g.partner).filter(Boolean))].sort();
+  const prevPartner = partnerFilter;
+  psel2.innerHTML = "";
+  const allPartnerOpt = document.createElement("option");
+  allPartnerOpt.value = "ALL"; allPartnerOpt.text = "All partners";
+  psel2.appendChild(allPartnerOpt);
+  partnerNames.forEach(n => {{
+    const o = document.createElement("option");
+    o.value = n; o.text = n;
+    psel2.appendChild(o);
   }});
-  gh += "</tbody></table>";
-  document.getElementById("gameTable").innerHTML = sorted.length ? gh : '<p class="no-data">No games found for this player/year.</p>';
+  partnerFilter = partnerNames.includes(prevPartner) ? prevPartner : "ALL";
+  psel2.value = partnerFilter;
+
+  const osel = document.getElementById("opponentSelect");
+  const opponentNames = [...new Set(games.flatMap(g => [g.opp1, g.opp2]).filter(Boolean))].sort();
+  const prevOpponent = opponentFilter;
+  osel.innerHTML = "";
+  const allOpponentOpt = document.createElement("option");
+  allOpponentOpt.value = "ALL"; allOpponentOpt.text = "All opponents";
+  osel.appendChild(allOpponentOpt);
+  opponentNames.forEach(n => {{
+    const o = document.createElement("option");
+    o.value = n; o.text = n;
+    osel.appendChild(o);
+  }});
+  opponentFilter = opponentNames.includes(prevOpponent) ? prevOpponent : "ALL";
+  osel.value = opponentFilter;
+
+  applyGameFilters(games);
+}}
+
+// Applies the Partner/Opponent filter (in addition to the Year filter
+// already reflected in `games`) and renders the Game-by-Game table.
+function applyGameFilters(games) {{
+  if (!games) {{
+    const player = psel.value;
+    games = (DATA[player] || []).slice();
+    if (yearFilter !== "ALL") games = games.filter(g => g.year === yearFilter);
+  }}
+  let filtered = games;
+  if (partnerFilter !== "ALL") filtered = filtered.filter(g => g.partner === partnerFilter);
+  if (opponentFilter !== "ALL") filtered = filtered.filter(g => g.opp1 === opponentFilter || g.opp2 === opponentFilter);
+
+  currentGameRows = filtered;
+  renderTable("gameTable", "game", gameColumns, currentGameRows);
 }}
 
 render();

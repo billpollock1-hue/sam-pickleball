@@ -165,9 +165,16 @@ for player, pdf in rated_for_history.groupby("player"):
 player_history_json = json.dumps(player_history, separators=(",", ":"))
 
 rated = log[log["include_in_ratings"] == "Yes"].dropna(subset=["posted_dt"])
-window_end = rated["posted_dt"].max()
-window_start = window_end - pd.Timedelta(days=120)
-recent = rated[(rated["posted_dt"] >= window_start) & (rated["posted_dt"] <= window_end)]
+# Perspective Scale window switched 2026-08-12 from a moving 120-day window
+# to a rolling 12-month window that only refreshes at the start of each new
+# calendar month -- e.g. Aug 1-31 all use the window ending 7/31, then it
+# switches to the window ending 8/31 on 9/1. A full year smooths out the
+# small-sample tail irregularities the 120-day window was more exposed to.
+_latest = rated["posted_dt"].max()
+window_end = _latest.replace(day=1) - pd.Timedelta(days=1)
+window_start = window_end - pd.DateOffset(years=1) + pd.Timedelta(days=1)
+window_end_inclusive = window_end + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+recent = rated[(rated["posted_dt"] >= window_start) & (rated["posted_dt"] <= window_end_inclusive)]
 
 favorite = recent[recent["team_pre_rating"] > recent["opp_team_pre_rating"]].copy()
 favorite["gap"] = favorite["team_pre_rating"] - favorite["opp_team_pre_rating"]
@@ -410,7 +417,7 @@ html = f"""<!DOCTYPE html>
       <div class="ps-title">Perspective Scale</div>
       <div class="ps-sub">
         Favorite's win % and avg. margin by team rating gap.<br>
-        Actual results, {perspective_window_label} (120 days).
+        Actual results, {perspective_window_label} (12 months).
       </div>
       <table class="ps-table">
         <thead><tr><th class="ps-gap" style="text-align:left">Gap</th><th>Win%</th><th>Margin</th><th>N</th></tr></thead>
@@ -537,5 +544,5 @@ document.addEventListener('keydown', (e) => {{
 
 OUT_PATH.write_text(html, encoding="utf-8")
 print(f"Saved: {OUT_PATH} ({len(lb)} players, through {data_through})")
-print(f"Perspective Scale: {len(perspective_buckets)} buckets from {len(favorite)} favorite-side games in last 120 days")
+print(f"Perspective Scale: {len(perspective_buckets)} buckets from {len(favorite)} favorite-side games, {perspective_window_label} (12-month window)")
 print(f"Player history: {len(player_history)} players with session data")

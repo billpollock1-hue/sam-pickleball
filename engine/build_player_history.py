@@ -10,6 +10,7 @@ import sys, json
 from pathlib import Path
 from collections import defaultdict
 import pandas as pd
+from pickleball_engine_v2 import PLACEHOLDERS
 
 ENGINE_DIR = Path(__file__).resolve().parent
 REPO_ROOT  = ENGINE_DIR.parent
@@ -72,11 +73,20 @@ for _, r in pgl.sort_values("posted_dt").iterrows():
         "cumPre":     round(float(r["player_pre_rating"])),
     })
 
-players_sorted = sorted(player_games.keys())
+def _is_placeholder(name):
+    return name.strip().lower() in PLACEHOLDERS
+
+players_sorted = sorted(p for p in player_games.keys() if not _is_placeholder(p))
 data_json      = json.dumps(player_games)
 players_json   = json.dumps(players_sorted)
 
-print(f"Players included: {len(players_sorted)}")
+# Leaderboard-only subset for the "current leaderboard players" toggle default
+lb_sheet = pd.read_excel(MODEL_PATH, sheet_name="Leaderboard")
+leaderboard_players = set(lb_sheet["Player"].astype(str))
+leaderboard_players_sorted = sorted(p for p in players_sorted if p in leaderboard_players)
+leaderboard_players_json = json.dumps(leaderboard_players_sorted)
+
+print(f"Players included: {len(players_sorted)} ({len(leaderboard_players_sorted)} on current leaderboard)")
 
 # ── Build HTML ────────────────────────────────────────────────────────────────
 html = f"""<!DOCTYPE html>
@@ -225,6 +235,7 @@ html = f"""<!DOCTYPE html>
 <div class="controls">
   <label for="playerSelect">Player:</label>
   <select id="playerSelect" onchange="render()"></select>
+  <label class="lb-toggle"><input type="checkbox" id="lbOnlyToggle" checked onchange="lbOnly = this.checked; populatePlayerSelect(); render();"> Leaderboard players only</label>
   <label for="yearSelect">Year:</label>
   <select id="yearSelect" onchange="yearFilter = this.value; renderGames();"></select>
   <button class="refresh-btn" onclick="forceRefresh()">&#8635;&nbsp;Refresh</button>
@@ -268,6 +279,8 @@ html = f"""<!DOCTYPE html>
 
 const DATA    = {data_json};
 const PLAYERS = {players_json};
+const LEADERBOARD_PLAYERS = {leaderboard_players_json};
+let lbOnly = true;
 let yearFilter     = "ALL";
 let partnerFilter  = "ALL";
 let opponentFilter = "ALL";
@@ -283,18 +296,34 @@ const sortState = {{
 }};
 
 const psel = document.getElementById("playerSelect");
-PLAYERS.forEach(p => {{
-  const opt = document.createElement("option");
-  opt.value = p;
-  opt.text  = p;
-  psel.appendChild(opt);
-}});
+
+function populatePlayerSelect() {{
+  const prev = psel.value;
+  const list = lbOnly ? LEADERBOARD_PLAYERS : PLAYERS;
+  psel.innerHTML = "";
+  list.forEach(p => {{
+    const opt = document.createElement("option");
+    opt.value = p;
+    opt.text  = p;
+    psel.appendChild(opt);
+  }});
+  const keepIdx = list.indexOf(prev);
+  psel.selectedIndex = keepIdx >= 0 ? keepIdx : 0;
+}}
+populatePlayerSelect();
 
 const preservedPlayer = new URLSearchParams(location.search).get('p');
 if (preservedPlayer && PLAYERS.includes(preservedPlayer)) {{
+  // A preserved player from a forced refresh may not be in the current
+  // list (e.g. leaderboard-only view but the preserved player isn't on
+  // the leaderboard) -- fall back to leaderboard-only in that case rather
+  // than silently switching the toggle off.
+  if (!(lbOnly ? LEADERBOARD_PLAYERS : PLAYERS).includes(preservedPlayer)) {{
+    lbOnly = false;
+    document.getElementById("lbOnlyToggle").checked = false;
+    populatePlayerSelect();
+  }}
   psel.value = preservedPlayer;
-}} else if (PLAYERS.length) {{
-  psel.value = PLAYERS[0];
 }}
 
 function formatDate(d) {{
@@ -403,12 +432,14 @@ function renderBreakdowns(games) {{
     p.pa += g.pa;
     if (g.adjusted) {{ p.changeSum += g.change; p.adjustedCount++; }}
   }});
-  currentPartnerRows = Object.values(partners).map(p => ({{
-    ...p,
-    winPct: p.games ? Math.round((p.wins / p.games) * 100) : 0,
-    avgMargin: p.games ? Math.round(((p.pf - p.pa) / p.games) * 10) / 10 : 0,
-    avgChange: p.adjustedCount ? Math.round((p.changeSum / p.adjustedCount) * 10) / 10 : null
-  }}));
+  currentPartnerRows = Object.values(partners)
+    .filter(p => !lbOnly || LEADERBOARD_PLAYERS.includes(p.name))
+    .map(p => ({{
+      ...p,
+      winPct: p.games ? Math.round((p.wins / p.games) * 100) : 0,
+      avgMargin: p.games ? Math.round(((p.pf - p.pa) / p.games) * 10) / 10 : 0,
+      avgChange: p.adjustedCount ? Math.round((p.changeSum / p.adjustedCount) * 10) / 10 : null
+    }}));
   renderTable("partnerTable", "partner", partnerColumns, currentPartnerRows);
 
   const opponents = {{}};
@@ -424,12 +455,14 @@ function renderBreakdowns(games) {{
       if (g.adjusted) {{ o.changeSum += g.change; o.adjustedCount++; }}
     }});
   }});
-  currentOpponentRows = Object.values(opponents).map(o => ({{
-    ...o,
-    winPct: o.games ? Math.round((o.wins / o.games) * 100) : 0,
-    avgMargin: o.games ? Math.round(((o.pf - o.pa) / o.games) * 10) / 10 : 0,
-    avgChange: o.adjustedCount ? Math.round((o.changeSum / o.adjustedCount) * 10) / 10 : null
-  }}));
+  currentOpponentRows = Object.values(opponents)
+    .filter(o => !lbOnly || LEADERBOARD_PLAYERS.includes(o.name))
+    .map(o => ({{
+      ...o,
+      winPct: o.games ? Math.round((o.wins / o.games) * 100) : 0,
+      avgMargin: o.games ? Math.round(((o.pf - o.pa) / o.games) * 10) / 10 : 0,
+      avgChange: o.adjustedCount ? Math.round((o.changeSum / o.adjustedCount) * 10) / 10 : null
+    }}));
   renderTable("opponentTable", "opponent", opponentColumns, currentOpponentRows);
 }}
 

@@ -208,8 +208,7 @@ else
 
   python3 engine/pickleball_engine_v2.py \
     --input "$MASTER_FILE" \
-    --output "$TEMP_OUTPUT" \
-    --with-history
+    --output "$TEMP_OUTPUT"
 
   mv "$TEMP_OUTPUT" "$FINAL_OUTPUT"
 

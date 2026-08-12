@@ -11,6 +11,7 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.formatting.rule import ColorScaleRule, DataBarRule
 from openpyxl.utils import get_column_letter
+from eod_rating_cache import get_or_update_eod_cache
 
 BASE_ELO = 1000.0
 K_FACTOR = 20.0                      # unchanged -- confirmed near-optimal (Step 2, Sweep A)
@@ -67,6 +68,7 @@ MAX_FRESHNESS_PENALTY = 0.0          # was 0.15 -- continuous freshness penalty 
 # player's name here is the current-membership signal -- DEN's ratings page
 # only lists current members, so there's no separate boolean to check.
 MEMBERSHIP_FILE = Path(__file__).resolve().parent.parent / "data" / "den_current_members.csv"
+EOD_CACHE_PATH = Path(__file__).resolve().parent.parent / "data" / "eod_rating_cache.json"
 
 
 def load_current_members():
@@ -2958,67 +2960,17 @@ def main():
     ).reset_index(drop=True)
     performance_vs_expectation.insert(0, "Performance Rank", range(1, len(performance_vs_expectation) + 1))
 
-    if args.with_history:
-        dates_2026 = sorted(d for d in raw["match_day"].dropna().unique() if pd.Timestamp(d).year == 2026)
-        all_players = sorted(rated_full["player"].dropna().unique())
+    # Point-to-point rating comparison data, cached (see eod_rating_cache.py):
+    # a past date's rating snapshot is a fixed historical fact once that date
+    # has passed, so only the newest date needs computing each run instead of
+    # rebuilding the whole ~200+-date grid every time (was costing ~194s on
+    # every 15-min pipeline cycle, unconditionally, via run_all.sh's
+    # --with-history flag -- now a one-time cost, paid once ever).
+    def board_asof(date_):
+        board = build_current_leaderboard(full_player_log, pd.Timestamp(date_))
+        return {row["Player"]: int(row["Player Rating"]) for _, row in board.iterrows()}
 
-        # Speed fix:
-        # Precompute player/date participation once instead of repeatedly filtering rated_full
-        # inside the player-by-date Rating History loop.
-        rated_full_for_history = rated_full.copy()
-        rated_full_for_history["posted_date"] = pd.to_datetime(rated_full_for_history["posted_dt"]).dt.date
-        played_dates_by_player = (
-            rated_full_for_history
-            .groupby("player")["posted_date"]
-            .apply(set)
-            .to_dict()
-        )
-
-        cache = {}
-
-        def board_asof(date_):
-            key = str(pd.Timestamp(date_).date())
-            if key not in cache:
-                # Use full_player_log so Rating History shows cumulative Elo progression,
-                # giving a complete picture across all of 2026 (no gaps from the no-drift window).
-                board = build_current_leaderboard(full_player_log, pd.Timestamp(date_))
-                cache[key] = {row["Player"]: int(row["Player Rating"]) for _, row in board.iterrows()}
-            return cache[key]
-
-        eod_rows = []
-        last_seen = {}
-
-        leaderboard_players = set(leaderboard["Player"])
-
-        for p in all_players:
-            if p not in leaderboard_players:
-                continue
-
-            player_play_dates = played_dates_by_player.get(p, set())
-
-            vals = []
-            for d in dates_2026:
-                board_today = board_asof(d)
-                played_today = d in player_play_dates
-
-                if played_today and p in board_today:
-                    last_seen[p] = board_today[p]
-
-                vals.append(last_seen.get(p, ""))
-
-            if any(v != "" for v in vals):
-                eod_rows.append([p] + vals)
-
-        eod_df = pd.DataFrame(eod_rows, columns=["Player"] + dates_2026)
-    else:
-        eod_df = pd.DataFrame(
-            {
-                "Rating History": [
-                    "Skipped in normal run for speed.",
-                    "Re-run engine with --with-history to rebuild this tab.",
-                ]
-            }
-        )
+    eod_df = get_or_update_eod_cache(raw, full_player_log, leaderboard, EOD_CACHE_PATH, board_asof)
 
     hist_rows = []
 
@@ -3103,8 +3055,7 @@ def main():
         inactive_players = inactive_players.sort_values("Rank").reset_index(drop=True)
         inactive_players["Rank"] = range(1, len(inactive_players) + 1)
     performance_vs_expectation = exclude_guest_players(performance_vs_expectation)
-    if args.with_history:
-        eod_df = exclude_guest_players(eod_df)
+    eod_df = exclude_guest_players(eod_df)
     historical = exclude_guest_players(historical)
     player_log_trim = exclude_guest_players(player_log_trim)
 
@@ -4544,9 +4495,6 @@ def main():
 
     wb.save(output_path)
     print(f"Built workbook: {output_path}")
-
-    if args.with_history and not eod_df.empty and "Player" in eod_df.columns:
-        build_rating_history_html(eod_df, leaderboard, output_path.parent / "rating_history.html")
 
 
 

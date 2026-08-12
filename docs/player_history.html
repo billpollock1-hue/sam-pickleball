@@ -223,9 +223,16 @@ populatePlayerSelect();
 
 const preservedPlayer = new URLSearchParams(location.search).get('p');
 if (preservedPlayer && PLAYERS.includes(preservedPlayer)) {
+  // A preserved player from a forced refresh may not be in the current
+  // list (e.g. leaderboard-only view but the preserved player isn't on
+  // the leaderboard) -- fall back to leaderboard-only in that case rather
+  // than silently switching the toggle off.
+  if (!(lbOnly ? LEADERBOARD_PLAYERS : PLAYERS).includes(preservedPlayer)) {
+    lbOnly = false;
+    document.getElementById("lbOnlyToggle").checked = false;
+    populatePlayerSelect();
+  }
   psel.value = preservedPlayer;
-} else if (PLAYERS.length) {
-  psel.value = PLAYERS[0];
 }
 
 function formatDate(d) {

@@ -153,6 +153,7 @@
     <label for="toDateSelect">To</label>
     <select id="toDateSelect" onchange="updateDeltaColumn()"></select>
   </div>
+  <div id="coverageStatus" class="compare-status"></div>
 
   <div class="wrap">
     <table>
@@ -1014,13 +1015,16 @@ function populateDateSelects() {
   const toSel = document.getElementById("toDateSelect");
 
   // Trim leading dates where no currently-eligible player has data yet --
-  // those early options would be meaningless for literally everyone.
-  let firstUsefulIdx = RATING_DATES.length;
+  // those early options would be meaningless for literally everyone. This
+  // trims the AVAILABLE OPTIONS only -- users can still manually pick any
+  // of these, including very early dates. The default selection (below)
+  // uses a stricter threshold so one early-joining outlier doesn't set it.
+  let firstAnyIdx = RATING_DATES.length;
   for (let i = 0; i < RATING_DATES.length; i++) {
     const anyData = Object.values(RATING_GRID).some(grid => grid[i] !== null);
-    if (anyData) { firstUsefulIdx = i; break; }
+    if (anyData) { firstAnyIdx = i; break; }
   }
-  const usefulDates = RATING_DATES.slice(firstUsefulIdx);
+  const usefulDates = RATING_DATES.slice(firstAnyIdx);
 
   usefulDates.forEach(d => {
     const o1 = document.createElement("option");
@@ -1030,8 +1034,23 @@ function populateDateSelects() {
     o2.value = d; o2.text = d;
     toSel.appendChild(o2);
   });
+
+  // Default "From" selection: the earliest date where at least 75% of
+  // currently-eligible players have a rating, so the initial view is
+  // meaningful for most of the leaderboard rather than skewed by one or
+  // two very-early-joining players. The full option list above still lets
+  // a user manually pick an earlier date if they want to.
+  const DEFAULT_COVERAGE_PCT = 0.75;
+  const allGrids = Object.values(RATING_GRID);
+  const totalPlayers = allGrids.length;
+  let defaultFromIdx = RATING_DATES.length - 1;
+  for (let i = firstAnyIdx; i < RATING_DATES.length; i++) {
+    const coverage = allGrids.filter(grid => grid[i] !== null).length / totalPlayers;
+    if (coverage >= DEFAULT_COVERAGE_PCT) { defaultFromIdx = i; break; }
+  }
+
   if (usefulDates.length) {
-    fromSel.value = usefulDates[0];
+    fromSel.value = RATING_DATES[defaultFromIdx];
     toSel.value = usefulDates[usefulDates.length - 1];
   }
 }
@@ -1042,7 +1061,9 @@ function updateDeltaColumn() {
   const fromIdx = RATING_DATES.indexOf(fromDate);
   const toIdx = RATING_DATES.indexOf(toDate);
 
-  document.querySelectorAll("td.delta").forEach(cell => {
+  let captured = 0;
+  const cells = document.querySelectorAll("td.delta");
+  cells.forEach(cell => {
     const player = cell.getAttribute("data-player");
     const grid = RATING_GRID[player];
     cell.classList.remove("pos", "neg");
@@ -1056,11 +1077,16 @@ function updateDeltaColumn() {
       cell.textContent = "—";
       return;
     }
+    captured++;
     const delta = toVal - fromVal;
     cell.textContent = (delta > 0 ? "+" : "") + delta;
     if (delta > 0) cell.classList.add("pos");
     if (delta < 0) cell.classList.add("neg");
   });
+
+  const pct = cells.length ? Math.round((captured / cells.length) * 100) : 0;
+  document.getElementById("coverageStatus").textContent =
+    `Based on the From/To dates above, ${pct}% of current leaderboard players are captured in the Δ Rating column. To increase that percentage, choose a more current From date and/or To date.`;
 }
 
 populateDateSelects();

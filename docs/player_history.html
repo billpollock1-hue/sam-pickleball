@@ -216,7 +216,8 @@ function populatePlayerSelect() {
     opt.text  = p;
     psel.appendChild(opt);
   });
-  psel.value = list.includes(prev) ? prev : (list[0] || "");
+  const keepIdx = list.indexOf(prev);
+  psel.selectedIndex = keepIdx >= 0 ? keepIdx : 0;
 }
 populatePlayerSelect();
 

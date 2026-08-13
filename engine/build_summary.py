@@ -59,8 +59,8 @@ cb = build_competitive_balance_by_quarter(player_log)
 lb = pd.read_excel(XLSX_PATH, sheet_name="Leaderboard")
 n_active = len(lb)
 
-print("Running court-assignment scenarios (90 days)...")
-_, scenario_summary, _ = build_court_assignment_analysis(raw, player_log, days=90)
+print("Running court-assignment scenarios (180 days)...")
+_, scenario_summary, _ = build_court_assignment_analysis(raw, player_log, days=180)
 
 def scen(*needle_sets):
     for needles in needle_sets:

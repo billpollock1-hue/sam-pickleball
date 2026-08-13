@@ -88,8 +88,8 @@ n_active = len(lb)
 lb_min, lb_max = int(lb["Player Rating"].min()), int(lb["Player Rating"].max())
 lb_range = lb_max - lb_min
 
-print("Running court-assignment scenarios (90 days)...")
-_, scenario_summary, court_distribution = build_court_assignment_analysis(raw, player_log, days=90)
+print("Running court-assignment scenarios (180 days)...")
+_, scenario_summary, court_distribution = build_court_assignment_analysis(raw, player_log, days=180)
 print("Scenarios:", scenario_summary["Scenario"].tolist())
 
 def scen(*needle_sets):
@@ -594,7 +594,7 @@ html = f"""<!DOCTYPE html>
 <div class="section">
 
 <div class="kicker">Shootout 1: The Setup</div>
-<p>We replayed the last 90 days of actual sessions and measured “spread” — the rating gap between the highest- and lowest-rated player assigned to a court — before anyone is paired into teams. Lower means the four players on a court are more evenly matched. (This is different from “gap,” used earlier: gap measures the two paired teams’ averages against each other, after pairing has already balanced the matchup.)</p>
+<p>We replayed the last 180 days of actual sessions and measured “spread” — the rating gap between the highest- and lowest-rated player assigned to a court — before anyone is paired into teams. Lower means the four players on a court are more evenly matched. (This is different from “gap,” used earlier: gap measures the two paired teams’ averages against each other, after pairing has already balanced the matchup.)</p>
 <p>Under the current system, courts average a {den_s1}-point rating spread in Shootout 1 — but that average hides a real pattern by court count:</p>
 <table class="btable">
 <tr><th>Courts</th><th>Days</th><th>Avg Spread</th></tr>
@@ -750,7 +750,7 @@ html = f"""<!DOCTYPE html>
 <div class="section">
 
 <h2>What We Tested — and How We Scored It</h2>
-<p>There is no shortage of ideas for assigning courts. To compare them fairly, we replayed the last 90 days of actual shootouts — same players, same signups, same court counts — under each candidate method.</p>
+<p>There is no shortage of ideas for assigning courts. To compare them fairly, we replayed the last 180 days of actual shootouts — same players, same signups, same court counts — under each candidate method.</p>
 <p>Every method gets two scores. <b>Court tightness:</b> how close in skill the four players on each court are — a smaller spread means fairer games. <b>Shuffle:</b> what share of players change courts between the two sessions — some movement is healthy; constant mechanical reshuffling is not.</p>
 <p>Today’s system is the baseline to beat: a combined spread of {den_comb}, with {den_move} of players moving mid-morning.</p>
 </div>
@@ -790,7 +790,7 @@ html = f"""<!DOCTYPE html>
 <tr><th style="text-align:left;">Approach</th><th>Better-Matched Courts</th><th>Players Changing Courts</th><th>Effort</th></tr>
           {option_rows}
         </table>
-<p style="font-size:clamp(8.5px,1vw,12px);color:#8a7f6a;margin-top:3%;">Scored across the last 90 days of real sessions. Today’s system: {den_comb} combined spread, {den_move} of players moving.</p>
+<p style="font-size:clamp(8.5px,1vw,12px);color:#8a7f6a;margin-top:3%;">Scored across the last 180 days of real sessions. Today’s system: {den_comb} combined spread, {den_move} of players moving.</p>
 </div>
 
 <div class="section">
@@ -863,7 +863,7 @@ M = margin multiplier = ln(margin + 1)</div>
 <div class="kicker" style="color:#8a7f6a;">Technical Appendix · B, continued</div>
 <div class="factor"><b>EXPECTATION COMPRESSION</b><span>Affects what is shown, not what is earned: displayed win probabilities compress the rating gap by 0.92 before the logistic, matching observed SAM outcomes ({pct_0_100} / {pct_101_200} / {pct_201_300}%). The actual rating calculation does not use this compressed figure at all.</span></div>
 <div class="factor"><b>VALIDATION</b><span>Predictions are checked against outcomes across the full pool every run. Gaps between individual actual and expected win rates reflect normal variance and close as games accumulate; aggregate calibration is what the model is tuned for.</span></div>
-<div class="factor"><b>SCENARIO REPLAY</b><span>Assignment alternatives were tested against the last 90 days of real sessions — same signups, same court counts — not simulations of hypothetical players.</span></div>
+<div class="factor"><b>SCENARIO REPLAY</b><span>Assignment alternatives were tested against the last 180 days of real sessions — same signups, same court counts — not simulations of hypothetical players.</span></div>
 <div class="mono" style="margin-top:3%;">Every number in this book was computed from the underlying rating engine as of the snapshot date on the cover. It is not a live document -- re-run the report to produce a new dated snapshot after major changes.</div>
 <p style="font-style:italic;opacity:0.75;">— end —</p>
 </div>

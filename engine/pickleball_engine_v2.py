@@ -1215,102 +1215,6 @@ def build_recent_trends(player_log, leaderboard, as_of):
     ).reset_index(drop=True)
 
 
-def build_best_worst_day(player_log, leaderboard, as_of):
-    leaderboard_players = set(leaderboard["Player"])
-    rating_map = dict(zip(leaderboard["Player"], leaderboard["Player Rating"]))
-
-    log = player_log[
-        (player_log["include_in_ratings"] == "Yes")
-        & (player_log["player"].isin(leaderboard_players))
-    ].copy()
-
-    recent_cutoff = pd.Timestamp(as_of).normalize() - pd.Timedelta(days=180)
-    log = log[pd.to_datetime(log["posted_dt"]) >= recent_cutoff].copy()
-
-    log["play_date"] = pd.to_datetime(log["posted_dt"]).dt.date
-
-    daily_rows = []
-
-    for (player, play_date), sub in log.groupby(["player", "play_date"]):
-        games = len(sub)
-        if games < 6:
-            continue
-
-        wins = int(sub["is_win"].sum())
-        losses = int(games - wins)
-        actual = wins / games
-        expected_pct = float(sub["expected_win"].mean())
-        gap = actual - expected_pct
-        margin = int(sub["margin"].sum())
-
-        daily_rows.append(
-            {
-                "Player": player,
-                "Play Date": play_date,
-                "Games": games,
-                "Wins": wins,
-                "Losses": losses,
-                "Daily Gap": gap,
-                "Record": f"{wins}-{losses}",
-                "Margin": margin,
-            }
-        )
-
-    daily = pd.DataFrame(daily_rows)
-
-    if daily.empty:
-        return pd.DataFrame(
-            columns=[
-                "Player",
-                "Current Rating",
-                "Best Day",
-                "Best Day Gap",
-                "Best Record",
-                "Best Margin",
-                "Worst Day",
-                "Worst Day Gap",
-                "Worst Record",
-                "Worst Margin",
-            ]
-        )
-
-    rows = []
-
-    for player in sorted(leaderboard_players):
-        sub = daily[daily["Player"] == player].copy()
-        if sub.empty:
-            continue
-
-        best = sub.sort_values(
-            ["Daily Gap", "Margin", "Play Date"],
-            ascending=[False, False, False],
-        ).iloc[0]
-
-        worst = sub.sort_values(
-            ["Daily Gap", "Margin", "Play Date"],
-            ascending=[True, True, False],
-        ).iloc[0]
-
-        rows.append(
-            {
-                "Player": player,
-                "Current Rating": rating_map.get(player),
-                "Best Day": best["Play Date"],
-                "Best Day Gap": float(best["Daily Gap"]),
-                "Best Record": best["Record"],
-                "Best Margin": int(best["Margin"]),
-                "Worst Day": worst["Play Date"],
-                "Worst Day Gap": float(worst["Daily Gap"]),
-                "Worst Record": worst["Record"],
-                "Worst Margin": int(worst["Margin"]),
-            }
-        )
-
-    df = pd.DataFrame(rows)
-    if df.empty:
-        return df
-
-    return df.sort_values(["Current Rating", "Player"], ascending=[False, True]).reset_index(drop=True)
 
 
 def exclude_guest_players(df, columns=None):
@@ -2344,7 +2248,7 @@ def build_player_pool_vs_balance(player_pool_by_quarter, competitive_balance_by_
     return pd.concat([df, summary_rows], ignore_index=True)
 
 
-def build_court_assignment_analysis(raw_df, player_log, days=90):
+def build_court_assignment_analysis(raw_df, player_log, days=180):
     import numpy as np
     from collections import defaultdict
 
@@ -2938,7 +2842,6 @@ def main():
                 lambda s: consistency_icon(s, t_low, t_high)
             ),
         )
-    best_worst_day = build_best_worst_day(full_player_log, leaderboard, as_of)  # own internal last-60-game window, unrelated to the rating source
 
     performance_vs_expectation = leaderboard[
         [
@@ -3069,8 +2972,6 @@ def main():
     if "recent_trends" in locals():
         recent_trends = exclude_guest_players(recent_trends)
 
-    if "best_worst_day" in locals():
-        best_worst_day = exclude_guest_players(best_worst_day)
 
     notes_rows = [
         ("MODEL SPEC", ""),
@@ -3134,7 +3035,6 @@ def main():
         "  Recent Trends  —  Whether a player's recent results are improving or declining.",
         "  Consistency  —  Game-to-game variability in point margins over the last 60 games.",
         "  Session Effects  —  Whether players perform differently in early vs. late games of a session.",
-        "  Recent Best/Worst Day  —  Strongest and weakest single-day performances over the last 180 days.",
         "  Illustration  —  A worked example showing how one day's games move ratings step by step.",
         "",
         "Limitations",
@@ -3163,7 +3063,7 @@ def main():
 
     key_findings = pd.DataFrame(key_findings_rows, columns=["Date Added", "Area", "Finding"])
 
-    court_analysis, scenario_summary, court_distribution = build_court_assignment_analysis(raw, full_player_log, days=90)
+    court_analysis, scenario_summary, court_distribution = build_court_assignment_analysis(raw, full_player_log, days=180)
 
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
         leaderboard.to_excel(writer, sheet_name="Leaderboard", index=False)
@@ -3182,7 +3082,6 @@ def main():
         session_effects.to_excel(writer, sheet_name="Session Effects", index=False)
         recent_trends.to_excel(writer, sheet_name="Recent Trends", index=False)
         game_consistency.to_excel(writer, sheet_name="Consistency", index=False)
-        best_worst_day.to_excel(writer, sheet_name="Recent Best Worst Day", index=False)
         eod_df.to_excel(writer, sheet_name="Rating History", index=False)
         qp.to_excel(writer, sheet_name="Quarterly Participation", index=False)
         notes.to_excel(writer, sheet_name="Notes", index=False)
@@ -3756,7 +3655,7 @@ def main():
         # ── Section 1: Court Count Distribution ──────────────────────────────
         sc_ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=6)
         set_row(sc_ws, r,
-                ["Court Count Distribution (last 90 days)"],
+                ["Court Count Distribution (last 180 days)"],
                 font=hdr_font, fill=hdr_fill, alignment=center, height=20)
         r += 1
 
@@ -4321,7 +4220,7 @@ def main():
         # ── 5. Options for Improvement ───────────────────────────────────────
         sec(r, "6.  Options for Improvement: What We Tested and Why"); r += 1
         para(r,
-            "We modeled 12 alternative approaches across the last 90 days of play. Each is evaluated on "
+            "We modeled 12 alternative approaches across the last 180 days of play. Each is evaluated on "
             "combined within-court spread (lower = better), the improvement vs. current (DEN), and the "
             "fraction of players who move courts between S1 and S2.",
             height=36); r += 1

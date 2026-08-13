@@ -189,7 +189,7 @@ for _, r in court_distribution.iterrows():
     spread_val = r.get("Avg S1 Spread")
     if spread_val is None or pd.isna(spread_val):
         continue
-    flag = " *" if r["Days"] < 5 else ""
+    flag = " *" if r["Days"] <= 5 else ""
     court_spread_rows += f"""
       <tr><td>{r['Courts']}{flag}</td><td>{r['Days']}</td><td>{round(spread_val)}</td></tr>"""
 
@@ -430,7 +430,7 @@ html = f"""<!DOCTYPE html>
 <h2>Three Factors vs. One and a Half</h2>
 <p>Elo’s three inputs — result, margin, opponent strength — aren’t optional extras. Opponent strength is the one that makes a rating mean anything: beat a strong team and you earn more; lose to one and you lose less. Without it, a win is just a win, with no sense of how hard it was.</p>
 <p>Pickleball Den’s court assignment metrics, Step and Percentage, never make that adjustment. Step is set from a player’s last Shootout 2 finish: top two on a court moves them toward the top court next time, bottom two moves them toward the bottom — based purely on finishing position. Picture two players on the same date: one finishes bottom-two on the toughest court and moves toward a worse court next time; another finishes top-two on the weakest court and moves toward a better court next time. Both land on the same Step for the next Shootout 1 — despite one facing that day’s toughest competition and the other its weakest. Percentage, the tiebreaker when Steps match, doesn’t fix this either: it’s just total points scored over a player’s last 90 games, with no adjustment for who those points came with or against.</p>
-<div class="callout">Elo asks three questions of every result: did you win, by how much, and against whom. DEN’s system fully answers the first and only partially answers the second — Percentage counts total points, not points earned against strong or weak competition — and skips the third entirely: the one that actually tells you how much a result should count.</div>
+<div class="callout">Elo asks three questions of every result: did you win, by how much, and against whom. Den’s system fully answers the first and only partially answers the second — Percentage counts total points, not points earned against strong or weak competition — and skips the third entirely: the one that actually tells you how much a result should count.</div>
 </div>
 
 <div class="section">
@@ -497,9 +497,51 @@ html = f"""<!DOCTYPE html>
 <div class="section">
 
 <h2>How Courts Are Assigned Today</h2>
-<p>The DEN makes Shootout 1 court assignments using two numbers. <b>Step</b> is a court-movement counter: finish in the top two of your court and it ticks down; finish in the bottom two and it ticks up — based entirely on your <i>last</i> play date, however long ago that was.</p>
+<p>The Den makes Shootout 1 court assignments using two numbers. <b>Step</b> is a court-movement counter: finish in the top two of your court and it ticks down; finish in the bottom two and it ticks up — based entirely on your <i>last</i> play date, however long ago that was.</p>
 <p><b>Percentage</b> breaks ties within a step: total points scored divided by maximum possible, over your last 90 games (~15 play dates), all weighted equally.</p>
-<p>For Shootout 2, SAM currently has the DEN set to move the top two on each court up a court and the bottom two down — the “2-up/2-back” rule. It’s a choice, not the only option: the DEN also offers “1-up/1-back/2-stay,” which SAM isn’t currently using.</p>
+<p>For Shootout 2, SAM currently has the Den set to move the top two on each court up a court and the bottom two down — the “2-up/2-back” rule. It’s a choice, not the only option: the Den also offers “1-up/1-back/2-stay,” which SAM isn’t currently using.</p>
+<div style="margin-top:4%;">
+<div style="font-family:'Trebuchet MS',sans-serif;font-size:clamp(8.5px,1vw,11px);color:var(--navy);font-weight:bold;text-align:center;margin-bottom:2%;">How Shootout 2 finishes map to next Step values (3-court example)</div>
+<svg style="display:block;" viewbox="0 0 680 330" width="100%">
+<defs><marker id="sb-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="var(--ink)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path></marker></defs>
+<rect fill="none" stroke="var(--ink)" stroke-width="0.5" stroke-dasharray="4 3" x="40" y="35" width="186" height="95" rx="8"></rect>
+<rect fill="none" stroke="var(--ink)" stroke-width="0.5" stroke-dasharray="4 3" x="247" y="35" width="186" height="95" rx="8"></rect>
+<rect fill="none" stroke="var(--ink)" stroke-width="0.5" stroke-dasharray="4 3" x="454" y="35" width="186" height="95" rx="8"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" font-weight="bold" text-anchor="middle" x="133" y="52">Court 1</text>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" font-weight="bold" text-anchor="middle" x="340" y="52">Court 2</text>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="11" font-weight="bold" text-anchor="middle" x="547" y="52">Court 3</text>
+<rect fill="var(--navy)" x="50" y="68" width="78" height="44" rx="8"></rect>
+<text fill="#ffffff" font-family="'Trebuchet MS',sans-serif" font-size="10" font-weight="bold" text-anchor="middle" x="89" y="94">Top 2</text>
+<rect fill="#b3543a" x="138" y="68" width="78" height="44" rx="8"></rect>
+<text fill="#ffffff" font-family="'Trebuchet MS',sans-serif" font-size="10" font-weight="bold" text-anchor="middle" x="177" y="94">Bottom 2</text>
+<rect fill="var(--navy)" x="257" y="68" width="78" height="44" rx="8"></rect>
+<text fill="#ffffff" font-family="'Trebuchet MS',sans-serif" font-size="10" font-weight="bold" text-anchor="middle" x="296" y="94">Top 2</text>
+<rect fill="#b3543a" x="345" y="68" width="78" height="44" rx="8"></rect>
+<text fill="#ffffff" font-family="'Trebuchet MS',sans-serif" font-size="10" font-weight="bold" text-anchor="middle" x="384" y="94">Bottom 2</text>
+<rect fill="var(--navy)" x="464" y="68" width="78" height="44" rx="8"></rect>
+<text fill="#ffffff" font-family="'Trebuchet MS',sans-serif" font-size="10" font-weight="bold" text-anchor="middle" x="503" y="94">Top 2</text>
+<rect fill="#b3543a" x="552" y="68" width="78" height="44" rx="8"></rect>
+<text fill="#ffffff" font-family="'Trebuchet MS',sans-serif" font-size="10" font-weight="bold" text-anchor="middle" x="591" y="94">Bottom 2</text>
+<rect fill="none" stroke="var(--ink)" stroke-width="0.5" x="40" y="210" width="120" height="44" rx="8"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="10" font-weight="bold" text-anchor="middle" x="100" y="236">Step 1</text>
+<rect fill="none" stroke="var(--ink)" stroke-width="0.5" x="200" y="210" width="120" height="44" rx="8"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="10" font-weight="bold" text-anchor="middle" x="260" y="236">Step 2</text>
+<rect fill="none" stroke="var(--ink)" stroke-width="0.5" x="360" y="210" width="120" height="44" rx="8"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="10" font-weight="bold" text-anchor="middle" x="420" y="236">Step 3</text>
+<rect fill="none" stroke="var(--ink)" stroke-width="0.5" x="520" y="210" width="120" height="44" rx="8"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="10" font-weight="bold" text-anchor="middle" x="580" y="236">Step 4</text>
+<line stroke="var(--ink)" stroke-width="1" marker-end="url(#sb-arrow)" x1="89" y1="112" x2="100" y2="210"></line>
+<line stroke="var(--ink)" stroke-width="1" marker-end="url(#sb-arrow)" x1="177" y1="112" x2="260" y2="210"></line>
+<line stroke="var(--ink)" stroke-width="1" marker-end="url(#sb-arrow)" x1="296" y1="112" x2="100" y2="210"></line>
+<line stroke="var(--ink)" stroke-width="1" marker-end="url(#sb-arrow)" x1="384" y1="112" x2="420" y2="210"></line>
+<line stroke="var(--ink)" stroke-width="1" marker-end="url(#sb-arrow)" x1="503" y1="112" x2="260" y2="210"></line>
+<line stroke="var(--ink)" stroke-width="1" marker-end="url(#sb-arrow)" x1="591" y1="112" x2="580" y2="210"></line>
+<rect fill="var(--navy)" x="40" y="278" width="10" height="10" rx="2"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="9" x="56" y="287">Top 2 on a court moves toward the top court next time</text>
+<rect fill="#b3543a" x="40" y="298" width="10" height="10" rx="2"></rect>
+<text fill="var(--ink)" font-family="'Trebuchet MS',sans-serif" font-size="9" x="56" y="307">Bottom 2 moves toward the bottom court next time</text>
+</svg>
+</div>
 <div style="margin-top:4%;">
 <div style="font-family:'Trebuchet MS',sans-serif;font-size:clamp(8.5px,1vw,11px);color:var(--navy);font-weight:bold;text-align:center;margin-bottom:2%;">Step values in circulation after Shootout 2, by court count</div>
 <svg style="display:block;" viewbox="0 0 420 230" width="100%">
@@ -601,12 +643,13 @@ html = f"""<!DOCTYPE html>
 {court_spread_rows}
 </table>
 <p style="font-size:clamp(8.5px,1vw,12px);color:#8a7f6a;margin-top:1%;">* Very few days in this range window — treat with caution.</p>
+<p>The pattern is consistent: the more courts in play, the lower the average within-court spread.</p>
 </div>
 
 <div class="section">
 
 <div class="kicker">Case Study, April 2, 2026</div>
-<p>April 2, 2026 was a three-court day in SAM. The DEN’s court assignments were a mess.</p>
+<p>April 2, 2026 was a three-court day in SAM. The Den’s court assignments were a mess.</p>
 <svg style="display:block;" viewbox="0 0 420 500" width="100%">
 <text fill="var(--navy)" font-family="'Trebuchet MS',sans-serif" font-size="12" font-weight="bold" text-anchor="middle" x="135" y="14">True rank before S1</text>
 <text fill="var(--navy)" font-family="'Trebuchet MS',sans-serif" font-size="12" font-weight="bold" text-anchor="middle" x="340" y="14">Shootout 1 courts</text>
@@ -678,7 +721,7 @@ html = f"""<!DOCTYPE html>
 <div class="section">
 
 <h2>Perfect, Then Scrambled</h2>
-<p>On May 4, 2026, the DEN got the Shootout 1 court assignments exactly right. Every one of twelve players landed on the court matching their true skill rank — zero mismatches. Step and Percentage worked as designed.</p>
+<p>On May 4, 2026, the Den got the Shootout 1 court assignments exactly right. Every one of twelve players landed on the court matching their true skill rank — zero mismatches. Step and Percentage worked as designed.</p>
 <p>Then 2-up/2-back moved players for Shootout 2, using only that morning's three games as its signal. The result: eight of twelve players — two-thirds of the field — landed in the wrong pool.</p>
 <p>Court 1 shows the damage directly. Eric Kramer and Peter Barnett, the two highest-rated players in the field, ended up paired together by the shuffle and beat Dwight Christensen and Lidia Zolnierczyk — correctly separated into a lower tier just one session earlier — <b>11–4</b>. The movement rule undid a correct assignment using less information than the assignment it replaced.</p>
 </div>
@@ -759,7 +802,7 @@ html = f"""<!DOCTYPE html>
 
 <div class="kicker">Within-Court Skill Spread — Current System</div>
 <div class="stat-stack" style="height:72%;">
-<div class="stat"><div class="num">{den_s1}</div><div class="lbl">Shootout 1 average spread (DEN step / percentage)</div></div>
+<div class="stat"><div class="num">{den_s1}</div><div class="lbl">Shootout 1 average spread (Den step / percentage)</div></div>
 <div class="stat" style="border-left-color:#b3543a;"><div class="num">{den_s2}</div><div class="lbl">Shootout 2 average spread (after 2-up/2-back)</div></div>
 <div class="stat"><div class="num">{den_comb}</div><div class="lbl">combined baseline — the number to beat</div></div>
 </div>
@@ -811,8 +854,8 @@ html = f"""<!DOCTYPE html>
 <div class="section">
 
 <h2>This Isn’t a Settings Toggle</h2>
-<p>Everything above is possible because of work already done, not work still theoretical. DEN has no setting for rating-based seeding or results-driven reshuffling — both phases require quietly overriding DEN’s own numbers from the outside.</p>
-<p>The technique: write a synthetic value into DEN’s own Ladder Step field for each player, then let DEN’s own “Seed Players” button do the actual grouping. DEN never needs to know a rating model is behind the number it’s reading.</p>
+<p>Everything above is possible because of work already done, not work still theoretical. Den has no setting for rating-based seeding or results-driven reshuffling — both phases require quietly overriding Den’s own numbers from the outside.</p>
+<p>The technique: write a synthetic value into Den’s own Ladder Step field for each player, then let Den’s own “Seed Players” button do the actual grouping. Den never needs to know a rating model is behind the number it’s reading.</p>
 <p>Phase 1 (rating-seeded Shootout 1) is proven — tested live against a real signup sheet, full removal-to-Start-Event flow, working end to end. Phase 2 extends the same technique to Shootout 2: after Shootout 1’s games post, replay them through the rating engine, then write fresh synthetic Step values reflecting that recalculation before Shootout 2 seeds.</p>
 <p>The two phases differ in more than scope, though. Phase 1 finishes before anyone checks in — the seeding is already loaded and waiting when the first player arrives. Phase 2 can’t work that way: it has to fire live, on the spot, in the gap between Shootout 1’s last game and Shootout 2’s first. That makes its remaining hurdle a question of who’s there to trigger it, not whether the code works.</p>
 </div>

@@ -107,7 +107,7 @@ td { padding: 4px 9px; border: 1px solid #e4e4e4; overflow-wrap: break-word; }
   <select id="date-select"></select>
 
   <div id="tabs">
-    <button class="tab-btn" data-tab="den">DEN</button>
+    <button class="tab-btn" data-tab="den">Den</button>
     <button class="tab-btn" data-tab="rating">Rating</button>
     <button class="tab-btn" data-tab="comparison">Comparison</button>
   </div>
@@ -277,7 +277,7 @@ function moveLabel(diff) {
 function comparisonTable(comp) {
   const colgroup = '<colgroup><col style="width:28%"><col style="width:14%">'
     + '<col style="width:14%"><col style="width:44%"></colgroup>';
-  let h = `<table>${colgroup}<thead><tr><th>Player</th><th class="num">DEN</th>`;
+  let h = `<table>${colgroup}<thead><tr><th>Player</th><th class="num">Den</th>`;
   h += '<th class="num">Model</th><th>Adjustment</th></tr></thead><tbody>';
   for (const r of comp.rows) {
     h += `<tr${r.diff !== 0 ? ' class="diff-row"' : ''}>`;

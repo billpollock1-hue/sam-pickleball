@@ -4351,7 +4351,7 @@ def main():
         # ── Footnote ─────────────────────────────────────────────────────────
         st_ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=NCOLS)
         fn = st_ws.cell(row=r, column=2,
-            value="* All competitiveness figures are averages over the most recent 90 days of historical play data. "
+            value="* All competitiveness figures are averages over the most recent 180 days of historical play data. "
                   "Within-court Elo spread is measured using pre-session ratings (provisional K: 40 at game 1, grading "
                   "to 20 by game 60) for all scenarios so results are on a consistent scale. Phase 2 S2 ratings "
                   "additionally incorporate actual S1 game scores and scoring margins before assigning S2 courts. "

@@ -9,6 +9,8 @@
     --blue-dark: #1F4E79;
     --blue-mid:  #2E75B6;
     --blue-light:#D6E4F0;
+    --rust:      #b3543a;
+    --gold:      #C9A84C;
     --text:      #333333;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -57,6 +59,11 @@
   }
   a.card p { font-size: 13.5px; color: #555; line-height: 1.4; }
 
+  a.card.group-a { border-left-color: var(--blue-dark); }
+  a.card.group-b { border-left-color: var(--blue-mid); }
+  a.card.group-c { border-left-color: var(--rust); }
+  a.card.group-d { border-left-color: var(--gold); }
+
   footer {
     text-align: center;
     font-size: 12px;
@@ -69,53 +76,54 @@
 
 <header>
   <h1>SAM Pickleball</h1>
-  <p>Ratings, results, and sign up information</p>
+  <p>Ratings, results, sign ups, and the case for change</p>
 </header>
 
 <main>
-  <a class="card" href="leaderboard.html">
+  <a class="card group-a" href="leaderboard.html">
     <h2>Leaderboard</h2>
     <p>Current ratings at a glance — rank, rating, record, and win percentage for every qualified player. Search for your name.</p>
   </a>
 
-  <a class="card" href="leaderboard.html">
+  <a class="card group-a" href="leaderboard.html">
     <h2>Compare Ratings</h2>
     <p>See how any player's rating has changed between two dates — right on the Leaderboard. Pick a From and To date to compare the whole field at once.</p>
   </a>
 
-  <a class="card" href="session_viewer.html">
+  <a class="card group-b" href="session_viewer.html">
     <h2>Session Viewer</h2>
     <p>Game-by-game results and rating changes for any play date. Pick a date, see every game, every score, and how each player's rating moved.</p>
   </a>
 
-  <a class="card" href="player_history.html">
+  <a class="card group-b" href="player_history.html">
     <h2>Player History</h2>
     <p>Every game a player has ever played, in one place. Pick a player, filter by year, see the full record.</p>
   </a>
 
-  <a class="card" href="court_assignments.html">
+  <a class="card group-c" href="court_assignments.html">
     <h2>Court Assignments</h2>
     <p>Shootout 1 court assignments for the next play date (and projected Shootout 1 court assignments for other upcoming play dates) under the Den's default rating system, Modified ELO ratings, and the difference between the 2 methods.</p>
   </a>
 
-  <a class="card" href="signup_viewer.html">
+  <a class="card group-c" href="signup_viewer.html">
     <h2>Signup Sheet Logs</h2>
     <p>Signup sheet activity for all posted future playdates, with a lookback for the last 7 past playdates.</p>
   </a>
 
-  <a class="card" href="highlights.html">
+  <a class="card group-d" href="highlights.html">
     <h2>What We're Changing</h2>
     <p>The short version: the problem, the evidence, and the two-phase plan to make courts fairer.</p>
   </a>
 
-  <a class="card" href="storybook.html">
+  <a class="card group-d" href="storybook.html">
     <h2>How We Got There</h2>
     <p>The full story behind how courts get assigned — the evidence, the ratings math, and what we tested to make Shootout 2 fairer.</p>
   </a>
 </main>
 
 <footer>
-  Updated automatically after each play date.
+  Leaderboard, ratings, court assignments, and signups update automatically after each play date.<br/>
+  The research pages are dated snapshots and update only when refreshed.
 </footer>
 
 </body>

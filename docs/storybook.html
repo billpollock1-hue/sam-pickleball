@@ -59,7 +59,7 @@
 <div class="rule"></div>
 <h1>Can SAM<br/>Be Improved?</h1>
 <div class="rule"></div>
-<div class="sub">Using four years of shootout data to make<br/>every SAM session more competitive</div>
+<div class="sub">Using four years of shootout data to make<br/>SAM sessions more competitive</div>
 <div class="sub" style="font-size:0.65em;opacity:0.65;margin-top:2%;">Snapshot as of August 14, 2026 — numbers reflect data through this date, not live</div>
 <div class="hint">click to open ›</div>
 
@@ -567,13 +567,14 @@
 
 <div class="kicker">The Scorecard</div>
 <table class="btable">
-<tr><th style="text-align:left;">Approach</th><th>S1 Spread</th><th>S2 Spread</th><th>Combined Spread</th><th>vs Den</th><th>Players Moving</th><th>Effort</th></tr>
+<tr><th rowspan="2" style="text-align:left;">Approach</th><th colspan="4" style="text-align:center;">Spread</th><th rowspan="2">Players Moving After S1</th><th rowspan="2">Effort</th></tr>
+      <tr><th>S1 Only</th><th>S2 Only</th><th>S1+S2</th><th>Reduction</th></tr>
           
       <tr class=""><td style="text-align:left;">Today's system</td>
       <td>522</td><td>617</td><td>570</td><td>—</td><td>68%</td><td>No change — status quo</td></tr>
-      <tr class=""><td style="text-align:left;">Rating-seeded start &middot; keep today's shuffle</td>
+      <tr class=""><td style="text-align:left;">Used ratings to seed S1 &middot; continue using 2 up 2 back for S2</td>
       <td>339</td><td>643</td><td>491</td><td>+14%</td><td>68%</td><td>Den's native setting</td></tr>
-      <tr class="hl"><td style="text-align:left;">Rating-seeded start &middot; gentler shuffle &nbsp;&#9733; Phase 1</td>
+      <tr class="hl"><td style="text-align:left;">Used ratings to seed S1 &middot; gentler shuffle &nbsp;&#9733; Phase 1</td>
       <td>339</td><td>550</td><td>445</td><td>+22%</td><td>34%</td><td>Den's native setting</td></tr>
       <tr class=""><td style="text-align:left;">Results-driven Shootout 2 &middot; full recalc, standard K — not recommended</td>
       <td>339</td><td>343</td><td>341</td><td>+40%</td><td>7%</td><td>Custom automation — needs building</td></tr>
@@ -590,15 +591,15 @@
 <div class="kicker">Other Options Considered</div>
 <p>A couple of approaches we scored but aren’t carrying forward:</p>
 
-    <div class="factor"><b>Swap near-ties at court borders only</b><span>PLACEHOLDER: only touches players sitting right at a court boundary, so most days with few or no near-ties see little to no effect — too inconsistent to count on.</span></div>
-    <div class="factor"><b>Move only big over/under-performers</b><span>PLACEHOLDER: only moves the most lopsided outliers, so on a typical day where nobody is wildly over- or under-rated, it barely changes anything.</span></div>
+    <div class="factor"><b>Swap near-ties at court borders only</b><span>Only touches players sitting right at a court boundary, so on many days no swap is triggered at all — Shootout 2 court assignments end up identical to Shootout 1.</span></div>
+    <div class="factor"><b>Move only big over/under-performers</b><span>Only moves significant outliers, so on a typical day where nobody is wildly over- or under-rated, little to no court movement results.</span></div>
 </div>
 
 <div class="section">
 
 <h2>The Recommendation: Two Phases</h2>
 <div class="phase">
-<b>PHASE 1 — Rating-seeded start, gentler shuffle</b>
+<b>PHASE 1 — Used ratings to seed S1, gentler shuffle</b>
 <span>Seed Shootout 1 by rating instead of step and percentage; soften the mid-morning shuffle to one-up/one-back. Runs unattended overnight — Elo-based seedings load automatically after midnight, before anyone’s on the courts. Already built, tested, and validated end to end.</span>
 <div class="metric">+22% better-matched courts · combined spread 445</div>
 </div>

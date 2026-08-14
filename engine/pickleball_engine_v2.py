@@ -109,6 +109,7 @@ MANUAL_NAME_FIXES = {
     ("2026-03-26", "Karen Carter"): "Kenneth Whipple",
     ("2026-03-26", "DEN New Player Tryout"): "Logan Brannon",
     ("2026-07-29", "Den New Player Tryout"): "David Roming",
+    ("2026-08-14", "Den New Player Tryout"): "Bella Tinstman",
 }
 
 
@@ -2960,7 +2961,13 @@ def main():
     performance_vs_expectation = exclude_guest_players(performance_vs_expectation)
     eod_df = exclude_guest_players(eod_df)
     historical = exclude_guest_players(historical)
-    player_log_trim = exclude_guest_players(player_log_trim)
+    # player_log_trim intentionally NOT filtered here (removed 2026-08-14):
+    # this feeds the "Player_Game_Log" sheet, the real data source for
+    # Session Viewer and Player History -- both detailed, non-leaderboard
+    # views. Per Bill's stated principle, a known/identified player who
+    # doesn't qualify for the leaderboard should still be fully visible
+    # everywhere else; only leaderboard and leaderboard-adjacent sheets
+    # should apply GUEST_OUTPUT_EXCLUSIONS.
 
     # player_log_trim is built from full_player_log -- one authoritative
     # player_pre_rating/player_post_rating per game already. No merge needed;

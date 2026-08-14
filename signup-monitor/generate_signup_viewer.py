@@ -384,6 +384,7 @@ tr.wd td.name  { text-decoration: line-through; }
   <button class="back-btn" onclick="forceRefresh()">&#8635;&nbsp;Refresh</button>
   <label for="date-select">Session date</label>
   <select id="date-select">%%OPTIONS%%</select>
+  <button class="back-btn" id="older-btn" onclick="toggleOlderSessions()">Show older sessions</button>
   <button id="print-btn" onclick="window.print()">&#128438;&nbsp; Print / Save PDF</button>
 </div>
 <div id="freshness-hint">💡 Tap Refresh anytime to make sure you're seeing the latest data.</div>
@@ -487,8 +488,14 @@ function shiftDate(dateStr, days) {
 }
 const sevenDaysAgoStr = shiftDate(az.dateStr, -7);
 const allOpts = Array.from(sel.options);
+// Kept (not discarded) so "Show older sessions" can restore them later --
+// these are still valid DOM nodes, just detached from the <select>.
+const olderOpts = [];
 allOpts.forEach(opt => {
-  if (opt.value < sevenDaysAgoStr) opt.remove();
+  if (opt.value < sevenDaysAgoStr) {
+    olderOpts.push(opt);
+    opt.remove();
+  }
 });
 // Options arrive sorted newest-first (see generate_viewer()); reverse so the
 // dropdown reads chronologically, oldest (7 days back) through furthest future.
@@ -524,6 +531,30 @@ const preservedDate = new URLSearchParams(location.search).get('d');
 if (preservedDate) {
   const match = Array.from(sel.options).find(o => o.value === preservedDate);
   if (match) sel.value = preservedDate;
+}
+
+// Toggle handler for "Show older sessions" -- olderOpts holds every date
+// older than the 7-day lookback window, still valid DOM option nodes just
+// detached from the <select> above. Re-inserted in olderOpts' original
+// newest-first order, each one placed before the current first child, so
+// the final order ends up oldest-first overall (matching the rest of the
+// dropdown's chronological ordering).
+let olderSessionsShown = false;
+function toggleOlderSessions() {
+  const btn = document.getElementById('older-btn');
+  if (!olderSessionsShown) {
+    olderOpts.forEach(opt => sel.insertBefore(opt, sel.firstChild));
+    olderSessionsShown = true;
+    btn.textContent = 'Hide older sessions';
+  } else {
+    olderOpts.forEach(opt => opt.remove());
+    olderSessionsShown = false;
+    btn.textContent = 'Show older sessions';
+    if (sel.selectedIndex === -1 && sel.options.length > 0) {
+      sel.selectedIndex = 0;
+      render(sel.value);
+    }
+  }
 }
 
 sel.addEventListener('change', () => render(sel.value));

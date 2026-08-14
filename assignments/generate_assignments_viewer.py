@@ -222,8 +222,8 @@ function pageHeader(d, extra, dateStr) {
 
 function courtColgroup(isRating) {
   return isRating
-    ? '<colgroup><col style="width:16%"><col style="width:16%"><col style="width:40%"><col style="width:28%"></colgroup>'
-    : '<colgroup><col style="width:14%"><col style="width:14%"><col style="width:38%"><col style="width:17%"><col style="width:17%"></colgroup>';
+    ? '<colgroup><col style="width:11%"><col style="width:11%"><col style="width:54%"><col style="width:24%"></colgroup>'
+    : '<colgroup><col style="width:9%"><col style="width:9%"><col style="width:52%"><col style="width:15%"><col style="width:15%"></colgroup>';
 }
 
 function fmtPct(pct) {

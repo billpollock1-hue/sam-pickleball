@@ -169,8 +169,8 @@ for _, r in gap_dist.iterrows():
 # in the tight post-Shootout-1 window (everything results-driven).
 options = [
     ("Today's system", den, "No change — status quo"),
-    ("Rating-seeded start &middot; keep today's shuffle", e2u, "Den's native setting"),
-    ("Rating-seeded start &middot; gentler shuffle &nbsp;&#9733; Phase 1", ph1, "Den's native setting"),
+    ("Used ratings to seed S1 &middot; continue using 2 up 2 back for S2", e2u, "Den's native setting"),
+    ("Used ratings to seed S1 &middot; gentler shuffle &nbsp;&#9733; Phase 1", ph1, "Den's native setting"),
     ("Results-driven Shootout 2 &middot; full recalc, standard K — not recommended", e20, "Custom automation — needs building"),
     ("Results-driven Shootout 2 &middot; balanced dial &nbsp;&#9733; Phase 2", ph2, "Custom automation — needs building"),
     ("Results-driven Shootout 2 &middot; fast dial", k150, "Custom automation — needs building"),
@@ -842,7 +842,8 @@ html = f"""<!DOCTYPE html>
 
 <div class="kicker">The Scorecard</div>
 <table class="btable">
-<tr><th style="text-align:left;">Approach</th><th>S1 Spread</th><th>S2 Spread</th><th>Combined Spread</th><th>vs Den</th><th>Players Moving</th><th>Effort</th></tr>
+<tr><th rowspan="2" style="text-align:left;">Approach</th><th colspan="4" style="text-align:center;">Spread</th><th rowspan="2">Players Moving After S1</th><th rowspan="2">Effort</th></tr>
+      <tr><th>S1 Only</th><th>S2 Only</th><th>S1+S2</th><th>Reduction</th></tr>
           {option_rows}
         </table>
 <p style="font-size:clamp(8.5px,1vw,12px);color:#8a7f6a;margin-top:3%;">Scored across {window_start} – {latest} (last 180 days). Today’s system: {den_comb} combined spread, {den_move} of players moving.</p>
@@ -859,7 +860,7 @@ html = f"""<!DOCTYPE html>
 
 <h2>The Recommendation: Two Phases</h2>
 <div class="phase">
-<b>PHASE 1 — Rating-seeded start, gentler shuffle</b>
+<b>PHASE 1 — Used ratings to seed S1, gentler shuffle</b>
 <span>Seed Shootout 1 by rating instead of step and percentage; soften the mid-morning shuffle to one-up/one-back. Runs unattended overnight — Elo-based seedings load automatically after midnight, before anyone’s on the courts. Already built, tested, and validated end to end.</span>
 <div class="metric">{ph1_vs} better-matched courts · combined spread {ph1_comb}</div>
 </div>

@@ -90,6 +90,13 @@
   </section>
 
   <section>
+    <div class="kicker">How We Measure It</div>
+    <h2>Modified Elo</h2>
+    <p>Every player starts at 1,000. After each game, all four players' ratings update based on the result versus what the model predicted — the same idea Elo ratings use in chess and other competitive sports. A team's rating is the average of the two partners; the bigger the gap between two teams, the more lopsided the game is expected to be.</p>
+    <p>This is the trustworthy measuring stick behind every stat in this document.</p>
+  </section>
+
+  <section>
     <div class="kicker">One Concrete Morning</div>
     <h2>April 2, 2026</h2>
     <div class="stat-row">
@@ -168,18 +175,18 @@
 
   <section>
     <div class="kicker">The Fix</div>
-    <h2>Two Phases, Already Built and Tested</h2>
+    <h2>The Two-Phase Plan</h2>
     <div class="phase">
-      <b>PHASE 1 — Used ratings to seed S1, gentler shuffle</b>
-      <span>Seed Shootout 1 by rating instead of step and percentage, then use the Den's own gentler shuffle setting for Shootout 2. Already tested live, start to finish.</span>
-      <div class="metric">+22% vs today &middot; combined spread 445</div>
+      <b>PHASE 1 — Use ratings to seed S1, gentler shuffle</b>
+      <span>Seed Shootout 1 by rating — already built and tested, ready to be implemented using the Den's own Ladder Step field. Pair it with the Den's “1 up 1 back,” a gentler shuffle setting for Shootout 2 — already a Den option, just a toggle switch to implement.</span>
+      <div class="metric">+22% vs today &middot; combined spread 445 &middot; 34% moving</div>
     </div>
     <div class="phase">
       <b>PHASE 2 — Results-driven Shootout 2</b>
-      <span>Shootout 2 courts rebuilt from Shootout 1 results, weighted by opponent strength — movement is earned, not mechanical. Same technique, extended to Shootout 2.</span>
-      <div class="metric">+34% vs today &middot; combined spread 377</div>
+      <span>Shootout 2 courts rebuilt from Shootout 1 results, weighted by opponent strength — movement is earned, not mechanical. Tested against 180 days of real data; not yet built as live automation.</span>
+      <div class="metric">+34% vs today &middot; combined spread 377 &middot; 23% moving</div>
     </div>
-    <p style="font-size:13px;color:#8a7f6a;">Today's baseline: 570 combined spread, 68% of players moving mid-morning.</p>
+    <p style="font-size:13px;color:#8a7f6a;">Today's baseline: 570 combined spread, 68% of players moving after Shootout 1.</p>
   </section>
 
   <div class="divider"></div>

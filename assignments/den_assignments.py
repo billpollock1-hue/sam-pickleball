@@ -395,7 +395,7 @@ def _courts_to_json(assignments, waitlist, is_rating):
                 entry = {
                     "pos": int(r["CourtPosition"]),
                     "su": int(r["SignupOrder"]),
-                    "name": shorten_name(r["Player"], 22),
+                    "name": shorten_name(r["Player"], 60),
                 }
                 if is_rating:
                     entry["rating"] = None if pd.isna(r.get("Rating")) else int(round(r["Rating"]))
@@ -411,7 +411,7 @@ def _courts_to_json(assignments, waitlist, is_rating):
             entry = {
                 "pos": int(r["WaitlistPosition"]),
                 "su": int(r["SignupOrder"]),
-                "name": shorten_name(str(r["Player"]).replace("(Wait List)", "").strip(), 26),
+                "name": shorten_name(str(r["Player"]).replace("(Wait List)", "").strip(), 60),
             }
             if is_rating:
                 entry["rating"] = None if pd.isna(r.get("Rating")) else int(round(r["Rating"]))
@@ -448,7 +448,7 @@ def _comparison_to_json(den_assignments, rating_assignments):
         if den_court is None or rat_court is None:
             continue
         rows.append({
-            "name": shorten_name(player, 24),
+            "name": shorten_name(player, 60),
             "den_court": den_court,
             "rating_court": rat_court,
             "diff": den_court - rat_court,

@@ -287,10 +287,15 @@ def extract_all_sheets(text):
                         m2 = by_pat.match(line_k)
                         if m2:
                             sponsor = clean_name(m2.group(1))
-                        elif line_k.strip():
-                            # Strip trailing emoji/decoration (e.g. "Bella (emoji)" -> "Bella")
+                        elif line_k.strip() and tryout_name is None:
+                            # Take the FIRST non-"by:" line only -- later lines in
+                            # this gap can be page UI text (e.g. a "Cancel Event"
+                            # button label sitting after the player's actual name
+                            # in the scraped inner_text), which would otherwise
+                            # silently overwrite the real name.
                             candidate = re.sub(r"[^\w\s.'-]+$", "", line_k).strip()
-                            if candidate:
+                            UI_NOISE = {"cancel event", "remove", "edit", "withdraw"}
+                            if candidate and candidate.lower() not in UI_NOISE:
                                 tryout_name = clean_name(candidate)
                         k += 1
                     if tryout_name and sponsor:

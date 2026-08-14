@@ -176,8 +176,8 @@ options = [
     ("Results-driven Shootout 2 &middot; fast dial", k150, "Custom automation — needs building"),
 ]
 other_options = [
-    ("Swap near-ties at court borders only", bsw, "PLACEHOLDER: only touches players sitting right at a court boundary, so most days with few or no near-ties see little to no effect — too inconsistent to count on."),
-    ("Move only big over/under-performers", upt, "PLACEHOLDER: only moves the most lopsided outliers, so on a typical day where nobody is wildly over- or under-rated, it barely changes anything."),
+    ("Swap near-ties at court borders only", bsw, "Only touches players sitting right at a court boundary, so on many days no swap is triggered at all — Shootout 2 court assignments end up identical to Shootout 1."),
+    ("Move only big over/under-performers", upt, "Only moves significant outliers, so on a typical day where nobody is wildly over- or under-rated, little to no court movement results."),
 ]
 option_rows = ""
 for label, row, impl in options:

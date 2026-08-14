@@ -224,6 +224,20 @@ def extract_all_sheets(text):
     Parse body text that may contain multiple expanded signup sheets.
     Returns {YYYY-MM-DD: [player_name, ...]} in signup order.
     Actual date line format: "Thu, Jun 25, 6:00AM-8:00AM MST"
+
+    A "Den New Player Tryout" slot (case-insensitive match -- DEN's own
+    casing has drifted before, see pickleball_engine_v2.py's
+    MANUAL_NAME_FIXES note) is followed by a "by: <sponsor>" line and the
+    actual tryout player's own name/nickname on a separate line, e.g.:
+        12) Member
+        Den New Player Tryout
+        by: Amber Tinstman
+        Bella (smiley emoji)
+    Logging just the bare placeholder text loses that detail and also
+    collides across multiple simultaneous tryout slots on the same sheet
+    (they'd all read identically). Both extra lines are captured here and
+    folded into the logged name as
+    "Den New Player Tryout (Bella, by Amber Tinstman)".
     """
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     today = now_mt().date()
@@ -231,6 +245,9 @@ def extract_all_sheets(text):
 
     # Matches "Thu, Jun 25, 6:00AM-8:00AM MST" — group 1 = "Thu, Jun 25"
     date_pat = re.compile(r"([A-Z][a-z]{2},\s+[A-Z][a-z]{2}\s+\d{1,2}),\s+6:00AM")
+    entry_pat = re.compile(r"^\d+\)\s+Member$")
+    tryout_pat = re.compile(r"^den new player tryout$", re.IGNORECASE)
+    by_pat = re.compile(r"^by:\s*(.+)$", re.IGNORECASE)
 
     # Locate each sheet header in the line list
     sheet_starts = []
@@ -258,8 +275,29 @@ def extract_all_sheets(text):
         players = []
         seen = set()
         for j, line in enumerate(section):
-            if re.match(r"^\d+\)\s+Member$", line) and j + 1 < len(section):
+            if entry_pat.match(line) and j + 1 < len(section):
                 name = clean_name(section[j + 1])
+
+                if tryout_pat.match(name):
+                    sponsor = None
+                    tryout_name = None
+                    k = j + 2
+                    while k < len(section) and not entry_pat.match(section[k]):
+                        line_k = section[k]
+                        m2 = by_pat.match(line_k)
+                        if m2:
+                            sponsor = clean_name(m2.group(1))
+                        elif line_k.strip():
+                            # Strip trailing emoji/decoration (e.g. "Bella (emoji)" -> "Bella")
+                            candidate = re.sub(r"[^\w\s.'-]+$", "", line_k).strip()
+                            if candidate:
+                                tryout_name = clean_name(candidate)
+                        k += 1
+                    if tryout_name and sponsor:
+                        name = f"{name} ({tryout_name}, by {sponsor})"
+                    elif tryout_name:
+                        name = f"{name} ({tryout_name})"
+
                 key = name.lower()
                 if name and key not in seen:
                     seen.add(key)

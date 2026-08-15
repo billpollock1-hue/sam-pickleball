@@ -19,16 +19,6 @@ OUT_PATH = REPO_ROOT / "output" / "leaderboard.html"
 lb = pd.read_excel(XLSX_PATH, sheet_name="Leaderboard")
 data_through = pd.to_datetime(lb["Last Played"]).max().strftime("%B %-d, %Y")
 
-hist = pd.read_excel(XLSX_PATH, sheet_name="Rating History")
-rating_dates = [c for c in hist.columns if c != "Player"]
-rating_dates_sorted = sorted(rating_dates)
-rating_grid = {}
-for _, hr in hist.iterrows():
-    rating_grid[str(hr["Player"])] = [
-        (int(hr[d]) if pd.notna(hr[d]) and hr[d] != "" else None) for d in rating_dates_sorted
-    ]
-rating_dates_json = json.dumps(rating_dates_sorted)
-rating_grid_json = json.dumps(rating_grid)
 
 # ── Session Effects badges: strong/weak starter & finisher ─────────────────
 # Uses the existing "Session Effects" sheet. G1 Effect = this player's
@@ -117,7 +107,6 @@ for _, r in lb.iterrows():
         {pt_diff}
         {edge}
         <td class="lp">{last}</td>
-        <td class="delta" data-player="{name_attr}">--</td>
       </tr>"""
 
 
@@ -407,19 +396,11 @@ html = f"""<!DOCTYPE html>
     </div>
   </div>
 
-  <div class="compare-bar">
-    <span class="compare-label">Compare ratings:</span>
-    <label for="fromDateSelect">From</label>
-    <select id="fromDateSelect" onchange="updateDeltaColumn()"></select>
-    <label for="toDateSelect">To</label>
-    <select id="toDateSelect" onchange="updateDeltaColumn()"></select>
-  </div>
-  <div id="coverageStatus" class="compare-status"></div>
 
   <div class="wrap">
     <table>
       <thead>
-        <tr><th>#</th><th class="nm">Player</th><th>Rating</th><th>Win %</th><th>Win % vs Expected</th><th>Avg Point Diff</th><th>Avg Matchup Edge</th><th class="lp">Last Played</th><th class="delta">Delta Rating</th></tr>
+        <tr><th>#</th><th class="nm">Player</th><th>Rating</th><th>Win %</th><th>Win % vs Expected</th><th>Avg Point Diff</th><th>Avg Matchup Edge</th><th class="lp">Last Played</th></tr>
       </thead>
       <tbody id="body">{rows}
       </tbody>
@@ -492,96 +473,6 @@ function forceRefresh() {{
 
 // Periodic freshness re-check for tabs left open a while.
 setInterval(forceRefresh, 5 * 60 * 1000);
-
-// ── Point-to-point rating comparison ──────────────────────
-// Replaces the old standalone rating-history charts. RATING_GRID values
-// are already forward-filled by the engine's eod cache, so a player who
-// didn't play on a given date still has a value (their most recent rating
-// as of that date) -- null only means before their first tracked date.
-const RATING_DATES = {rating_dates_json};
-const RATING_GRID = {rating_grid_json};
-
-function populateDateSelects() {{
-  const fromSel = document.getElementById("fromDateSelect");
-  const toSel = document.getElementById("toDateSelect");
-
-  // Trim leading dates where no currently-eligible player has data yet --
-  // those early options would be meaningless for literally everyone. This
-  // trims the AVAILABLE OPTIONS only -- users can still manually pick any
-  // of these, including very early dates. The default selection (below)
-  // uses a stricter threshold so one early-joining outlier doesn't set it.
-  let firstAnyIdx = RATING_DATES.length;
-  for (let i = 0; i < RATING_DATES.length; i++) {{
-    const anyData = Object.values(RATING_GRID).some(grid => grid[i] !== null);
-    if (anyData) {{ firstAnyIdx = i; break; }}
-  }}
-  const usefulDates = RATING_DATES.slice(firstAnyIdx);
-
-  usefulDates.forEach(d => {{
-    const o1 = document.createElement("option");
-    o1.value = d; o1.text = d;
-    fromSel.appendChild(o1);
-    const o2 = document.createElement("option");
-    o2.value = d; o2.text = d;
-    toSel.appendChild(o2);
-  }});
-
-  // Default "From" selection: the earliest date where at least 75% of
-  // currently-eligible players have a rating, so the initial view is
-  // meaningful for most of the leaderboard rather than skewed by one or
-  // two very-early-joining players. The full option list above still lets
-  // a user manually pick an earlier date if they want to.
-  const DEFAULT_COVERAGE_PCT = 0.75;
-  const allGrids = Object.values(RATING_GRID);
-  const totalPlayers = allGrids.length;
-  let defaultFromIdx = RATING_DATES.length - 1;
-  for (let i = firstAnyIdx; i < RATING_DATES.length; i++) {{
-    const coverage = allGrids.filter(grid => grid[i] !== null).length / totalPlayers;
-    if (coverage >= DEFAULT_COVERAGE_PCT) {{ defaultFromIdx = i; break; }}
-  }}
-
-  if (usefulDates.length) {{
-    fromSel.value = RATING_DATES[defaultFromIdx];
-    toSel.value = usefulDates[usefulDates.length - 1];
-  }}
-}}
-
-function updateDeltaColumn() {{
-  const fromDate = document.getElementById("fromDateSelect").value;
-  const toDate = document.getElementById("toDateSelect").value;
-  const fromIdx = RATING_DATES.indexOf(fromDate);
-  const toIdx = RATING_DATES.indexOf(toDate);
-
-  let captured = 0;
-  const cells = document.querySelectorAll("td.delta");
-  cells.forEach(cell => {{
-    const player = cell.getAttribute("data-player");
-    const grid = RATING_GRID[player];
-    cell.classList.remove("pos", "neg");
-    if (!grid || fromIdx < 0 || toIdx < 0) {{
-      cell.textContent = "—";
-      return;
-    }}
-    const fromVal = grid[fromIdx];
-    const toVal = grid[toIdx];
-    if (fromVal === null || toVal === null) {{
-      cell.textContent = "—";
-      return;
-    }}
-    captured++;
-    const delta = toVal - fromVal;
-    cell.textContent = (delta > 0 ? "+" : "") + delta;
-    if (delta > 0) cell.classList.add("pos");
-    if (delta < 0) cell.classList.add("neg");
-  }});
-
-  const pct = cells.length ? Math.round((captured / cells.length) * 100) : 0;
-  document.getElementById("coverageStatus").textContent =
-    `Based on the From/To dates above, ${{pct}}% of current leaderboard players are captured in the Δ Rating column. To increase that percentage, choose a more current From date and/or To date.`;
-}}
-
-populateDateSelects();
-updateDeltaColumn();
 
 // ── Player session-history modal ────────────────────────────────────────
 // PLAYER_HISTORY: {{ playerName: [ {{date, wins, losses, win_pct, exp_pct,

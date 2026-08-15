@@ -59,7 +59,8 @@ STATE_PATH = Path(PB_RUNTIME) / "signup_monitor_state.json"
 def load_config():
     if not CONFIG_PATH.exists():
         return {"mode": "none", "autolaunch_time_mst": "05:45",
-                "last_autolaunch_date": None, "updated_at": None}
+                "last_autolaunch_date": None, "updated_at": None,
+                "shuffle_mode": "2u2b"}
     return json.loads(CONFIG_PATH.read_text())
 
 
@@ -161,6 +162,8 @@ class Handler(BaseHTTPRequestHandler):
                 cfg["mode"] = payload["mode"]
             if payload.get("autolaunch_time_mst"):
                 cfg["autolaunch_time_mst"] = payload["autolaunch_time_mst"]
+            if payload.get("shuffle_mode") in ("2u2b", "1u1b2s"):
+                cfg["shuffle_mode"] = payload["shuffle_mode"]
             save_config(cfg)
             self._send_json(cfg)
         else:

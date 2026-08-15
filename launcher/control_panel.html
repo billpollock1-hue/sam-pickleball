@@ -18,6 +18,10 @@
   .time-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding-left: 30px; }
   .time-row input[type=time] { background: #0f1115; border: 1px solid #2a2e37; color: #e6e6e6; padding: 6px 8px; border-radius: 6px; }
   .time-row.disabled { opacity: 0.35; pointer-events: none; }
+  .shuffle-row { margin-top: 18px; padding-top: 16px; border-top: 1px solid #2a2e37; }
+  .shuffle-note { font-size: 11px; color: #f0b429; margin-bottom: 10px; line-height: 1.4; }
+  .shuffle-option { display: flex; align-items: center; gap: 8px; padding: 8px 4px; cursor: pointer; }
+  .shuffle-option:hover { background: #22262f; border-radius: 6px; }
   button { background: #4f8cff; color: white; border: none; padding: 10px 16px; border-radius: 8px; font-size: 13px; cursor: pointer; font-weight: 600; }
   button:disabled { opacity: 0.4; cursor: default; }
   .status-line { font-size: 12px; color: #9aa0a6; margin-top: 10px; }
@@ -68,6 +72,19 @@
     <input type="time" id="autolaunch-time" value="05:45">
   </div>
 
+  <div class="shuffle-row" id="shuffle-row">
+    <div class="mode-title">Shootout 2 Shuffle</div>
+    <div class="shuffle-note">Not yet wired into automation — saved here for reference, but create_shootout.py does not currently set this field on Den; Den's own existing setting is left untouched at launch time.</div>
+    <label class="shuffle-option">
+      <input type="radio" name="shuffle" value="2u2b">
+      2 Up / 2 Back (Den default)
+    </label>
+    <label class="shuffle-option">
+      <input type="radio" name="shuffle" value="1u1b2s">
+      1 Up / 1 Back / 2 Stay (softer shuffle)
+    </label>
+  </div>
+
   <div class="actions">
     <button id="save-btn">Save</button>
     <span class="status-line" id="save-status"></span>
@@ -105,6 +122,11 @@ function applyConfigToUI(cfg) {
   document.getElementById('autolaunch-time').value = cfg.autolaunch_time_mst || "05:45";
   const timeRow = document.getElementById('time-row');
   timeRow.classList.toggle('disabled', cfg.mode === 'none');
+
+  const shuffleMode = cfg.shuffle_mode || "2u2b";
+  document.querySelectorAll('input[name=shuffle]').forEach(r => {
+    r.checked = (r.value === shuffleMode);
+  });
 }
 
 document.querySelectorAll('.mode-option').forEach(el => {
@@ -120,13 +142,15 @@ document.querySelectorAll('.mode-option').forEach(el => {
 document.getElementById('save-btn').addEventListener('click', async () => {
   const mode = document.querySelector('input[name=mode]:checked').value;
   const autolaunch_time_mst = document.getElementById('autolaunch-time').value;
+  const shuffleEl = document.querySelector('input[name=shuffle]:checked');
+  const shuffle_mode = shuffleEl ? shuffleEl.value : "2u2b";
   const statusEl = document.getElementById('save-status');
   statusEl.textContent = "Saving…";
   try {
     const res = await fetch(`${API}/api/config`, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({mode, autolaunch_time_mst})
+      body: JSON.stringify({mode, autolaunch_time_mst, shuffle_mode})
     });
     if (!res.ok) throw new Error(await res.text());
     statusEl.textContent = "Saved.";

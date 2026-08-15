@@ -2,16 +2,25 @@
 """
 launcher_server.py
 
-Serves the SAM Shootout Launcher control panel and its JSON API.
-Stdlib only — no pip install needed.
+Serves the SAM Pickleball admin panel: an index page at "/" linking to
+operational tools (currently just the Shootout Launcher control panel,
+at "/launcher"; more tools -- player-name-edit and no-shootout-date
+management -- planned as later additions to this same index). Stdlib
+only -- no pip install needed.
 
 Run manually to test:
     python3 launcher_server.py
 
 Intended to run continuously via launchd (KeepAlive=true) on a fixed port.
 
+Binds to 0.0.0.0 (not 127.0.0.1) so it's reachable from other devices on
+the same home network -- e.g. a MacBook -- not just this Mac. No
+authentication: anyone on the home network can reach it and trigger real
+automated actions (deliberate choice, single-user/trusted-network use).
+
 Endpoints:
-    GET  /                    -> control_panel.html
+    GET  /                    -> admin_index.html
+    GET  /launcher            -> control_panel.html (the Shootout Launcher)
     GET  /api/config          -> current launcher_config.json
     POST /api/config          -> update mode / autolaunch_time_mst
     GET  /api/log?limit=N     -> most recent N launch_log.jsonl entries (newest first)
@@ -20,11 +29,12 @@ Endpoints:
 
 All actual launching happens in launcher_poller.py (run every 5 min via
 launchd StartInterval) — this server is just the config/log read-write
-surface for the browser panel.
+surface for the browser panel(s).
 """
 
 import json
 import os
+import socket
 import sys
 from datetime import datetime, timedelta, time as dtime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -35,6 +45,7 @@ BASE_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = BASE_DIR / "launcher_config.json"
 LOG_PATH = BASE_DIR / "launch_log.jsonl"
 HTML_PATH = BASE_DIR / "control_panel.html"
+ADMIN_INDEX_PATH = BASE_DIR / "admin_index.html"
 PORT = 8765
 MST = ZoneInfo("America/Phoenix")  # Arizona, no DST — matches "MST" label used everywhere else
 
@@ -108,14 +119,19 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_html(self, path):
+        body = path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):
         if self.path == "/" or self.path == "/index.html":
-            body = HTML_PATH.read_bytes()
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            self._send_html(ADMIN_INDEX_PATH)
+        elif self.path == "/launcher" or self.path == "/launcher.html" or self.path == "/launcher/":
+            self._send_html(HTML_PATH)
         elif self.path == "/api/config":
             self._send_json(load_config())
         elif self.path.startswith("/api/log"):
@@ -158,6 +174,11 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     if not CONFIG_PATH.exists():
         save_config({"mode": "none", "autolaunch_time_mst": "05:45", "last_autolaunch_date": None})
-    server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    print(f"Launcher control panel serving at http://127.0.0.1:{PORT}", file=sys.stderr)
+    server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    try:
+        lan_ip = socket.gethostbyname(socket.gethostname())
+    except Exception:
+        lan_ip = "<this Mac's LAN IP — check System Settings > Wi-Fi/Network>"
+    print(f"Admin panel serving at http://127.0.0.1:{PORT} (this Mac) "
+          f"and http://{lan_ip}:{PORT} (LAN — e.g. from your MacBook)", file=sys.stderr)
     server.serve_forever()

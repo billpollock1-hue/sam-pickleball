@@ -6,7 +6,7 @@ master history and the engine's own analysis functions, so the book
 refreshes with every model run.
 
 Chapters run top to bottom: Cover -> Challenge -> Metric -> Proof ->
-Opponent Blind -> Evidence -> Root Cause -> DEN System -> 2-up/2-back ->
+Opponent Blind -> Evidence -> Root Cause -> DEN System -> Two-up two-down ->
 Options -> Recommendation -> Technical Appendix -> Back cover.
 
 OPPONENT-BLIND SECTION: a dedicated section inserted right after the
@@ -169,8 +169,8 @@ for _, r in gap_dist.iterrows():
 # in the tight post-Shootout-1 window (everything results-driven).
 options = [
     ("Today's system", den, "No change — status quo"),
-    ("Used ratings to seed S1 &middot; continue using 2 up 2 back for S2", e2u, "Den's native setting"),
-    ("Used ratings to seed S1 &middot; gentler shuffle &nbsp;&#9733; Phase 1", ph1, "Den's native setting"),
+    ("Use ratings to seed S1 &middot; continue using Two-up two-down for S2", e2u, "Den's native setting"),
+    ("Use ratings to seed S1 &middot; gentler shuffle &nbsp;&#9733; Phase 1", ph1, "Den's native setting"),
     ("Results-driven Shootout 2 &middot; full recalc, standard K — not recommended", e20, "Custom automation — needs building"),
     ("Results-driven Shootout 2 &middot; balanced dial &nbsp;&#9733; Phase 2", ph2, "Custom automation — needs building"),
     ("Results-driven Shootout 2 &middot; fast dial", k150, "Custom automation — needs building"),
@@ -395,7 +395,7 @@ html = f"""<!DOCTYPE html>
 <div class="rule"></div>
 <h1>Can SAM<br/>Be Improved?</h1>
 <div class="rule"></div>
-<div class="sub">Using four years of shootout data to make<br/>every SAM session more competitive</div>
+<div class="sub">Using four years of shootout data to make<br/>SAM sessions more competitive</div>
 <div class="sub" style="font-size:0.65em;opacity:0.65;margin-top:2%;">Snapshot as of {latest} — numbers reflect data through this date, not live</div>
 <div class="hint">click to open ›</div>
 
@@ -510,7 +510,7 @@ html = f"""<!DOCTYPE html>
 <h2>How Courts Are Assigned Today</h2>
 <p>The Den makes Shootout 1 court assignments using two numbers. <b>Step</b> is a court-movement counter: finish in the top two of your court and it ticks down; finish in the bottom two and it ticks up — based entirely on your <i>last</i> play date, however long ago that was.</p>
 <p><b>Percentage</b> breaks ties within a step: total points scored divided by maximum possible, over your last 90 games (~15 play dates), all weighted equally.</p>
-<p>For Shootout 2, SAM currently has the Den set to move the top two on each court up a court and the bottom two down — the “2-up/2-back” rule. It’s a choice, not the only option: the Den also offers “1-up/1-back/2-stay,” which SAM isn’t currently using.</p>
+<p>For Shootout 2, SAM currently has the Den set to move the top two on each court up a court and the bottom two down — the “Two-up two-down” rule. It’s a choice, not the only option: the Den also offers “One-up one-down,” which SAM isn’t currently using.</p>
 <div style="margin-top:4%;">
 <div style="font-family:'Trebuchet MS',sans-serif;font-size:clamp(8.5px,1vw,11px);color:var(--navy);font-weight:bold;text-align:center;margin-bottom:2%;">How Shootout 2 finishes map to next Step values (3-court example)</div>
 <svg style="display:block;" viewbox="0 0 680 330" width="100%">
@@ -725,7 +725,7 @@ html = f"""<!DOCTYPE html>
 <div class="section">
 
 <div class="kicker">Shootout 2: The Shuffle</div>
-<p>After the 2-up/2-back shuffle — which moves about {den_move} of all players — the spread <i>widens</i> to {den_s2}.</p>
+<p>After the Two-up two-down shuffle — which moves about {den_move} of all players — the spread <i>widens</i> to {den_s2}.</p>
 <p>Read that again: the movement rule designed to sort players actually leaves courts <b>less balanced</b> than they started. Most of that movement is mechanical, not earned.</p>
 </div>
 
@@ -733,7 +733,7 @@ html = f"""<!DOCTYPE html>
 
 <h2>Perfect, Then Scrambled</h2>
 <p>On May 4, 2026, the Den got the Shootout 1 court assignments exactly right. Every one of twelve players landed on the court matching their true skill rank — zero mismatches. Step and Percentage worked as designed.</p>
-<p>Then 2-up/2-back moved players for Shootout 2, using only that morning's three games as its signal. The result: eight of twelve players — two-thirds of the field — landed in the wrong pool.</p>
+<p>Then Two-up two-down moved players for Shootout 2, using only that morning's three games as its signal. The result: eight of twelve players — two-thirds of the field — landed in the wrong pool.</p>
 <p>Court 1 shows the damage directly. Eric Kramer and Peter Barnett, the two highest-rated players in the field, ended up paired together by the shuffle and beat Dwight Christensen and Lidia Zolnierczyk — correctly separated into a lower tier just one session earlier — <b>11–4</b>. The movement rule undid a correct assignment using less information than the assignment it replaced.</p>
 </div>
 
@@ -814,7 +814,7 @@ html = f"""<!DOCTYPE html>
 <div class="kicker">Within-Court Skill Spread — Current System</div>
 <div class="stat-stack" style="height:72%;">
 <div class="stat"><div class="num">{den_s1}</div><div class="lbl">Shootout 1 average spread (Den step / percentage)</div></div>
-<div class="stat" style="border-left-color:#b3543a;"><div class="num">{den_s2}</div><div class="lbl">Shootout 2 average spread (after 2-up/2-back)</div></div>
+<div class="stat" style="border-left-color:#b3543a;"><div class="num">{den_s2}</div><div class="lbl">Shootout 2 average spread (after Two-up two-down)</div></div>
 <div class="stat"><div class="num">{den_comb}</div><div class="lbl">combined baseline — the number to beat</div></div>
 </div>
 </div>
@@ -823,7 +823,7 @@ html = f"""<!DOCTYPE html>
 
 <div class="kicker">What We Tested: One Idea for Shootout 1, Three for Shootout 2</div>
 <div class="factor"><b>SHOOTOUT 1 · FIX THE STARTING LINEUP</b><span>Build Shootout 1 courts from player ratings instead of step and percentage. The morning starts fair; everything else stays exactly as it is.</span></div>
-<div class="factor"><b>SHOOTOUT 2, OPTION 1 · USE THE DEN\u2019S BUILT-IN SOFTER SHUFFLE</b><span>The Den already offers a gentler mid-morning shuffle: move one player up and one down per court instead of two, using its existing \u201c1-up/1-back/2-stay\u201d setting. Nothing new to build \u2014 just a setting change.</span></div>
+<div class="factor"><b>SHOOTOUT 2, OPTION 1 · USE THE DEN\u2019S BUILT-IN SOFTER SHUFFLE</b><span>The Den already offers a gentler mid-morning shuffle: move one player up and one down per court instead of two, using its existing \u201cOne-up one-down\u201d setting. Nothing new to build \u2014 just a setting change.</span></div>
 <div class="factor"><b>SHOOTOUT 2, OPTION 2 · LET RESULTS DRIVE SHOOTOUT 2</b><span>Re-rank everyone using their Shootout 1 results \u2014 weighted by who they faced \u2014 and rebuild the courts. A dial controls how strongly one morning moves you: steady, balanced, or fast. Because this depends on that morning\u2019s own results, it has to be triggered live, in the narrow window right after Shootout 1 wraps and before Shootout 2 begins.</span></div>
 <div class="factor"><b>SHOOTOUT 2, OPTION 3 · TARGETED SWAPS ONLY</b><span>Leave courts alone except in special cases: two players nearly tied at a court boundary, or someone dramatically out-playing or under-playing their rating. Like Option 2, this also has to run live in that same tight between-shootouts window.</span></div>
 </div>
@@ -832,7 +832,7 @@ html = f"""<!DOCTYPE html>
 
 <h2>How to Read the Scorecard</h2>
 <p><b>S1 Spread</b>, <b>S2 Spread</b>, and <b>Combined Spread</b> are the average within-court rating gap for Shootout 1, Shootout 2, and the two combined — lower means more evenly matched courts. <b>vs Den</b> converts the combined figure into a single improvement percentage versus today’s system.</p>
-<p><b>Players moving</b> is the share of players sitting on a different court in Shootout 2 than Shootout 1. Today’s 2-up/2-back moves about {den_move} — the most of anything we tested.</p>
+<p><b>Players moving</b> is the share of players sitting on a different court in Shootout 2 than Shootout 1. Today’s two-up two-down moves about {den_move} — the most of anything we tested.</p>
 <p><b>Effort</b> describes what Shootout 2 requires. Every rating-seeded approach already relies on the same Shootout 1 automation this project has built and validated — that part is done either way. “Den’s native setting” rows need nothing more than flipping a setting the Den already offers. “Custom automation — needs building” rows would need new tooling, triggered live on-site in the tight window between Shootout 1 and Shootout 2.</p>
 <p>One option we tested but don’t recommend: full Elo recalculation with a standard K-factor after Shootout 1 — theoretically the tightest possible Shootout 2 courts. But ratings converge fast enough that Shootout 2 largely just re-confirms Shootout 1’s order, leaving little room for a strong morning to actually move you — not much of a reward for playing well, and no real stakes left in the second session. The elevated-K options below trade a little of that theoretical tightness for more visible, motivating movement.</p>
 <p>The two ★ rows are the recommendation — a starting step and a destination.</p>
@@ -860,7 +860,7 @@ html = f"""<!DOCTYPE html>
 
 <h2>The Recommendation: Two Phases</h2>
 <div class="phase">
-<b>PHASE 1 — Used ratings to seed S1, gentler shuffle</b>
+<b>PHASE 1 — Use ratings to seed S1, gentler shuffle</b>
 <span>Seed Shootout 1 by rating instead of step and percentage; soften the mid-morning shuffle to one-up/one-back. Runs unattended overnight — Elo-based seedings load automatically after midnight, before anyone’s on the courts. Already built, tested, and validated end to end.</span>
 <div class="metric">{ph1_vs} better-matched courts · combined spread {ph1_comb}</div>
 </div>

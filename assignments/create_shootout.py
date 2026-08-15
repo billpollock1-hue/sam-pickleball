@@ -509,6 +509,54 @@ def _check_shootout_already_exists(page):
     return any(phrase in body_text for phrase in ALREADY_EXISTS_PHRASES)
 
 
+# Absolute path -- same reasoning as other cross-script coordination
+# files in this codebase (e.g. the auto-removal marker): this script
+# always runs from assignments/, but the launcher config always lives
+# in launcher/, regardless of which copy of this script is running.
+LAUNCHER_CONFIG_PATH = Path(
+    "/Users/billpollock/Documents/SAM Pickleball/sam-pickleball/launcher/launcher_config.json"
+)
+
+
+def load_shuffle_mode():
+    """
+    Reads shuffle_mode from launcher_config.json ("2u2b" or "1u1b2s").
+    Defaults to "2u2b" (Den's own default) if the file is missing,
+    unreadable, or the field isn't set -- never blocks a launch over
+    this.
+    """
+    try:
+        cfg = json.loads(LAUNCHER_CONFIG_PATH.read_text())
+        mode = cfg.get("shuffle_mode", "2u2b")
+        return mode if mode in ("2u2b", "1u1b2s") else "2u2b"
+    except Exception:
+        return "2u2b"
+
+
+def set_move_players(page, shuffle_mode):
+    """
+    Sets the "Move Players" field to match shuffle_mode. Fail-soft: on
+    any error, logs a warning and leaves Den's existing value untouched
+    rather than aborting the whole shootout creation over this one
+    non-critical field.
+    """
+    target_text = "Two-up / Two-down" if shuffle_mode == "2u2b" else "One-up / One-down"
+    print(f"  Setting Move Players to: {target_text}")
+    try:
+        move_players_label = page.get_by_text("Move Players", exact=False)
+        move_players_field = move_players_label.locator(
+            "xpath=following::*[self::vaadin-select or self::div][1]"
+        )
+        move_players_field.click(timeout=3000)
+        page.wait_for_timeout(500)
+        page.get_by_text(target_text, exact=True).click(timeout=3000)
+        page.wait_for_timeout(500)
+    except Exception as e:
+        print(f"  \u26a0 Could not set Move Players field: {e} -- leaving Den's "
+              f"existing value untouched rather than failing the whole launch.")
+        _debug_screenshot(page, "move_players_field")
+
+
 def create_shootout(page, num_courts):
     print(f"Creating shootout with {num_courts} court(s)...")
 
@@ -540,6 +588,8 @@ def create_shootout(page, num_courts):
     except Exception as e:
         _debug_screenshot(page, "create_shootout_courts_field")
         raise RuntimeError(f"Could not set Number of Courts field: {e}")
+
+    set_move_players(page, load_shuffle_mode())
 
     # Same ambiguity pattern as the earlier "Search" button fix -- the
     # page has both an <h2>Create Shootout</h2> heading and the actual

@@ -907,7 +907,6 @@ M = margin multiplier = ln(margin + 1)</div>
 <div class="factor"><b>PROVISIONAL K</b><span>K starts at 40 for a player’s first game and declines linearly to 20 by game 60, then holds. New players converge quickly; established ratings stay stable.</span></div>
 <div class="factor"><b>FRESHNESS WINDOW</b><span>Freshness is judged separately from your rating, using only your own last 60 real games, and never used to penalize your rating for being inactive. This only affects whether you appear on the main leaderboard.</span></div>
 <div class="factor"><b>STEP ARITHMETIC</b><span>Step for your next playdate is your current court number, minus one for a top-two finish (floored at 1 — the best court has nowhere higher to go), plus one for a bottom-two finish (uncapped). A 3-court, 12-player day produces exactly four players at Step 1, four at Step 2, two at Step 3, and two at Step 4 — the bottom performers on the worst court carry a Step higher than any court that day actually had, into whatever court count shows up next time.</span></div>
-<div class="factor"><b>STEP ARITHMETIC</b><span>Step for your next playdate is your current court number, minus one for a top-two finish (floored at 1 — the best court has nowhere higher to go), plus one for a bottom-two finish (uncapped). A 3-court, 12-player day produces exactly four players at Step 1, four at Step 2, two at Step 3, and two at Step 4 — the bottom performers on the worst court carry a Step higher than any court that day actually had, into whatever court count shows up next time.</span></div>
 </div>
 
 <div class="section">
@@ -917,14 +916,10 @@ M = margin multiplier = ln(margin + 1)</div>
 <div class="factor"><b>WHAT COUNTS</b><span>Every posted shootout game since Jan {first_year}. Placeholder entries (tryouts, drop-ins), guest players, and flagged data errors are excluded from ratings; known name glitches are corrected at load.</span></div>
 <div class="factor"><b>SHARED-NAME PLACEHOLDER</b><span>“New Player Tryout” games are excluded from ratings entirely, not just flagged. Different people play under that same placeholder name from week to week, so there is no way to attribute those results to any one consistent player’s skill. For the most recent occurrences, we attempted to identify the actual player so their results could still count toward ratings.</span></div>
 <div class="factor"><b>LEADERBOARD QUALIFICATION</b><span>At least 24 rated games within the past 180 days. Everyone else still carries a rating — shown with reduced confidence, pulled toward 1,000 in proportion to sample size.</span></div>
-</div>
-
-<div class="section">
-
 <div class="factor"><b>EXPECTATION COMPRESSION</b><span>Affects what is shown, not what is earned: displayed win probabilities compress the rating gap by 0.92 before the logistic, matching observed SAM outcomes ({pct_0_100} / {pct_101_200} / {pct_201_300}%). The actual rating calculation does not use this compressed figure at all.</span></div>
 <div class="factor"><b>VALIDATION</b><span>Predictions are checked against outcomes across the full pool every run. Gaps between individual actual and expected win rates reflect normal variance and close as games accumulate; aggregate calibration is what the model is tuned for.</span></div>
 <div class="factor"><b>SCENARIO REPLAY</b><span>Assignment alternatives were tested against the last 180 days of real sessions — same signups, same court counts — not simulations of hypothetical players.</span></div>
-<div class="mono" style="margin-top:3%;">Every number in this book was computed from the underlying rating engine as of the snapshot date on the cover. It is not a live document -- re-run the report to produce a new dated snapshot after major changes.</div>
+<div class="mono" style="margin-top:3%;">Every number in this book was computed from the underlying rating engine as of the snapshot date on the cover.</div>
 <p style="font-style:italic;opacity:0.75;">— end —</p>
 </div>
 

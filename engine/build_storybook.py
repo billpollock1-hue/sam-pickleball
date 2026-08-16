@@ -169,9 +169,9 @@ for _, r in gap_dist.iterrows():
 # in the tight post-Shootout-1 window (everything results-driven).
 options = [
     ("Today's system", den, "<td>—</td>", "<td>—</td>"),
-    ("Use ratings to seed S1 &middot; continue using Two-up two-down for S2", e2u, '<td rowspan="5">Custom automation — already built</td>', '<td rowspan="2">Flip a Den setting — no build</td>'),
+    ("Use ratings to seed S1 &middot; continue using Two-up two-down for S2", e2u, '<td rowspan="5" style="border: 1.5px solid #2E75B6;">Custom automation — already built</td>', '<td rowspan="2" style="border: 1.5px solid #2E75B6;">Flip a Den setting — no build</td>'),
     ("Use ratings to seed S1 &middot; gentler shuffle &nbsp;&#9733; Phase 1", ph1, "", ""),
-    ("Use ratings to seed S1 &middot; results-driven S2, full recalc, standard K — not recommended", e20, "", '<td rowspan="3">Custom automation — needs building</td>'),
+    ("Use ratings to seed S1 &middot; results-driven S2, full recalc, standard K — not recommended", e20, "", '<td rowspan="3" style="border: 1.5px solid #2E75B6;">Custom automation — needs building</td>'),
     ("Use ratings to seed S1 &middot; results-driven S2, balanced dial &nbsp;&#9733; Phase 2", ph2, "", ""),
     ("Use ratings to seed S1 &middot; results-driven S2, fast dial", k150, "", ""),
 ]

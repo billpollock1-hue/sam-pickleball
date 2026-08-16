@@ -821,11 +821,10 @@ html = f"""<!DOCTYPE html>
 
 <div class="section">
 
-<div class="kicker">What We Tested: One Idea for Shootout 1, Three for Shootout 2</div>
+<div class="kicker">What We Tested: One Idea for Shootout 1, Two for Shootout 2</div>
 <div class="factor"><b>SHOOTOUT 1 · FIX THE STARTING LINEUP</b><span>Build Shootout 1 courts from player ratings instead of step and percentage. The morning starts fair; everything else stays exactly as it is.</span></div>
 <div class="factor"><b>SHOOTOUT 2, OPTION 1 · USE THE DEN\u2019S BUILT-IN SOFTER SHUFFLE</b><span>The Den already offers a gentler mid-morning shuffle: move one player up and one down per court instead of two, using its existing \u201cOne-up one-down\u201d setting. Nothing new to build \u2014 just a setting change.</span></div>
 <div class="factor"><b>SHOOTOUT 2, OPTION 2 · LET RESULTS DRIVE SHOOTOUT 2</b><span>Re-rank everyone using their Shootout 1 results \u2014 weighted by who they faced \u2014 and rebuild the courts. A dial controls how strongly one morning moves you: steady, balanced, or fast. Because this depends on that morning\u2019s own results, it has to be triggered live, in the narrow window right after Shootout 1 wraps and before Shootout 2 begins.</span></div>
-<div class="factor"><b>SHOOTOUT 2, OPTION 3 · TARGETED SWAPS ONLY</b><span>Leave courts alone except in special cases: two players nearly tied at a court boundary, or someone dramatically out-playing or under-playing their rating. Like Option 2, this also has to run live in that same tight between-shootouts window.</span></div>
 </div>
 
 <div class="section">

@@ -920,7 +920,6 @@ M = margin multiplier = ln(margin + 1)</div>
 <div class="factor"><b>VALIDATION</b><span>Predictions are checked against outcomes across the full pool every run. Gaps between individual actual and expected win rates reflect normal variance and close as games accumulate; aggregate calibration is what the model is tuned for.</span></div>
 <div class="factor"><b>SCENARIO REPLAY</b><span>Assignment alternatives were tested against the last 180 days of real sessions — same signups, same court counts — not simulations of hypothetical players.</span></div>
 <div class="mono" style="margin-top:3%;">Every number in this book was computed from the underlying rating engine as of the snapshot date on the cover.</div>
-<p style="font-style:italic;opacity:0.75;">— end —</p>
 </div>
 
 <div class="section back-cover-section">

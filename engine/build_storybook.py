@@ -168,26 +168,26 @@ for _, r in gap_dist.iterrows():
 # pipeline) versus needs to be newly built and triggered live on-site
 # in the tight post-Shootout-1 window (everything results-driven).
 options = [
-    ("Today's system", den, "No change — status quo"),
-    ("Use ratings to seed S1 &middot; continue using Two-up two-down for S2", e2u, "Den's native setting"),
-    ("Use ratings to seed S1 &middot; gentler shuffle &nbsp;&#9733; Phase 1", ph1, "Den's native setting"),
-    ("Results-driven Shootout 2 &middot; full recalc, standard K — not recommended", e20, "Custom automation — needs building"),
-    ("Results-driven Shootout 2 &middot; balanced dial &nbsp;&#9733; Phase 2", ph2, "Custom automation — needs building"),
-    ("Results-driven Shootout 2 &middot; fast dial", k150, "Custom automation — needs building"),
+    ("Today's system", den, "<td>—</td>", "<td>—</td>"),
+    ("Use ratings to seed S1 &middot; continue using Two-up two-down for S2", e2u, '<td rowspan="5">Custom automation — already built</td>', '<td rowspan="2">Flip a Den setting — no build</td>'),
+    ("Use ratings to seed S1 &middot; gentler shuffle &nbsp;&#9733; Phase 1", ph1, "", ""),
+    ("Use ratings to seed S1 &middot; results-driven S2, full recalc, standard K — not recommended", e20, "", '<td rowspan="3">Custom automation — needs building</td>'),
+    ("Use ratings to seed S1 &middot; results-driven S2, balanced dial &nbsp;&#9733; Phase 2", ph2, "", ""),
+    ("Use ratings to seed S1 &middot; results-driven S2, fast dial", k150, "", ""),
 ]
 other_options = [
     ("Swap near-ties at court borders only", bsw, "Only touches players sitting right at a court boundary, so on many days no swap is triggered at all — Shootout 2 court assignments end up identical to Shootout 1."),
     ("Move only big over/under-performers", upt, "Only moves significant outliers, so on a typical day where nobody is wildly over- or under-rated, little to no court movement results."),
 ]
 option_rows = ""
-for label, row, impl in options:
+for label, row, s1_eff, s2_eff in options:
     star = "&#9733;" in label
     s1v, s2v, combv = sv(row, "S1 Avg Spread"), sv(row, "S2 Avg Spread"), sv(row, "Combined Spread")
     vs, mv = sv(row, "vs DEN"), sv(row, "S1\u2192S2 % Moving")
     vs = vs.lstrip("+") if isinstance(vs, str) else vs
     option_rows += f"""
       <tr class="{'hl' if star else ''}"><td style="text-align:left;">{label}</td>
-      <td>{s1v}</td><td>{s2v}</td><td>{combv}</td><td>{vs}</td><td>{mv}</td><td>{impl}</td></tr>"""
+      <td>{s1v}</td><td>{s2v}</td><td>{combv}</td><td>{vs}</td><td>{mv}</td>{s1_eff}{s2_eff}</tr>"""
 
 other_option_rows = ""
 for label, row, why_not in other_options:
@@ -639,7 +639,7 @@ html = f"""<!DOCTYPE html>
 
 <div class="section">
 
-<h2>Not All Step 1s Are Equal</h2>
+<h2>Not All Step <span style="font-size:1.25em;">1</span>s Are Equal</h2>
 <p>On a two-court day, starting on Court 1 means finishing in the top half of eight players. On a three-court day, it means the top third of twelve. On a five-court day, it means the top fifth of twenty — a genuinely higher bar.</p>
 <p>Step doesn’t know the difference. A step earned on Court 1 on a slow, low-turnout day carries the same weight as one earned on Court 1 on a big, high-turnout day, even though the second is a meaningfully harder accomplishment.</p>
 <p>The same blindness runs the other direction too: falling to the bottom court on a big day assigns a higher step number outright than falling to the bottom court on a small day ever can, even though both are the same relative result — last place on the court. That gap only closes at your next play date, once a fresh top-two or bottom-two finish moves the counter again.</p>
@@ -842,7 +842,7 @@ html = f"""<!DOCTYPE html>
 
 <div class="kicker">The Scorecard</div>
 <table class="btable">
-<tr><th rowspan="2" style="text-align:left;">Approach</th><th colspan="4" style="text-align:center;">Spread</th><th rowspan="2">Players Moving After S1</th><th rowspan="2">Effort</th></tr>
+<tr><th rowspan="2" style="text-align:left;">Approach</th><th colspan="4" style="text-align:center;">Spread</th><th rowspan="2">Players Moving After S1</th><th rowspan="2">S1 Effort</th><th rowspan="2">S2 Effort</th></tr>
       <tr><th>S1 Only</th><th>S2 Only</th><th>S1+S2</th><th>Reduction</th></tr>
           {option_rows}
         </table>

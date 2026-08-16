@@ -903,7 +903,6 @@ M = margin multiplier = ln(margin + 1)</div>
 
 <div class="section">
 
-<div class="kicker" style="color:#8a7f6a;">Technical Appendix · A, continued</div>
 <div class="factor"><b>FULL CUMULATIVE HISTORY</b><span>Your rating reflects your entire rated career — no window, no reset. Long tenure carries no unearned inflation; your full track record simply counts, for better or worse.</span></div>
 <div class="factor"><b>PROVISIONAL K</b><span>K starts at 40 for a player’s first game and declines linearly to 20 by game 60, then holds. New players converge quickly; established ratings stay stable.</span></div>
 <div class="factor"><b>FRESHNESS WINDOW</b><span>Eligibility and freshness are judged separately from your rating, using only your own last 60 real games — never blended with anyone else’s. This determines your Freshness Tier, not your rating itself.</span></div>
@@ -923,7 +922,6 @@ M = margin multiplier = ln(margin + 1)</div>
 
 <div class="section">
 
-<div class="kicker" style="color:#8a7f6a;">Technical Appendix · B, continued</div>
 <div class="factor"><b>EXPECTATION COMPRESSION</b><span>Affects what is shown, not what is earned: displayed win probabilities compress the rating gap by 0.92 before the logistic, matching observed SAM outcomes ({pct_0_100} / {pct_101_200} / {pct_201_300}%). The actual rating calculation does not use this compressed figure at all.</span></div>
 <div class="factor"><b>VALIDATION</b><span>Predictions are checked against outcomes across the full pool every run. Gaps between individual actual and expected win rates reflect normal variance and close as games accumulate; aggregate calibration is what the model is tuned for.</span></div>
 <div class="factor"><b>SCENARIO REPLAY</b><span>Assignment alternatives were tested against the last 180 days of real sessions — same signups, same court counts — not simulations of hypothetical players.</span></div>

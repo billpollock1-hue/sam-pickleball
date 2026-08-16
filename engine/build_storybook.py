@@ -184,6 +184,7 @@ for label, row, impl in options:
     star = "&#9733;" in label
     s1v, s2v, combv = sv(row, "S1 Avg Spread"), sv(row, "S2 Avg Spread"), sv(row, "Combined Spread")
     vs, mv = sv(row, "vs DEN"), sv(row, "S1\u2192S2 % Moving")
+    vs = vs.lstrip("+") if isinstance(vs, str) else vs
     option_rows += f"""
       <tr class="{'hl' if star else ''}"><td style="text-align:left;">{label}</td>
       <td>{s1v}</td><td>{s2v}</td><td>{combv}</td><td>{vs}</td><td>{mv}</td><td>{impl}</td></tr>"""

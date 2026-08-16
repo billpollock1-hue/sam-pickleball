@@ -615,7 +615,7 @@
 <p>Everything above is possible because of work already done, not work still theoretical. Den has no setting for rating-based seeding or results-driven reshuffling — both phases require quietly overriding Den’s own numbers from the outside.</p>
 <p>The technique: write a synthetic value into Den’s own Ladder Step field for each player, then let Den’s own “Seed Players” button do the actual grouping. Den never needs to know a rating model is behind the number it’s reading.</p>
 <p>Phase 1 (rating-seeded Shootout 1) is proven — tested live against a real signup sheet, full removal-to-Start-Event flow, working end to end. Phase 2 extends the same technique to Shootout 2: after Shootout 1’s games post, replay them through the rating engine, then write fresh synthetic Step values reflecting that recalculation before Shootout 2 seeds.</p>
-<p>The two phases differ in more than scope, though. Phase 1 finishes before anyone checks in — the seeding is already loaded and waiting when the first player arrives. Phase 2 can’t work that way: it has to fire live, on the spot, in the gap between Shootout 1’s last game and Shootout 2’s first. That makes its remaining hurdle a question of who’s there to trigger it, not whether the code works.</p>
+<p>The two phases differ in more than scope, though. Phase 1 can be run overnight and finish before anyone checks in — the seeding is already loaded and waiting when the first player arrives. Phase 2 can’t work that way: it has to fire live, on the spot, in the gap between Shootout 1’s last game and Shootout 2’s first. That makes its remaining hurdle a question of who’s there to trigger it, not whether the code works.</p>
 </div>
 
 <div class="section">

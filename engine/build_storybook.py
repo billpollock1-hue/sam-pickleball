@@ -915,7 +915,7 @@ M = margin multiplier = ln(margin + 1)</div>
 <div class="kicker" style="color:#8a7f6a;">Technical Appendix · B</div>
 <h2>Data Hygiene &amp; Display</h2>
 <div class="factor"><b>WHAT COUNTS</b><span>Every posted shootout game since Jan {first_year}. Placeholder entries (tryouts, drop-ins), guest players, and flagged data errors are excluded from ratings; known name glitches are corrected at load.</span></div>
-<div class="factor"><b>SHARED-NAME PLACEHOLDER</b><span>“New Player Tryout” games are excluded from ratings entirely, not just flagged. Different people play under that same placeholder name from week to week, so there is no way to attribute those results to any one consistent player’s skill.</span></div>
+<div class="factor"><b>SHARED-NAME PLACEHOLDER</b><span>“New Player Tryout” games are excluded from ratings entirely, not just flagged. Different people play under that same placeholder name from week to week, so there is no way to attribute those results to any one consistent player’s skill. For the most recent occurrences, we attempted to identify the actual player so their results could still count toward ratings.</span></div>
 <div class="factor"><b>LEADERBOARD QUALIFICATION</b><span>At least 24 rated games within the past 180 days. Everyone else still carries a rating — shown with reduced confidence, pulled toward 1,000 in proportion to sample size.</span></div>
 <div class="factor"><b>FRESHNESS</b><span>No continuous penalty — freshness is a hard cutoff, not a haircut. Very Fresh (0–90 days) and Mature (91–180 days) players appear on the main leaderboard; Stale and Very Stale players are shown separately, ratings unaffected.</span></div>
 </div>

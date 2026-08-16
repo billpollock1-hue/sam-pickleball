@@ -814,8 +814,8 @@ html = f"""<!DOCTYPE html>
 
 <div class="kicker">Within-Court Skill Spread — Current System</div>
 <div class="stat-stack" style="height:72%;">
-<div class="stat"><div class="num">{den_s1}</div><div class="lbl">Shootout 1 average spread (Den step / percentage)</div></div>
-<div class="stat" style="border-left-color:#b3543a;"><div class="num">{den_s2}</div><div class="lbl">Shootout 2 average spread (after Two-up two-down)</div></div>
+<div class="stat"><div class="num">{den_s1}</div><div class="lbl">Shootout 1 spread (Den step / percentage)</div></div>
+<div class="stat" style="border-left-color:#b3543a;"><div class="num">{den_s2}</div><div class="lbl">Shootout 2 spread (after Two-up two-down)</div></div>
 <div class="stat"><div class="num">{den_comb}</div><div class="lbl">combined baseline — the number to beat</div></div>
 </div>
 </div>
@@ -920,6 +920,7 @@ M = margin multiplier = ln(margin + 1)</div>
 <div class="factor"><b>EXPECTATION COMPRESSION</b><span>Affects what is shown, not what is earned: displayed win probabilities compress the rating gap by 0.92 before the logistic, matching observed SAM outcomes ({pct_0_100} / {pct_101_200} / {pct_201_300}%). The actual rating calculation does not use this compressed figure at all.</span></div>
 <div class="factor"><b>VALIDATION</b><span>Predictions are checked against outcomes across the full pool every run. Gaps between individual actual and expected win rates reflect normal variance and close as games accumulate; aggregate calibration is what the model is tuned for.</span></div>
 <div class="factor"><b>SCENARIO REPLAY</b><span>Assignment alternatives were tested against the last 180 days of real sessions — same signups, same court counts — not simulations of hypothetical players.</span></div>
+<div class="factor"><b>SPREAD CALCULATION</b><span>Spread is the gap between the highest- and lowest-rated player on a court — a pure range, not a full-court average. The two middle players’ ratings don’t factor in at all; only the extremes do.</span></div>
 <div class="mono" style="margin-top:3%;">Every number in this book was computed from the underlying rating engine as of the snapshot date on the cover.</div>
 </div>
 

@@ -1,650 +1,125 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-  <meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="pragma" content="no-cache">
-  <meta http-equiv="expires" content="0">
-  <title>Return Countdown</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-      -webkit-user-select: none;
-      user-select: none;
-    }
-    
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #000;
-      color: #fff;
-      overflow: hidden;
-      width: 100vw;
-      height: 100vh;
-      height: 100dvh;
-    }
-    
-    .screen-container {
-      width: 100%;
-      height: 100vh;
-      height: 100dvh;
-    }
-    
-    .screen {
-      width: 100vw;
-      height: 100vh;
-      height: 100dvh;
-      display: flex;
-      flex-direction: column;
-      background-image: url('https://i.postimg.cc/xCXnCg89/Grand-Canyon-Background.jpg');
-      background-position: center;
-      background-size: cover;
-      background-attachment: fixed;
-      position: relative;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-      padding: max(2rem, env(safe-area-inset-top)) 0.2rem 0.2rem 0.2rem;
-    }
-    
-    .screen::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: linear-gradient(180deg, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.4) 100%);
-      pointer-events: none;
-    }
-    
-    .content {
-      position: relative;
-      z-index: 2;
-      display: flex;
-      flex-direction: column;
-      gap: 0.4rem;
-      width: 100%;
-      max-width: 55%;
-      margin: 2rem auto 0 auto;
-    }
-    
-    .title-box {
-      background: rgba(0, 0, 0, 0.7);
-      backdrop-filter: blur(10px);
-      border-radius: 10px;
-      padding: 0.8rem 0.5rem;
-      text-align: center;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      margin-bottom: 0.2rem;
-    }
-    
-    .title-box h1 {
-      font-size: 24px;
-      font-weight: 700;
-      color: #7fd900;
-      margin: 0;
-      letter-spacing: 1px;
-    }
-    
-    .stats-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.35rem;
-    }
-    
-    .stat-box {
-      background: rgba(0, 0, 0, 0.7);
-      backdrop-filter: blur(10px);
-      border-radius: 10px;
-      padding: 0.3rem 0.15rem;
-      text-align: center;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    
-    .stat-icon {
-      font-size: 16px;
-      margin-bottom: 0.15rem;
-    }
-    
-    .stat-label {
-      font-size: 8px;
-      opacity: 0.6;
-      margin-bottom: 0.15rem;
-      text-transform: uppercase;
-      letter-spacing: 0.2px;
-      line-height: 1;
-    }
-    
-    .stat-value {
-      font-size: 14px;
-      font-weight: 700;
-      color: #fff;
-      line-height: 1;
-      animation: pulse 0.5s ease-in-out;
-    }
-    
-    @keyframes pulse {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.05); }
-    }
-    
-    
-    .stat-unit {
-      font-size: 8px;
-      opacity: 0.5;
-      margin-top: 0.08rem;
-    }
-    
-    .progress-section {
-      background: rgba(0, 0, 0, 0.7);
-      backdrop-filter: blur(10px);
-      border-radius: 10px;
-      padding: 0.3rem 0.15rem;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    
-    .progress-title {
-      font-size: 8px;
-      opacity: 0.6;
-      text-transform: uppercase;
-      letter-spacing: 0.2px;
-      margin-bottom: 0.2rem;
-    }
-    
-    .progress-percentage {
-      font-size: 18px;
-      font-weight: 700;
-      color: #7fd900;
-      margin-bottom: 0.2rem;
-      text-align: center;
-    }
-    
-    .progress-bar {
-      width: 100%;
-      height: 12px;
-      background: rgba(255, 255, 255, 0.2);
-      border-radius: 6px;
-      overflow: hidden;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    
-    .progress-fill {
-      height: 100%;
-      background: linear-gradient(90deg, #7fd900, #5fa800);
-      border-radius: 5px;
-      transition: width 0.05s linear;
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAM Pickleball — Ratings & Charts</title>
+<style>
+  :root {
+    --blue-dark: #1F4E79;
+    --blue-mid:  #2E75B6;
+    --blue-light:#D6E4F0;
+    --rust:      #b3543a;
+    --gold:      #C9A84C;
+    --text:      #333333;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Calibri, Arial, sans-serif;
+    color: var(--text);
+    background: #f7f9fc;
+    min-height: 100vh;
+  }
+  header {
+    background: var(--blue-dark);
+    color: #fff;
+    padding: 26px 24px;
+    text-align: center;
+  }
+  header h1 { font-size: 24px; letter-spacing: 0.3px; }
+  header p  { font-size: 14px; opacity: 0.85; margin-top: 6px; }
 
-    .floating-image {
-      position: absolute;
-      width: 50px;
-      height: 50px;
-      border-radius: 8px;
-      background: white;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-      overflow: hidden;
-      left: 5%;
-      top: -80px;
-      opacity: 1;
-    }
+  main {
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 24px 16px 48px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  a.card {
+    display: block;
+    background: #fff;
+    border: 1px solid #dbe4ee;
+    border-left: 5px solid var(--blue-mid);
+    border-radius: 8px;
+    padding: 16px 18px;
+    text-decoration: none;
+    color: var(--text);
+    transition: box-shadow 0.15s, transform 0.15s;
+  }
+  a.card:hover {
+    box-shadow: 0 3px 10px rgba(31, 78, 121, 0.15);
+    transform: translateY(-1px);
+  }
+  a.card h2 {
+    font-size: 17px;
+    color: var(--blue-dark);
+    margin-bottom: 4px;
+  }
+  a.card p { font-size: 13.5px; color: #555; line-height: 1.4; }
 
-    .floating-image.hidden {
-      opacity: 0;
-      pointer-events: none;
-    }
+  a.card.group-a { border-left-color: var(--blue-dark); background: rgba(31, 78, 121, 0.16); }
+  a.card.group-b { border-left-color: var(--blue-mid); background: rgba(46, 117, 182, 0.16); }
+  a.card.group-c { border-left-color: var(--rust); background: rgba(179, 84, 58, 0.16); }
+  a.card.group-d { border-left-color: var(--gold); background: rgba(201, 168, 76, 0.16); }
 
-    .toggle-photos-btn {
-      background: rgba(127, 217, 0, 0.9);
-      border: none;
-      border-radius: 20px;
-      padding: 10px 20px;
-      font-size: 13px;
-      font-weight: 600;
-      color: #000;
-      cursor: pointer;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-      margin-top: 1rem;
-      width: 100%;
-    }
-
-    .view-toggle-link {
-      display: block;
-      text-align: center;
-      background: rgba(255, 255, 255, 0.15);
-      border: 1px solid rgba(255, 255, 255, 0.5);
-      border-radius: 20px;
-      padding: 10px 20px;
-      font-size: 13px;
-      font-weight: 600;
-      color: #fff;
-      text-decoration: none;
-      margin-top: 0.6rem;
-      width: 100%;
-      box-sizing: border-box;
-    }
-
-    .floating-image img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      border-radius: 8px;
-    }
-
-    @keyframes float-path {
-      0% { left: 5%; top: -80px; transform: rotate(0deg); }
-      5% { left: 5%; top: 10px; transform: rotate(0deg); }
-      50% { left: 5%; top: calc(100% - 60px); transform: rotate(0deg); }
-      52.65% { left: 27.5%; top: calc(100% - 60px); transform: rotate(-180deg); }
-      55.3% { left: 50%; top: calc(100% - 60px); transform: rotate(-360deg); }
-      57.95% { left: 75%; top: calc(100% - 60px); transform: rotate(-540deg); }
-      60.6% { left: calc(100% - 60px); top: calc(100% - 60px); transform: rotate(-720deg); }
-      100% { left: calc(100% - 60px); top: -80px; transform: rotate(-720deg); }
-    }
-
-    .img-1 { animation: float-path 36s linear infinite; animation-delay: 0s; }
-    .img-2 { animation: float-path 36s linear infinite; animation-delay: 4.5s; }
-    .img-3 { animation: float-path 36s linear infinite; animation-delay: 9s; }
-    .img-4 { animation: float-path 36s linear infinite; animation-delay: 13.5s; }
-    .img-5 { animation: float-path 36s linear infinite; animation-delay: 18s; }
-    .img-6 { animation: float-path 36s linear infinite; animation-delay: 22.5s; }
-    .img-7 { animation: float-path 36s linear infinite; animation-delay: 27s; }
-    .img-8 { animation: float-path 36s linear infinite; animation-delay: 31.5s; }
-    
-    .arrival-section {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.35rem;
-    }
-    
-    .arrival-box {
-      background: rgba(0, 0, 0, 0.7);
-      backdrop-filter: blur(10px);
-      border-radius: 10px;
-      padding: 0.3rem 0.15rem;
-      text-align: center;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    
-    .arrival-icon {
-      font-size: 16px;
-      margin-bottom: 0.15rem;
-    }
-    
-    .arrival-label {
-      font-size: 8px;
-      opacity: 0.6;
-      text-transform: uppercase;
-      letter-spacing: 0.2px;
-      margin-bottom: 0.15rem;
-      line-height: 1;
-    }
-    
-    .arrival-value {
-      font-size: 13px;
-      font-weight: 700;
-      margin-bottom: 0.1rem;
-      line-height: 1;
-    }
-    
-    .arrival-unit {
-      font-size: 8px;
-      opacity: 0.5;
-    }
-    
-    
-    @media (max-width: 480px) {
-      .stats-row, .arrival-section {
-        grid-template-columns: 1fr 1fr;
-      }
-      .stat-value {
-        font-size: 14px;
-      }
-      .arrival-value {
-        font-size: 13px;
-      }
-    }
-  </style>
+  footer {
+    text-align: center;
+    font-size: 12px;
+    color: #8a97a8;
+    padding: 12px;
+  }
+</style>
 </head>
 <body>
 
-  <div class="screen-container" id="screenContainer">
-    <!-- Arizona Screen -->
-    <div class="screen" id="screen1">
-      <!-- Floating Images -->
-      <div class="floating-image img-1"><img src="https://raw.githubusercontent.com/billpollock1-hue/az-countdown-clock/main/IMG_2566.jpeg" alt="photo"></div>
-      <div class="floating-image img-2"><img src="https://raw.githubusercontent.com/billpollock1-hue/az-countdown-clock/main/IMG_5700.jpeg" alt="photo"></div>
-      <div class="floating-image img-3"><img src="https://raw.githubusercontent.com/billpollock1-hue/az-countdown-clock/main/24e8783d-ba02-4e69-ad1e-3162707d5af0.jpeg" alt="photo"></div>
-      <div class="floating-image img-4"><img src="https://raw.githubusercontent.com/billpollock1-hue/az-countdown-clock/main/6289936020292866475.jpeg" alt="photo"></div>
-      <div class="floating-image img-5"><img src="https://raw.githubusercontent.com/billpollock1-hue/az-countdown-clock/main/Boat.jpg" alt="photo"></div>
-      <div class="floating-image img-6"><img src="https://raw.githubusercontent.com/billpollock1-hue/az-countdown-clock/main/IMG_5134.jpg" alt="photo"></div>
-      <div class="floating-image img-7"><img src="https://raw.githubusercontent.com/billpollock1-hue/az-countdown-clock/main/IMG_5730.jpeg" alt="photo"></div>
-      <div class="floating-image img-8"><img src="https://raw.githubusercontent.com/billpollock1-hue/az-countdown-clock/main/IMG_8304.jpeg" alt="photo"></div>
+<header>
+  <h1>SAM Pickleball</h1>
+  <p>Ratings, results, sign ups, and the case for change</p>
+</header>
 
-      <div class="content">
-        <div class="title-box">
-          <h1>BB Returns</h1>
-        </div>
-        <div class="stats-row">
-          <div class="stat-box">
-            <div class="stat-icon">📅</div>
-            <div class="stat-label">Departed</div>
-            <div class="stat-value">June 3</div>
-            <div class="stat-unit">8:50 AM</div>
-          </div>
-          <div class="stat-box">
-            <div class="stat-icon">📆</div>
-            <div class="stat-label">Days Since</div>
-            <div class="stat-value" id="daysSinceAZ">0</div>
-            <div class="stat-unit">days</div>
-          </div>
-          <div class="stat-box">
-            <div class="stat-icon">⏱️</div>
-            <div class="stat-label">Minutes Since</div>
-            <div class="stat-value" id="minutesSinceAZ">0</div>
-            <div class="stat-unit">mins</div>
-          </div>
-          <div class="stat-box">
-            <div class="stat-icon">⏰</div>
-            <div class="stat-label">Seconds Since</div>
-            <div class="stat-value" id="secondsSinceAZ">0</div>
-            <div class="stat-unit">secs</div>
-          </div>
-        </div>
-        
-        <div class="progress-section">
-          <div class="progress-title">Progress</div>
-          <div class="progress-percentage" id="progressPercentAZ">0.000%</div>
-          <div class="progress-bar">
-            <div class="progress-fill" id="progressFillAZ" style="width: 0%"></div>
-          </div>
-        </div>
-        
-        <div class="arrival-section">
-          <div class="arrival-box">
-            <div class="arrival-icon">✈️</div>
-            <div class="arrival-label">Arrival</div>
-            <div class="arrival-value" id="arrivalDate" style="cursor: pointer; text-decoration: underline;">Sept 21</div>
-            <div class="arrival-unit" id="arrivalTime" style="cursor: pointer; text-decoration: underline;">4:00 PM</div>
-          </div>
-          <div class="arrival-box">
-            <div class="arrival-icon">📅</div>
-            <div class="arrival-label">Days Left</div>
-            <div class="arrival-value" id="daysToAZ">0</div>
-            <div class="arrival-unit">days</div>
-          </div>
-          <div class="arrival-box">
-            <div class="arrival-icon">⏱️</div>
-            <div class="arrival-label">Minutes Left</div>
-            <div class="arrival-value" id="minutesToAZ">0</div>
-            <div class="arrival-unit">mins</div>
-          </div>
-          <div class="arrival-box">
-            <div class="arrival-icon">⏰</div>
-            <div class="arrival-label">Seconds Left</div>
-            <div class="arrival-value" id="secondsToAZ">0</div>
-            <div class="arrival-unit">secs</div>
-          </div>
-        </div>
-        <button class="toggle-photos-btn" id="togglePhotosBtn">Hide Photos</button>
-        <label style="display: flex; align-items: center; gap: 6px; color: rgba(255,255,255,0.6); font-size: 12px; margin-top: 0.6rem; cursor: pointer;">
-          <input type="checkbox" id="earlyReturnCheckbox" style="width: 13px; height: 13px; cursor: pointer;">
-          Early return (9/1 8:45 AM)
-        </label>
-        <a class="view-toggle-link" href="silhouette.html" onclick="this.href='silhouette.html?t='+Date.now()">View Silhouette →</a>
-        <div style="color: rgba(255,255,255,0.4); font-size: 11px; margin-top: 8px;">v2026-08-01-3</div>
-      </div>
-    </div>
-  </div>
+<main>
+  <a class="card group-a" href="leaderboard.html">
+    <h2>Leaderboard</h2>
+    <p>Current ratings at a glance — rank, rating, record, and win percentage for every qualified player. Search for your name.</p>
+  </a>
 
-  <script>
-    let countdown = {
-      start: new Date('2026-06-03T08:50:00-07:00'),
-      end: new Date('2026-09-10T19:00:00-07:00')
-    };
+  <a class="card group-a" href="compare_ratings.html">
+    <h2>Ratings Change</h2>
+    <p>See how ratings have changed between two dates for all leaderboard players. Pick a From and To date to compare the whole field at once.</p>
+  </a>
 
-    // --- Arrival date/time step schedule ---
-    // Instead of a smooth slide, the return date jumps instantly to a new
-    // fixed value at each scheduled trigger time (4:10 PM MST each day).
-    // "at: null" is the immediate baseline in effect until the first trigger.
-    const ARRIVAL_SCHEDULE = [
-      { at: null,                                   value: '2026-09-09T16:10:00-07:00' },
-      { at: new Date('2026-07-30T16:10:00-07:00'),  value: '2026-09-08T16:10:00-07:00' },
-      { at: new Date('2026-07-31T16:10:00-07:00'),  value: '2026-09-07T16:10:00-07:00' },
-      { at: new Date('2026-07-30T00:00:00-07:00'),  value: '2026-09-06T16:10:00-07:00' },
-      { at: new Date('2026-07-30T00:00:00-07:00'),  value: '2026-09-05T16:10:00-07:00' },
-      { at: new Date('2026-07-30T00:00:00-07:00'),  value: '2026-09-04T16:10:00-07:00' },
-      { at: new Date('2026-07-30T00:00:00-07:00'),  value: '2026-09-01T16:10:00-07:00' }
-    ];
+  <a class="card group-b" href="session_viewer.html">
+    <h2>Session Viewer</h2>
+    <p>Game-by-game results and rating changes for any play date. Pick a date, see every game, every score, and how each player's rating moved.</p>
+  </a>
 
-    // Early return toggle: when enabled, overrides the scheduled arrival
-    // with this specific earlier time, regardless of what the normal
-    // schedule says. Persisted in localStorage so the choice sticks.
-    const EARLY_RETURN_VALUE = '2026-09-01T08:45:00-07:00';
+  <a class="card group-b" href="player_history.html">
+    <h2>Player History</h2>
+    <p>Every game a player has ever played, in one place. Pick a player, filter by year, see the full record.</p>
+  </a>
 
-    function getInterpolatedArrival() {
-      if (localStorage.getItem('earlyReturn') === 'true') {
-        return new Date(EARLY_RETURN_VALUE);
-      }
-      const now = new Date();
-      let current = new Date(ARRIVAL_SCHEDULE[0].value);
-      for (let i = 1; i < ARRIVAL_SCHEDULE.length; i++) {
-        if (now >= ARRIVAL_SCHEDULE[i].at) {
-          current = new Date(ARRIVAL_SCHEDULE[i].value);
-        }
-      }
-      return current;
-    }
+  <a class="card group-c" href="court_assignments.html">
+    <h2>Court Assignments</h2>
+    <p>Shootout 1 court assignments for the next play date (and projected Shootout 1 court assignments for other upcoming play dates) under the Den's default rating system, Modified ELO ratings, and the difference between the 2 methods.</p>
+  </a>
 
-    // Load configuration from config.json
-    async function loadConfig() {
-      try {
-        const response = await fetch('https://raw.githubusercontent.com/billpollock1-hue/az-countdown-clock/main/config.json');
-        const config = await response.json();
-        // NOTE: arrival is currently governed by the interpolation above,
-        // not by config.json, while the transition is in progress.
-        updateArrivalDisplay();
-      } catch (error) {
-        console.error('Failed to load config:', error);
-        // Fallback to default date if config fails
-      }
-    }
+  <a class="card group-d" href="highlights.html">
+    <h2>What We're Changing</h2>
+    <p>The short version: the problem, the evidence, and the two-phase plan to make courts fairer.</p>
+  </a>
 
-    // Manual overrides (localStorage) are disabled while the automatic
-    // interpolation transition is active - the arrival is fully automatic
-    // during this period, so a stale saved edit shouldn't fight it.
-    function loadSavedDate() {
-      // no-op during interpolation transition
-    }
+  <a class="card group-d" href="storybook.html">
+    <h2>How We Got There</h2>
+    <p>The full story behind how courts get assigned — the evidence, the ratings math, and what we tested to make Shootout 2 fairer.</p>
+  </a>
+</main>
 
-    // Get date/time components as they are in Arizona, regardless of device timezone
-    function getAZParts(date) {
-      const parts = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/Phoenix', year: 'numeric', month: '2-digit', day: '2-digit',
-        hour: '2-digit', minute: '2-digit', hour12: false
-      }).formatToParts(date);
-      const obj = {};
-      parts.forEach(p => obj[p.type] = p.value);
-      return obj;
-    }
+<footer>
+  Leaderboard, ratings, court assignments, and signups update automatically after each play date.<br/>
+  The research pages are dated snapshots and update only when refreshed.
+</footer>
 
-    function updateArrivalDisplay() {
-      const date = countdown.end;
-      const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Phoenix' });
-      const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Phoenix' });
-      
-      document.getElementById('arrivalDate').textContent = dateStr;
-      document.getElementById('arrivalTime').textContent = timeStr;
-    }
-
-    // Edit date - disabled during the automatic interpolation transition
-    // (any edit would be overwritten on the next 100ms tick anyway)
-    document.getElementById('arrivalDate').addEventListener('click', () => {
-      alert('Arrival is currently on an automatic step schedule (jumps to a new date each day at 4:10 PM MST through 8/4). Manual editing is disabled during this period.');
-    });
-
-    // Edit time - disabled during the automatic interpolation transition
-    document.getElementById('arrivalTime').addEventListener('click', () => {
-      alert('Arrival is currently on an automatic step schedule (jumps to a new date each day at 4:10 PM MST through 8/4). Manual editing is disabled during this period.');
-    });
-
-    function updateScreen() {
-      const now = new Date();
-
-      // Arrival slides automatically along the interpolation line
-      countdown.end = getInterpolatedArrival();
-      updateArrivalDisplay();
-
-      const elapsedMs = now - countdown.start;
-      const elapsedSeconds = Math.floor(elapsedMs / 1000);
-      const daysSince = elapsedSeconds / 86400;  // Decimal days
-      const minutesSince = Math.floor(elapsedSeconds / 60);
-      
-      const remainingMs = countdown.end - now;
-      const totalSecondsRemaining = Math.max(0, Math.floor(remainingMs / 1000));
-      const daysTo = totalSecondsRemaining / 86400;  // Decimal days
-      const totalMinutesRemaining = Math.floor(totalSecondsRemaining / 60);
-      
-      const totalMs = countdown.end - countdown.start;
-      const elapsedPct = (elapsedMs / totalMs) * 100;
-      
-      document.getElementById('daysSinceAZ').textContent = daysSince.toFixed(1);
-      document.getElementById('minutesSinceAZ').textContent = minutesSince.toLocaleString();
-      document.getElementById('secondsSinceAZ').textContent = elapsedSeconds.toLocaleString();
-      
-      document.getElementById('daysToAZ').textContent = daysTo.toFixed(1);
-      document.getElementById('minutesToAZ').textContent = totalMinutesRemaining.toLocaleString();
-      document.getElementById('secondsToAZ').textContent = totalSecondsRemaining.toLocaleString();
-      
-      document.getElementById('progressPercentAZ').textContent = `${Math.max(0, Math.min(elapsedPct, 100)).toFixed(5)}%`;
-      document.getElementById('progressFillAZ').style.width = `${Math.max(0, Math.min(elapsedPct, 100))}%`;
-    }
-
-    // Load config first, then saved date (saved date overrides config)
-    loadConfig();
-    loadSavedDate();
-    updateScreen();
-    setInterval(updateScreen, 100);
-
-    // Auto-reload every 5 minutes so any already-open tab (yours or anyone
-    // you've shared the link with) can never run stale JS for long after a
-    // deploy - it just quietly refreshes itself in the background.
-    setInterval(() => { window.location.reload(); }, 5 * 60 * 1000);
-
-    // Toggle photos visibility
-    window.addEventListener('DOMContentLoaded', () => {
-      const toggleBtn = document.getElementById('togglePhotosBtn');
-      if (!toggleBtn) return;
-      
-      let photosVisible = localStorage.getItem('photosVisible') !== 'false';
-      
-      const updatePhotosVisibility = () => {
-        const photos = document.querySelectorAll('.floating-image');
-        photos.forEach(p => {
-          p.classList.toggle('hidden', !photosVisible);
-        });
-        toggleBtn.textContent = photosVisible ? 'Hide Photos' : 'Show Photos';
-        localStorage.setItem('photosVisible', photosVisible);
-      };
-
-      toggleBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        photosVisible = !photosVisible;
-        updatePhotosVisibility();
-      });
-
-      updatePhotosVisibility();
-    });
-
-    // Toggle early return override
-    window.addEventListener('DOMContentLoaded', () => {
-      const earlyCheckbox = document.getElementById('earlyReturnCheckbox');
-      if (!earlyCheckbox) return;
-
-      earlyCheckbox.checked = localStorage.getItem('earlyReturn') === 'true';
-
-      earlyCheckbox.addEventListener('change', () => {
-        localStorage.setItem('earlyReturn', earlyCheckbox.checked);
-      });
-    });
-
-    // Shuffled order of all 34 photos, shared across ALL floating slots.
-    // Every slot shows the SAME photo simultaneously, for 25 repetitions
-    // of the animation loop, then all slots advance together to the next
-    // photo in the shared shuffled order. Once the whole set of 34 has
-    // been shown, the order reshuffles and a fresh randomized pass begins
-    // - forever. The first slot's animation loop acts as the shared
-    // "clock" driving when everyone advances together.
-    window.addEventListener('DOMContentLoaded', () => {
-      const TOTAL_PHOTOS = 38;
-      const REPEATS_PER_PHOTO = 1;
-
-      function shuffle(arr) {
-        for (let i = arr.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [arr[i], arr[j]] = [arr[j], arr[i]];
-        }
-        return arr;
-      }
-
-      function freshOrder() {
-        const nums = Array.from({ length: TOTAL_PHOTOS }, (_, i) => String(i + 1).padStart(2, '0'));
-        return shuffle(nums);
-      }
-
-      function photoUrl(num) {
-        return `https://raw.githubusercontent.com/billpollock1-hue/az-countdown-clock/main/${num}.jpg`;
-      }
-
-      const STATE_KEY = 'photoRotationState';
-
-      function loadState() {
-        try {
-          const saved = JSON.parse(localStorage.getItem(STATE_KEY));
-          if (saved && Array.isArray(saved.order) && saved.order.length === TOTAL_PHOTOS) {
-            return saved;
-          }
-        } catch (e) { /* fall through to fresh state */ }
-        return { order: freshOrder(), orderIndex: 0, repeatCount: 0 };
-      }
-
-      function saveState() {
-        localStorage.setItem(STATE_KEY, JSON.stringify({ order, orderIndex, repeatCount }));
-      }
-
-      const photos = document.querySelectorAll('.floating-image');
-      const images = Array.from(photos).map(p => p.querySelector('img')).filter(Boolean);
-
-      let { order, orderIndex, repeatCount } = loadState();
-
-      function setAllPhotos() {
-        const url = photoUrl(order[orderIndex]);
-        images.forEach(img => { img.src = url; });
-      }
-
-      setAllPhotos();
-
-      if (photos.length > 0) {
-        photos[0].addEventListener('animationiteration', () => {
-          repeatCount++;
-          if (repeatCount >= REPEATS_PER_PHOTO) {
-            repeatCount = 0;
-            orderIndex++;
-            if (orderIndex >= order.length) {
-              order = freshOrder();
-              orderIndex = 0;
-            }
-            setAllPhotos();
-          }
-          saveState();
-        });
-      }
-      
-    });
-  </script>
 </body>
 </html>

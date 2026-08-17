@@ -395,6 +395,7 @@ html = f"""<!DOCTYPE html>
 
 <div class="rule"></div>
 <h1>Can SAM<br/>Be Improved?</h1>
+<div class="kicker" style="text-align:center;">THE CASE FOR CHANGE</div>
 <div class="rule"></div>
 <div class="sub">Using four years of shootout data to make<br/>SAM sessions more competitive</div>
 <div class="sub" style="font-size:0.65em;opacity:0.65;margin-top:2%;">Snapshot as of {latest} — numbers reflect data through this date, not live</div>

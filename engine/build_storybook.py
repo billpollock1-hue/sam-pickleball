@@ -395,9 +395,8 @@ html = f"""<!DOCTYPE html>
 
 <div class="rule"></div>
 <h1>Can SAM<br/>Be Improved?</h1>
-<div class="kicker" style="text-align:center;">THE CASE FOR CHANGE</div>
 <div class="rule"></div>
-<div class="sub">Using four years of shootout data to make<br/>SAM sessions more competitive</div>
+<div class="sub">Four years of shootout data, put to the test</div>
 <div class="sub" style="font-size:0.65em;opacity:0.65;margin-top:2%;">Snapshot as of {latest} — numbers reflect data through this date, not live</div>
 <div class="hint">click to open ›</div>
 
@@ -627,6 +626,31 @@ html = f"""<!DOCTYPE html>
 </svg>
 <div style="font-family:'Trebuchet MS',sans-serif;font-size:clamp(7.5px,0.85vw,9.5px);color:#8a7f6a;text-align:center;margin-top:1%;">Players per step (top) · step number (bottom). More courts means more step values — and a higher average step — in play.</div>
 </div>
+</div>
+
+<div class="section">
+
+<div class="kicker">A Real Morning, Step by Step</div>
+<p>The diagrams above show the mechanics. Here is a real one: every player who showed up for Shootout 1 on May 22, 2026, and exactly which prior Shootout 2 — and how many courts were running that day — produced the Step and Percent they walked in with.</p>
+<table class="btable">
+<tr><th style="text-align:left;">Player</th><th>Last Shootout 2</th><th>Finish</th><th>New Step</th><th>Percent</th><th>May 22 Court</th></tr>
+<tr><td style="text-align:left;">Eric Kramer</td><td>May 20, 1st of 3 courts</td><td>Top-2</td><td>1</td><td>88.5</td><td>1</td></tr>
+<tr><td style="text-align:left;">Dave Grubb</td><td>May 11, 2nd of 4 courts</td><td>Top-2</td><td>1</td><td>82.4</td><td>1</td></tr>
+<tr><td style="text-align:left;">Steve Ludick</td><td>May 21, 1st of 2 courts</td><td>Top-2</td><td>1</td><td>79.7</td><td>1</td></tr>
+<tr><td style="text-align:left;">Alena Nagyova</td><td>May 21, 1st of 2 courts</td><td>Top-2</td><td>1</td><td>79.1</td><td>1</td></tr>
+<tr><td style="text-align:left;">Peter Rillero</td><td>May 13, 2nd of 4 courts</td><td>Top-2</td><td>1</td><td>78.7</td><td>2</td></tr>
+<tr><td style="text-align:left;">Dwight Christensen</td><td>May 21, 2nd of 2 courts</td><td>Top-2</td><td>1</td><td>78.3</td><td>2</td></tr>
+<tr><td style="text-align:left;">Cary McCormick</td><td>May 18, 2nd of 2 courts</td><td>Top-2</td><td>1</td><td>76.4</td><td>2</td></tr>
+<tr><td style="text-align:left;">Peter Barnett</td><td>May 20, 1st of 3 courts</td><td>Bottom-2</td><td>2</td><td>83.9</td><td>2</td></tr>
+<tr><td style="text-align:left;">Tron Brinkmann</td><td>May 13, 3rd of 4 courts</td><td>Top-2</td><td>2</td><td>76.9</td><td>3</td></tr>
+<tr><td style="text-align:left;">Donna Cantrell</td><td>May 15, 3rd of 3 courts</td><td>Top-2</td><td>2</td><td>73.3</td><td>3</td></tr>
+<tr><td style="text-align:left;">Stacy Kramer</td><td>May 20, 3rd of 3 courts</td><td>Bottom-2</td><td>4</td><td>53.5</td><td>3</td></tr>
+<tr><td style="text-align:left;">Lynnie McKee</td><td>May 12, 4th of 5 courts</td><td>Bottom-2</td><td>5</td><td>59.2</td><td>3</td></tr>
+</table>
+<p style="font-size:clamp(8.5px,1vw,12px);color:#8a7f6a;margin-top:2%;">Sorted by Step, then Percent — the same order the Den’s own assignment logic uses to build courts. Every Step and Percent value here is either the Den’s own real recorded number or computed directly from real game results using the Den’s documented formula, verified end to end: this exact ordering reproduces the real May 22, 2026 court assignments, 12 for 12.</p>
+<p>Look at that second column: prior sessions ranging from 2-court days to a 5-court day, spanning dates from May 11 to May 21 — a week and a half apart. All twelve walked onto the very same May 22 signup sheet, but their Step numbers trace back to entirely different sessions under entirely different conditions. That’s NO RECENCY REQUIREMENT and COURT-COUNT BLIND, both made concrete in the same twelve rows: a 1st-of-2 finish and a 1st-of-3 finish get treated identically by the arithmetic, even though beating half the field and beating two-thirds of it aren’t the same accomplishment.</p>
+<p>Percent does real, visible work here too. Seven different players all arrived carrying the same Step of 1 — far more than the four seats on a single court. Percent is what splits them: the top four by Percent (Eric Kramer, Dave Grubb, Steve Ludick, Alena Nagyova) filled Court 1; the rest (Peter Rillero, Dwight Christensen, Cary McCormick) spilled onto Court 2 alongside Peter Barnett, whose Step of 2 sat right behind them. But Percent is a crude metric — it doesn’t account for who you played against or partnered with, and it doesn’t distinguish a narrow win from a blowout, only the raw points scored.</p>
+
 </div>
 
 <div class="section">

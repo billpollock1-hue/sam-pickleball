@@ -693,6 +693,15 @@ def ensure_model_current():
         today_csv = MODEL_DIR / "output" / "today_results.csv"
         today_str = today.strftime("%m%d%y")
 
+        # Delete any stale leftover from a prior, unrelated scrape run
+        # before invoking scrape.js -- today_csv is a fixed, reused
+        # filename. Without this, a leftover file from an earlier scrape
+        # (e.g. a past backfill) could get silently re-merged even when
+        # THIS run's own scrape genuinely finds nothing -- confirmed live
+        # 2026-08-21, duplicated 18 rows of real July 8 data this way.
+        if today_csv.exists():
+            today_csv.unlink()
+
         if scrape_script.exists():
             # scrape.js prompts for manual login/navigation via the terminal
             # (readline), so stdin/stdout must stay connected to this
@@ -710,12 +719,27 @@ def ensure_model_current():
                     first_col = scraped.columns[0]
                     scraped = scraped[scraped[first_col] != first_col]
                     scraped = scraped.reset_index(drop=True)
+
+                    # Second, independent safety net: never append a row
+                    # that's already an exact match for one already in the
+                    # master CSV, regardless of how it got scraped again.
+                    if len(scraped) > 0:
+                        common_cols = [c for c in scraped.columns if c in raw.columns]
+                        before = len(scraped)
+                        merge_check = scraped.merge(
+                            raw[common_cols], on=common_cols, how="left", indicator=True
+                        )
+                        scraped = scraped[merge_check["_merge"].values == "left_only"].reset_index(drop=True)
+                        skipped = before - len(scraped)
+                        if skipped:
+                            print(f"  Skipped {skipped} row(s) already present in master CSV (exact duplicate).")
+
                     if len(scraped) > 0:
                         scraped.to_csv(MODEL_INPUT, mode="a", header=False, index=False)
                         raw_latest = today
                         print(f"✓ Appended {len(scraped)} rows from today's scrape to master CSV.")
                     else:
-                        print(f"⚠ Scrape ran but returned no rows for {today_str}. Results may not be posted yet.")
+                        print(f"⚠ Scrape ran but returned no new rows for {today_str}. Results may not be posted yet.")
                 else:
                     print(f"⚠ Scrape exited with code {result.returncode}. Results may not be posted yet.")
             except Exception as e:

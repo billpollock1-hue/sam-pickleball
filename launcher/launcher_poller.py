@@ -103,7 +103,7 @@ def save_config(cfg):
     CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
 
 
-def append_log(status, seeding_basis, players_removed, message="", court_assignments=None, shuffle_mode=None):
+def append_log(status, seeding_basis, players_removed, message="", court_assignments=None, shootout2_shuffle_mode=None):
     entry = {
         "timestamp": datetime.now(MST).strftime("%Y-%m-%d %H:%M:%S MST"),
         "status": status,
@@ -111,7 +111,7 @@ def append_log(status, seeding_basis, players_removed, message="", court_assignm
         "players_removed": players_removed or [],
         "message": message,
         "court_assignments": court_assignments or [],
-        "shuffle_mode": shuffle_mode,
+        "shootout2_shuffle_mode": shootout2_shuffle_mode,
     }
     with LOG_PATH.open("a") as f:
         f.write(json.dumps(entry) + "\n")
@@ -159,7 +159,7 @@ def run_launch(mode):
     if script_path is None:
         append_log("error", seeding_basis, [],
                     message=f"SCRIPT_PATHS['{mode}'] not configured — see TODO in launcher_poller.py",
-                    shuffle_mode=shuffle_label)
+                    shootout2_shuffle_mode=shuffle_label)
         return False
 
     try:
@@ -181,10 +181,10 @@ def run_launch(mode):
 
         if result.returncode == 0:
             append_log("success", seeding_basis, players_removed,
-                        court_assignments=court_assignments, shuffle_mode=shuffle_label)
+                        court_assignments=court_assignments, shootout2_shuffle_mode=shuffle_label)
             return True
         else:
-            append_log("error", seeding_basis, players_removed, shuffle_mode=shuffle_label,
+            append_log("error", seeding_basis, players_removed, shootout2_shuffle_mode=shuffle_label,
                         message=result.stderr[-500:] if result.stderr else "non-zero exit")
             return False
     except Exception as e:

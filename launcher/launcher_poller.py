@@ -62,6 +62,14 @@ SEEDING_LABELS = {
     "elo_autolaunch": "Modified ELO",
 }
 
+# Matches Den's actual field text (confirmed via live screenshot, not the
+# earlier "1-up/1-back/2-stay" terminology used elsewhere in the codebase
+# before that correction).
+SHUFFLE_LABELS = {
+    "2u2b": "Two-up / Two-down",
+    "1u1b2s": "One-up / One-down",
+}
+
 
 def is_eligible_play_date(date_obj):
     """
@@ -95,7 +103,7 @@ def save_config(cfg):
     CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
 
 
-def append_log(status, seeding_basis, players_removed, message="", court_assignments=None):
+def append_log(status, seeding_basis, players_removed, message="", court_assignments=None, shuffle_mode=None):
     entry = {
         "timestamp": datetime.now(MST).strftime("%Y-%m-%d %H:%M:%S MST"),
         "status": status,
@@ -103,6 +111,7 @@ def append_log(status, seeding_basis, players_removed, message="", court_assignm
         "players_removed": players_removed or [],
         "message": message,
         "court_assignments": court_assignments or [],
+        "shuffle_mode": shuffle_mode,
     }
     with LOG_PATH.open("a") as f:
         f.write(json.dumps(entry) + "\n")
@@ -144,10 +153,13 @@ def _trim_old_entries():
 def run_launch(mode):
     seeding_basis = SEEDING_LABELS[mode]
     script_path = SCRIPT_PATHS.get(mode)
+    shuffle_code = load_config().get("shuffle_mode", "2u2b")
+    shuffle_label = SHUFFLE_LABELS.get(shuffle_code, shuffle_code)
 
     if script_path is None:
         append_log("error", seeding_basis, [],
-                    message=f"SCRIPT_PATHS['{mode}'] not configured — see TODO in launcher_poller.py")
+                    message=f"SCRIPT_PATHS['{mode}'] not configured — see TODO in launcher_poller.py",
+                    shuffle_mode=shuffle_label)
         return False
 
     try:
@@ -169,10 +181,10 @@ def run_launch(mode):
 
         if result.returncode == 0:
             append_log("success", seeding_basis, players_removed,
-                        court_assignments=court_assignments)
+                        court_assignments=court_assignments, shuffle_mode=shuffle_label)
             return True
         else:
-            append_log("error", seeding_basis, players_removed,
+            append_log("error", seeding_basis, players_removed, shuffle_mode=shuffle_label,
                         message=result.stderr[-500:] if result.stderr else "non-zero exit")
             return False
     except Exception as e:

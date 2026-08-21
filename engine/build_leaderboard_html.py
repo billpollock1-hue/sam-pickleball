@@ -406,7 +406,7 @@ html = f"""<!DOCTYPE html>
       </tbody>
     </table>
     <p class="foot">
-      All stats reflect each player's last 60 rated games (fewer for newer players).<br>
+      Rating reflects each player's full history. All other stats reflect their last 60 rated games (fewer for newer players).<br>
       Qualification: at least 24 rated games within the past 180 days.<br>
       🚀/🐢 strong/weak starter &middot; 🎯/📉 strong/weak finisher (15+ play dates, hover for detail)<br>
       Tap a player's name for their last 15 rated sessions.<br>

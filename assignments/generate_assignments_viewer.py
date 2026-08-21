@@ -107,8 +107,8 @@ td { padding: 4px 9px; border: 1px solid #e4e4e4; overflow-wrap: break-word; }
   <select id="date-select"></select>
 
   <div id="tabs">
-    <button class="tab-btn" data-tab="den">Den</button>
     <button class="tab-btn" data-tab="rating">Rating</button>
+    <button class="tab-btn" data-tab="den">Den</button>
     <button class="tab-btn" data-tab="comparison">Comparison</button>
   </div>
 </div>
@@ -350,26 +350,22 @@ function arizonaNow() {
 const az = arizonaNow();
 const cutoffPassed = (az.hour > 8) || (az.hour === 8 && az.minute >= 15);
 
-// Filter dropdown to the true next play date and beyond, sorted nearest first
-const allOpts = Array.from(sel.options);
-allOpts.forEach(opt => {
-  if (opt.value < az.dateStr) { opt.remove(); return; }
-  if (opt.value === az.dateStr && cutoffPassed) { opt.remove(); return; }
-});
-// Reverse remaining options so nearest date is first
-const remaining = Array.from(sel.options);
-sel.innerHTML = '';
-remaining.reverse().forEach(opt => sel.appendChild(opt));
-// Fallback: if all dates removed, restore the last (most recent past) one
-if (sel.options.length === 0 && DATES.length > 0) {
-  const opt = document.createElement('option');
-  opt.value = DATES[DATES.length - 1];
-  opt.text = DATES[DATES.length - 1];
-  sel.appendChild(opt);
+// Determine the true "next play date" as the default selection, WITHOUT
+// removing any dates from the dropdown -- full history stays browsable,
+// same convention as the Session Viewer. DATES is sorted descending
+// (newest first) server-side, so we sort a local ascending copy just for
+// this lookup rather than relying on DATES' own order.
+const ascendingDates = [...DATES].sort();
+let defaultDate = ascendingDates.find(d => d > az.dateStr || (d === az.dateStr && !cutoffPassed));
+if (!defaultDate) {
+  // No future date on file (e.g. history hasn't caught up yet) -- fall
+  // back to the most recent date available (DATES[0], since it's
+  // descending).
+  defaultDate = DATES[0];
 }
-// Ensure the first (nearest upcoming) date is the one actually selected —
-// reordering options in the DOM does not change which one is marked selected.
-sel.selectedIndex = 0;
+if (defaultDate) {
+  sel.value = defaultDate;
+}
 
 // Restore a manually-selected date carried over from a periodic auto-reload
 // (see setInterval below), if that date still appears in the dropdown --
@@ -383,7 +379,7 @@ if (preservedDate) {
 
 sel.addEventListener('change', () => render(sel.value));
 
-setTab('den');
+setTab('rating');
 render(sel.value);
 
 // Forces a genuine network fetch bypassing any cache, carrying the current

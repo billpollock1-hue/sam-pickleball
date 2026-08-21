@@ -239,6 +239,10 @@ else
 fi
 
 echo ""
+echo "5c2. Building Ratings Change page..."
+python3 engine/build_compare_ratings_html.py
+
+echo ""
 echo "5d. Refreshing court assignment snapshots..."
 (cd assignments && python3 refresh_assignments.py)
 
@@ -252,6 +256,7 @@ mkdir -p docs
 cp output/session_viewer.html docs/
 cp output/player_history.html docs/
 cp output/leaderboard.html docs/
+cp output/compare_ratings.html docs/
 cp assignments/output/court_assignments_viewer.html docs/court_assignments.html
 # storybook.html intentionally excluded from docs/ sync while still in development
 

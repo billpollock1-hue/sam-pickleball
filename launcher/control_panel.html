@@ -19,7 +19,6 @@
   .time-row input[type=time] { background: #0f1115; border: 1px solid #2a2e37; color: #e6e6e6; padding: 6px 8px; border-radius: 6px; }
   .time-row.disabled { opacity: 0.35; pointer-events: none; }
   .shuffle-row { margin-top: 18px; padding-top: 16px; border-top: 1px solid #2a2e37; }
-  .shuffle-note { font-size: 11px; color: #f0b429; margin-bottom: 10px; line-height: 1.4; }
   .shuffle-option { display: flex; align-items: center; gap: 8px; padding: 8px 4px; cursor: pointer; }
   .shuffle-option:hover { background: #22262f; border-radius: 6px; }
   button { background: #4f8cff; color: white; border: none; padding: 10px 16px; border-radius: 8px; font-size: 13px; cursor: pointer; font-weight: 600; }
@@ -74,10 +73,9 @@
 
   <div class="shuffle-row" id="shuffle-row">
     <div class="mode-title">Shootout 2 Shuffle</div>
-    <div class="shuffle-note">Not yet wired into automation — saved here for reference, but create_shootout.py does not currently set this field on Den; Den's own existing setting is left untouched at launch time.</div>
     <label class="shuffle-option">
       <input type="radio" name="shuffle" value="2u2b">
-      Two-up / Two-down (Den default)
+      Two-up / Two-down
     </label>
     <label class="shuffle-option">
       <input type="radio" name="shuffle" value="1u1b2s">

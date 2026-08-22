@@ -78,7 +78,7 @@ def todays_date():
 DEBUG_DIR = OUT_DIR / "debug" / "create_shootout"
 DEBUG_DIR.mkdir(parents=True, exist_ok=True)
 
-HEADLESS = True  # flip to False for live selector testing against the real app
+HEADLESS = False  # TEMPORARY test mode -- revert to True before the real automated launcher runs again
 
 
 def _debug_screenshot(page, name):
@@ -545,7 +545,7 @@ def set_move_players(page, shuffle_mode):
     try:
         move_players_label = page.get_by_text("Move Players", exact=False)
         move_players_field = move_players_label.locator(
-            "xpath=following::*[self::vaadin-select or self::div][1]"
+            "xpath=following::vaadin-select[1]"
         )
         move_players_field.click(timeout=3000)
         page.wait_for_timeout(500)

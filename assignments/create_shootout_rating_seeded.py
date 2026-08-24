@@ -460,6 +460,79 @@ def remove_excess_players(page, names_to_remove):
         )
 
 
+# Absolute path -- same reasoning as other cross-script coordination
+# files in this codebase: this script always runs from assignments/, but
+# the launcher config always lives in launcher/, regardless of which
+# copy of this script is running.
+LAUNCHER_CONFIG_PATH = Path(
+    "/Users/billpollock/Documents/SAM Pickleball/sam-pickleball/launcher/launcher_config.json"
+)
+
+
+def load_shuffle_mode():
+    """
+    Reads shuffle_mode from launcher_config.json ("2u2b" or "1u1b2s").
+    Defaults to "2u2b" (Den's own default) if the file is missing,
+    unreadable, or the field isn't set -- never blocks a launch over
+    this.
+    """
+    try:
+        cfg = json.loads(LAUNCHER_CONFIG_PATH.read_text())
+        mode = cfg.get("shuffle_mode", "2u2b")
+        return mode if mode in ("2u2b", "1u1b2s") else "2u2b"
+    except Exception:
+        return "2u2b"
+
+
+def set_move_players(page, shuffle_mode):
+    """
+    Sets the "Move Players" field to match shuffle_mode. Fail-soft: on
+    any error, logs a warning, dismisses any stuck-open dropdown overlay
+    (a failed click can otherwise block every subsequent click on the
+    page, including "Create Shootout" itself -- confirmed live
+    2026-08-22), and leaves Den's existing value untouched rather than
+    failing the whole shootout creation over this one non-critical
+    field.
+
+    Returns the field's ACTUAL current value, read back from the page
+    after the attempt -- regardless of whether that attempt succeeded --
+    so the caller can log what Den genuinely has set, not just what was
+    requested.
+    """
+    target_text = "Two-up / Two-down" if shuffle_mode == "2u2b" else "One-up / One-down"
+    print(f"  Setting Move Players to: {target_text}")
+    move_players_field = None
+    try:
+        move_players_label = page.get_by_text("Move Players", exact=False)
+        move_players_field = move_players_label.locator(
+            "xpath=following::vaadin-select[1]"
+        )
+        move_players_field.click(timeout=3000)
+        page.wait_for_timeout(500)
+        page.get_by_text(target_text, exact=True).click(timeout=3000)
+        page.wait_for_timeout(500)
+    except Exception as e:
+        print(f"  \u26a0 Could not set Move Players field: {e} -- leaving Den's "
+              f"existing value untouched rather than failing the whole launch.")
+        try:
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(300)
+        except Exception:
+            pass
+        _debug_screenshot(page, "move_players_field")
+
+    try:
+        if move_players_field is None:
+            move_players_label = page.get_by_text("Move Players", exact=False)
+            move_players_field = move_players_label.locator(
+                "xpath=following::vaadin-select[1]"
+            )
+        actual_value = move_players_field.inner_text(timeout=2000).strip()
+        return actual_value if actual_value else "Unknown"
+    except Exception:
+        return "Unknown"
+
+
 def create_shootout(page, num_courts):
     print(f"Creating shootout with {num_courts} court(s)...")
 
@@ -492,12 +565,16 @@ def create_shootout(page, num_courts):
         _debug_screenshot(page, "create_shootout_courts_field")
         raise RuntimeError(f"Could not set Number of Courts field: {e}")
 
+    actual_shuffle_mode = set_move_players(page, load_shuffle_mode())
+
     # Same ambiguity pattern as the earlier "Search" button fix -- the
     # page has both an <h2>Create Shootout</h2> heading and the actual
     # submit button, and exact=False matches case-insensitively, so both
     # matched. get_by_role targets the button specifically.
     page.get_by_role("button", name="Create Shootout", exact=True).click(timeout=5000)
     page.wait_for_timeout(1200)
+
+    return actual_shuffle_mode
 
     # "Sign-up sheet is still available for additional players" guard popup
     # -- ignore and proceed, per the documented routine.
@@ -801,7 +878,7 @@ def main():
             page.goto(SIGNUP_URL, wait_until="domcontentloaded")
             automate_signup_search_today(page)
 
-            create_shootout(page, num_courts)
+            actual_shuffle_mode = create_shootout(page, num_courts)
             check_in_all(page)
             cross_check_and_correct_seeding(page, computed_assignments)
             seed_players(page)
@@ -810,7 +887,7 @@ def main():
             context.storage_state(path=SESSION_FILE)
             print(f"\n✓ Shootout created and started for {play_date_display} "
                   f"(Modified ELO seeding).")
-            print(f"LAUNCH_RESULT: {json.dumps({'players_removed': excess_names, 'court_assignments': court_assignments_log})}")
+            print(f"LAUNCH_RESULT: {json.dumps({'players_removed': excess_names, 'court_assignments': court_assignments_log, 'shootout2_shuffle_mode': actual_shuffle_mode})}")
 
         except Exception as e:
             print(f"\n✗ Automated shootout creation failed: {e}")

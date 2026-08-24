@@ -78,7 +78,7 @@ def todays_date():
 DEBUG_DIR = OUT_DIR / "debug" / "create_shootout"
 DEBUG_DIR.mkdir(parents=True, exist_ok=True)
 
-HEADLESS = False  # TEMPORARY test mode -- revert to True before the real automated launcher runs again
+HEADLESS = True  # flip to False for live selector testing against the real app
 
 
 def _debug_screenshot(page, name):
@@ -554,6 +554,16 @@ def set_move_players(page, shuffle_mode):
     except Exception as e:
         print(f"  \u26a0 Could not set Move Players field: {e} -- leaving Den's "
               f"existing value untouched rather than failing the whole launch.")
+        # A failed click can leave the dropdown's overlay stuck open,
+        # invisibly blocking every subsequent click on the page --
+        # including "Create Shootout" itself, crashing the whole launch.
+        # Confirmed live 2026-08-22. Explicitly dismiss it so a Move
+        # Players failure can never take down anything downstream.
+        try:
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(300)
+        except Exception:
+            pass
         _debug_screenshot(page, "move_players_field")
 
 

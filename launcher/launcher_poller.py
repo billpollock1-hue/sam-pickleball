@@ -170,18 +170,21 @@ def run_launch(mode):
         )
         players_removed = []
         court_assignments = []
+        actual_shuffle_mode = None
         match = re.search(r"LAUNCH_RESULT:\s*(\{.*\})", result.stdout)
         if match:
             try:
                 launch_result = json.loads(match.group(1))
                 players_removed = launch_result.get("players_removed", [])
                 court_assignments = launch_result.get("court_assignments", [])
+                actual_shuffle_mode = launch_result.get("shootout2_shuffle_mode")
             except json.JSONDecodeError:
                 pass
 
         if result.returncode == 0:
             append_log("success", seeding_basis, players_removed,
-                        court_assignments=court_assignments, shootout2_shuffle_mode=shuffle_label)
+                        court_assignments=court_assignments,
+                        shootout2_shuffle_mode=actual_shuffle_mode or shuffle_label)
             return True
         else:
             append_log("error", seeding_basis, players_removed, shootout2_shuffle_mode=shuffle_label,

@@ -232,7 +232,7 @@ def automate_signup_search_today(page):
         # try instead of relying on the poller's 5-minute retry to paper
         # over it.
         search_button = page.get_by_role("button", name="Search", exact=True)
-        search_button.wait_for(state="visible", timeout=45000)
+        search_button.wait_for(state="visible", timeout=90000)
         search_button.click()
         page.wait_for_timeout(2500)
 
@@ -814,10 +814,16 @@ def main():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=HEADLESS)
 
+        # Explicit, generous viewport -- no size was ever specified before,
+        # meaning the browser ran at Playwright's small 1280x720 default.
+        # Confirmed live 2026-08-24 that this very likely caused the
+        # Move Players dropdown overlay to render off-screen/invisible,
+        # not a timing issue as originally suspected.
+        VIEWPORT = {"width": 1920, "height": 1080}
         if Path(SESSION_FILE).exists():
-            context = browser.new_context(storage_state=SESSION_FILE)
+            context = browser.new_context(storage_state=SESSION_FILE, viewport=VIEWPORT)
         else:
-            context = browser.new_context()
+            context = browser.new_context(viewport=VIEWPORT)
 
         page = context.new_page()
 

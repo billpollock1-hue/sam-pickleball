@@ -93,7 +93,7 @@
   <h2 style="font-size:15px; margin-top:0;">Launch Log</h2>
   <table id="log-table">
     <thead>
-      <tr><th>Timestamp (MST)</th><th>Status</th><th>Seeding Basis</th><th>Players Removed Prior to Launch</th></tr>
+      <tr><th>Timestamp (MST)</th><th>Status</th><th>Seeding Basis</th><th>Shuffle</th><th>Players Removed Prior to Launch</th></tr>
     </thead>
     <tbody id="log-body">
       <tr><td colspan="4">Loading…</td></tr>
@@ -163,7 +163,7 @@ async function loadLog() {
   const entries = await res.json();
   const body = document.getElementById('log-body');
   if (!entries.length) {
-    body.innerHTML = '<tr><td colspan="4">No launches logged yet.</td></tr>';
+    body.innerHTML = '<tr><td colspan="5">No launches logged yet.</td></tr>';
     return;
   }
   body.innerHTML = entries.map(e => {
@@ -175,6 +175,7 @@ async function loadLog() {
       <td>${e.timestamp}</td>
       <td><span class="badge ${badgeClass}">${e.status}</span></td>
       <td>${e.seeding_basis || '—'}</td>
+      <td>${e.shootout2_shuffle_mode || '—'}</td>
       <td>${removed}</td>
     </tr>`;
   }).join('');

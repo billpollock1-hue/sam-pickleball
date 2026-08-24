@@ -35,6 +35,7 @@ surface for the browser panel(s).
 import json
 import os
 import socket
+import subprocess
 import sys
 from datetime import datetime, timedelta, time as dtime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -46,6 +47,10 @@ CONFIG_PATH = BASE_DIR / "launcher_config.json"
 LOG_PATH = BASE_DIR / "launch_log.jsonl"
 HTML_PATH = BASE_DIR / "control_panel.html"
 ADMIN_INDEX_PATH = BASE_DIR / "admin_index.html"
+DATES_HTML_PATH = BASE_DIR / "dates.html"
+REPO_ROOT = BASE_DIR.parent
+NO_SHOOTOUT_CSV = REPO_ROOT / "data" / "no_shootout_dates.csv"
+PARTIAL_SHOOTOUT_CSV = REPO_ROOT / "data" / "partial_shootout_dates.csv"
 PORT = 8765
 MST = ZoneInfo("America/Phoenix")  # Arizona, no DST — matches "MST" label used everywhere else
 
@@ -145,6 +150,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(read_log(limit))
         elif self.path == "/api/next-shootout":
             self._send_json({"display": get_next_shootout_display()})
+        elif self.path == "/dates" or self.path == "/dates.html":
+            self._send_html(DATES_HTML_PATH)
         else:
             self._send_json({"error": "not found"}, status=404)
 
@@ -166,8 +173,95 @@ class Handler(BaseHTTPRequestHandler):
                 cfg["shuffle_mode"] = payload["shuffle_mode"]
             save_config(cfg)
             self._send_json(cfg)
+        elif self.path == "/api/record-date":
+            self._handle_record_date(payload)
         else:
             self._send_json({"error": "not found"}, status=404)
+
+    def _append_csv_date(self, csv_path, date_str):
+        existing = set()
+        if csv_path.exists():
+            existing = set(
+                line.strip() for line in csv_path.read_text().splitlines()[1:] if line.strip()
+            )
+        if date_str in existing:
+            return False
+        with open(csv_path, "a") as f:
+            f.write(f"{date_str}\n")
+        return True
+
+    def _refresh_court_assignments_viewer(self):
+        subprocess.run(
+            ["python3", "generate_assignments_viewer.py"],
+            cwd=REPO_ROOT / "assignments", check=True, timeout=60,
+        )
+        subprocess.run(
+            ["cp", str(REPO_ROOT / "assignments/output/court_assignments_viewer.html"),
+             str(REPO_ROOT / "docs/court_assignments.html")],
+            check=True,
+        )
+
+    def _handle_record_date(self, payload):
+        date_str = str(payload.get("date", "")).strip()
+        date_type = payload.get("type")
+        if not date_str or date_type not in ("none", "single"):
+            self._send_json({"error": "date and type (none/single) required"}, status=400)
+            return
+
+        if date_type == "none":
+            if not self._append_csv_date(NO_SHOOTOUT_CSV, date_str):
+                self._send_json({"error": f"{date_str} is already recorded"}, status=409)
+                return
+            try:
+                self._refresh_court_assignments_viewer()
+            except Exception as e:
+                self._send_json({"error": f"Recorded, but viewer refresh failed: {e}"}, status=500)
+                return
+            self._send_json({"date": date_str, "type": "none", "status": "recorded and viewer refreshed"})
+            return
+
+        # date_type == "single"
+        if not self._append_csv_date(PARTIAL_SHOOTOUT_CSV, date_str):
+            self._send_json({"error": f"{date_str} is already recorded"}, status=409)
+            return
+        try:
+            parsed = datetime.strptime(date_str, "%Y-%m-%d")
+            scrape_date = parsed.strftime("%m%d%y")
+
+            subprocess.run(
+                ["node", "scraper/scrape.js", "--start", scrape_date, "--end", scrape_date,
+                 "--output", "data/latest_scrape.csv"],
+                cwd=REPO_ROOT, check=True, timeout=120,
+            )
+            subprocess.run(
+                ["python3", "scraper/merge_csv.py"],
+                cwd=REPO_ROOT, check=True, timeout=60,
+            )
+            # /tmp-then-mv: writing large xlsx files directly into the
+            # Documents subtree has hit a real macOS write-timeout bug
+            # before -- always build there first.
+            subprocess.run(
+                ["python3", "engine/pickleball_engine_v2.py",
+                 "--input", "data/master_history_raw.csv",
+                 "--output", "/tmp/pickleball_model_latest.xlsx"],
+                cwd=REPO_ROOT, check=True, timeout=600,
+            )
+            subprocess.run(
+                ["mv", "/tmp/pickleball_model_latest.xlsx",
+                 str(REPO_ROOT / "output/pickleball_model_latest.xlsx")],
+                check=True,
+            )
+            self._refresh_court_assignments_viewer()
+        except subprocess.CalledProcessError as e:
+            self._send_json({"error": f"Pipeline step failed (exit {e.returncode}): {e}"}, status=500)
+            return
+        except subprocess.TimeoutExpired as e:
+            self._send_json({"error": f"Pipeline step timed out: {e}"}, status=500)
+            return
+        self._send_json({
+            "date": date_str, "type": "single",
+            "status": "scraped, merged, engine rebuilt, viewer refreshed",
+        })
 
     def log_message(self, format, *args):
         # Quiet default stderr logging; launchd captures stdout/stderr to its own log files anyway.

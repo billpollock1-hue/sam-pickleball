@@ -507,9 +507,18 @@ def set_move_players(page, shuffle_mode):
         move_players_field = move_players_label.locator(
             "xpath=following::vaadin-select[1]"
         )
+        # Capture a stable reference to THIS specific element (by id) so
+        # every later action -- especially the read-back below -- targets
+        # the exact same DOM node, not whatever a positional XPath happens
+        # to re-resolve to after the page has changed. Confirmed live
+        # 2026-08-25: after a failed click, the positional locator
+        # re-resolved to an unrelated "Five Player Pools" dropdown.
+        field_id = move_players_field.get_attribute("id", timeout=2000)
+        if field_id:
+            move_players_field = page.locator(f"#{field_id}")
         move_players_field.click(timeout=3000)
         page.wait_for_timeout(500)
-        page.get_by_text(target_text, exact=True).click(timeout=3000)
+        page.get_by_role("option", name=target_text, exact=True).click(timeout=3000)
         page.wait_for_timeout(500)
     except Exception as e:
         print(f"  \u26a0 Could not set Move Players field: {e} -- leaving Den's "

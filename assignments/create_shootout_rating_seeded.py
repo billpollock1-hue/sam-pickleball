@@ -515,6 +515,18 @@ def set_move_players(page, shuffle_mode):
         page.wait_for_timeout(500)
         page.get_by_role("option", name=target_text, exact=True).click(timeout=3000)
         page.wait_for_timeout(500)
+        # Proactively dismiss the dropdown overlay even on a SUCCESSFUL
+        # click -- confirmed live 2026-08-25 that Vaadin's overlay can
+        # remain visually open/intercepting clicks briefly after a
+        # successful selection, not just after a failed one, blocking
+        # the very next click ("Create Shootout") with the same
+        # stuck-overlay symptom the except-block dismiss below was
+        # originally built for.
+        try:
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(300)
+        except Exception:
+            pass
     except Exception as e:
         print(f"  \u26a0 Could not set Move Players field: {e} -- leaving Den's "
               f"existing value untouched rather than failing the whole launch.")

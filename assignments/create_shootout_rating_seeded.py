@@ -92,7 +92,7 @@ def todays_date():
 DEBUG_DIR = OUT_DIR / "debug" / "create_shootout"
 DEBUG_DIR.mkdir(parents=True, exist_ok=True)
 
-HEADLESS = True  # flip to False for live selector testing against the real app
+HEADLESS = False  # TEMPORARY test mode -- revert to True after this test
 
 
 def _debug_screenshot(page, name):
@@ -501,21 +501,16 @@ def set_move_players(page, shuffle_mode):
     """
     target_text = "Two-up / Two-down" if shuffle_mode == "2u2b" else "One-up / One-down"
     print(f"  Setting Move Players to: {target_text}")
-    move_players_field = None
+    # get_by_label re-resolves fresh, via the field's own accessibility
+    # label association, every single time it's used -- never depends on
+    # remembering a specific prior element. Two earlier approaches (a
+    # positional XPath, then a custom marker attribute set directly on
+    # the element) both failed live 2026-08-25, most likely because
+    # Vaadin destroys and recreates the underlying element on close/
+    # error, so nothing set beforehand on the original element can
+    # survive regardless of how it was tagged.
+    move_players_field = page.get_by_label("Move Players")
     try:
-        move_players_label = page.get_by_text("Move Players", exact=False)
-        move_players_field = move_players_label.locator(
-            "xpath=following::vaadin-select[1]"
-        )
-        # Capture a stable reference to THIS specific element (by id) so
-        # every later action -- especially the read-back below -- targets
-        # the exact same DOM node, not whatever a positional XPath happens
-        # to re-resolve to after the page has changed. Confirmed live
-        # 2026-08-25: after a failed click, the positional locator
-        # re-resolved to an unrelated "Five Player Pools" dropdown.
-        field_id = move_players_field.get_attribute("id", timeout=2000)
-        if field_id:
-            move_players_field = page.locator(f"#{field_id}")
         move_players_field.click(timeout=3000)
         page.wait_for_timeout(500)
         page.get_by_role("option", name=target_text, exact=True).click(timeout=3000)
@@ -531,11 +526,6 @@ def set_move_players(page, shuffle_mode):
         _debug_screenshot(page, "move_players_field")
 
     try:
-        if move_players_field is None:
-            move_players_label = page.get_by_text("Move Players", exact=False)
-            move_players_field = move_players_label.locator(
-                "xpath=following::vaadin-select[1]"
-            )
         actual_value = move_players_field.inner_text(timeout=2000).strip()
         return actual_value if actual_value else "Unknown"
     except Exception:

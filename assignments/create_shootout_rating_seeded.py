@@ -92,7 +92,7 @@ def todays_date():
 DEBUG_DIR = OUT_DIR / "debug" / "create_shootout"
 DEBUG_DIR.mkdir(parents=True, exist_ok=True)
 
-HEADLESS = False  # TEMPORARY test mode -- revert to True after this test
+HEADLESS = True  # flip to False for live selector testing against the real app
 
 
 def _debug_screenshot(page, name):

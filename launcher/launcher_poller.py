@@ -181,14 +181,25 @@ def run_launch(mode):
             except json.JSONDecodeError:
                 pass
 
+        # create_shootout_rating_seeded.py (elo_autolaunch) now logs its
+        # own results directly -- confirmed 2026-08-25 this closes a real
+        # gap where any direct/manual run of that script never got
+        # logged at all. Logging here too would double-log every normal
+        # poller-triggered run. create_shootout.py (step_percent) does
+        # NOT yet have self-logging, so this script still logs for that
+        # mode, same as before.
+        already_self_logs = (mode == "elo_autolaunch")
+
         if result.returncode == 0:
-            append_log("success", seeding_basis, players_removed,
-                        court_assignments=court_assignments,
-                        shootout2_shuffle_mode=actual_shuffle_mode or shuffle_label)
+            if not already_self_logs:
+                append_log("success", seeding_basis, players_removed,
+                            court_assignments=court_assignments,
+                            shootout2_shuffle_mode=actual_shuffle_mode or shuffle_label)
             return True
         else:
-            append_log("error", seeding_basis, players_removed, shootout2_shuffle_mode=shuffle_label,
-                        message=result.stderr[-500:] if result.stderr else "non-zero exit")
+            if not already_self_logs:
+                append_log("error", seeding_basis, players_removed, shootout2_shuffle_mode=shuffle_label,
+                            message=result.stderr[-500:] if result.stderr else "non-zero exit")
             return False
     except Exception as e:
         append_log("error", seeding_basis, [], message=str(e))

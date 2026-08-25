@@ -50,7 +50,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -544,6 +544,66 @@ def set_move_players(page, shuffle_mode):
         return "Unknown"
 
 
+# Absolute path -- same reasoning as LAUNCHER_CONFIG_PATH above: this
+# script always runs from assignments/, but the shared launch log
+# always lives in launcher/, regardless of which copy of this script
+# is running, and regardless of whether the poller or a person invoked
+# it directly.
+LAUNCH_LOG_PATH = Path(
+    "/Users/billpollock/Documents/SAM Pickleball/sam-pickleball/launcher/launch_log.jsonl"
+)
+LOG_RETENTION_DAYS = 30  # matches launcher_poller.py's own retention window
+
+
+def log_launch_result(status, players_removed, message="", court_assignments=None,
+                       shootout2_shuffle_mode=None):
+    """
+    Writes directly to the shared launch log, regardless of whether this
+    script was invoked by the scheduled poller or run directly by hand.
+    Never lets a logging failure crash the actual launch.
+    """
+    entry = {
+        "timestamp": datetime.now(ZoneInfo("America/Phoenix")).strftime("%Y-%m-%d %H:%M:%S MST"),
+        "status": status,
+        "seeding_basis": "Modified ELO",
+        "players_removed": players_removed or [],
+        "message": message,
+        "court_assignments": court_assignments or [],
+        "shootout2_shuffle_mode": shootout2_shuffle_mode,
+    }
+    try:
+        with LAUNCH_LOG_PATH.open("a") as f:
+            f.write(json.dumps(entry) + "\n")
+        _trim_launch_log()
+    except Exception:
+        pass
+
+
+def _trim_launch_log():
+    if not LAUNCH_LOG_PATH.exists():
+        return
+    cutoff = datetime.now(ZoneInfo("America/Phoenix")) - timedelta(days=LOG_RETENTION_DAYS)
+    try:
+        lines = LAUNCH_LOG_PATH.read_text().splitlines()
+    except Exception:
+        return
+    kept = []
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            entry = json.loads(line)
+            ts = datetime.strptime(entry["timestamp"], "%Y-%m-%d %H:%M:%S MST").replace(
+                tzinfo=ZoneInfo("America/Phoenix")
+            )
+            if ts >= cutoff:
+                kept.append(line)
+        except Exception:
+            continue
+    if len(kept) != len(lines):
+        LAUNCH_LOG_PATH.write_text("\n".join(kept) + ("\n" if kept else ""))
+
+
 def create_shootout(page, num_courts):
     print(f"Creating shootout with {num_courts} court(s)...")
 
@@ -838,6 +898,9 @@ def main():
 
         page = context.new_page()
 
+        excess_names = []
+        court_assignments_log = []
+        actual_shuffle_mode = None
         try:
             print("Opening signup sheet...")
             page.goto(SIGNUP_URL, wait_until="domcontentloaded")
@@ -905,9 +968,14 @@ def main():
             print(f"\n✓ Shootout created and started for {play_date_display} "
                   f"(Modified ELO seeding).")
             print(f"LAUNCH_RESULT: {json.dumps({'players_removed': excess_names, 'court_assignments': court_assignments_log, 'shootout2_shuffle_mode': actual_shuffle_mode})}")
+            log_launch_result("success", excess_names, court_assignments=court_assignments_log,
+                               shootout2_shuffle_mode=actual_shuffle_mode)
 
         except Exception as e:
             print(f"\n✗ Automated shootout creation failed: {e}")
+            log_launch_result("error", excess_names, message=str(e),
+                               court_assignments=court_assignments_log,
+                               shootout2_shuffle_mode=actual_shuffle_mode)
             _debug_screenshot(page, "fatal_failure")
             raise
 

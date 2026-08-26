@@ -616,7 +616,7 @@ def create_shootout(page, num_courts):
         f"xpath=(//*[contains(normalize-space(text()), '{heading_fragment}')])[1]"
         f"/following::*[contains(normalize-space(text()), 'Create Shootout')][1]"
     )
-    create_shootout_link.click(timeout=5000)
+    create_shootout_link.click(timeout=30000)
     page.wait_for_timeout(1000)
 
     # "Number of Courts" is the only field this script touches; every other
@@ -642,7 +642,7 @@ def create_shootout(page, num_courts):
     # page has both an <h2>Create Shootout</h2> heading and the actual
     # submit button, and exact=False matches case-insensitively, so both
     # matched. get_by_role targets the button specifically.
-    page.get_by_role("button", name="Create Shootout", exact=True).click(timeout=5000)
+    page.get_by_role("button", name="Create Shootout", exact=True).click(timeout=30000)
     page.wait_for_timeout(1200)
 
     return actual_shuffle_mode
@@ -862,7 +862,7 @@ def cross_check_and_correct_seeding(page, computed_assignments):
 
 def seed_players(page):
     print("Seeding players...")
-    page.get_by_text("Seed Players", exact=True).click(timeout=5000)
+    page.get_by_text("Seed Players", exact=True).click(timeout=30000)
     page.wait_for_timeout(500)
     _confirm_yes(page, label_hint="Seed Players")
     page.wait_for_timeout(1500)  # allow "Shootout seeded" toast to clear
@@ -870,7 +870,7 @@ def seed_players(page):
 
 def start_event(page):
     print("Starting event...")
-    page.get_by_text("Start Event", exact=True).click(timeout=5000)
+    page.get_by_text("Start Event", exact=True).click(timeout=30000)
     page.wait_for_timeout(500)
     _confirm_yes(page, label_hint="Start Event")
     page.wait_for_timeout(1500)

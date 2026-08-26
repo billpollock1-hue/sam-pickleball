@@ -658,7 +658,7 @@ def create_shootout(page, num_courts):
 
 def check_in_all(page):
     print("Checking in all players...")
-    page.get_by_text("Check-In All", exact=True).click(timeout=5000)
+    page.get_by_text("Check-In All", exact=True).click(timeout=30000)
     page.wait_for_timeout(500)
     _confirm_yes(page, label_hint="Check-In All")
     page.wait_for_timeout(1000)

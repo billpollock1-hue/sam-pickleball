@@ -74,6 +74,52 @@
 
   #loadingMsg, #errorMsg { padding: 40px 0; text-align: center; color: #777; }
   #errorMsg { color: var(--rust); display: none; }
+
+  .participation-card {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    padding: 18px 16px;
+    margin-top: 24px;
+  }
+  .participation-card h2 {
+    font-size: 17px;
+    margin-bottom: 4px;
+  }
+  .participation-card .sub {
+    font-size: 12.5px;
+    color: #666;
+    margin-bottom: 14px;
+  }
+  table.participation-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+  }
+  table.participation-table th {
+    text-align: left;
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #888;
+    border-bottom: 2px solid #eee;
+    padding: 6px 8px;
+  }
+  table.participation-table td {
+    padding: 7px 8px;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  table.participation-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .status-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 10px;
+  }
+  .status-badge.dropped { background: rgba(179, 84, 58, 0.16); color: var(--rust); }
+  .status-badge.new     { background: rgba(46, 117, 182, 0.16); color: var(--blue-mid); }
+  .status-badge.continuing { background: #f0f0f0; color: #666; }
 </style>
 </head>
 <body>
@@ -97,6 +143,25 @@
   </div>
 
   <div class="status-row" id="statusRow"></div>
+
+  <div class="participation-card">
+    <h2>Player Participation</h2>
+    <div class="sub" id="participationSub"></div>
+    <table class="participation-table">
+      <thead>
+        <tr>
+          <th>Player</th>
+          <th>Status</th>
+          <th class="num">Pre days</th>
+          <th class="num">Post days</th>
+          <th class="num">Pre rate</th>
+          <th class="num">Post rate</th>
+          <th class="num">Change</th>
+        </tr>
+      </thead>
+      <tbody id="participationBody"></tbody>
+    </table>
+  </div>
 
   <a class="back" href="/">&larr; Back to Admin</a>
 </main>
@@ -211,6 +276,41 @@ async function init() {
     `first post-change day ${data.first_post_change_date || '—'}. ` +
     `Showing the most recent ${RECENT_WINDOW_DAYS} play days (full history is in the data — ` +
     `${data.days.length} days total). Data generated ${data.generated_at}.`;
+
+  renderParticipation(data.participation, data.format_change_date);
+}
+
+function renderParticipation(p, formatChangeDate) {
+  const sub = document.getElementById('participationSub');
+  const body = document.getElementById('participationBody');
+
+  if (!p || !p.players) {
+    sub.textContent = 'No participation data available.';
+    return;
+  }
+
+  sub.innerHTML =
+    `Pre-change baseline (fixed): <b>${p.pre_window_start}</b> to <b>${p.pre_window_end}</b> ` +
+    `(${p.pre_available_dates} play dates). Post-change (growing): from ` +
+    `<b>${formatChangeDate}</b> onward (${p.post_available_dates} play dates so far). ` +
+    `Rate = a player's play days ÷ play dates available in that window.`;
+
+  const pct = (n) => `${Math.round(n * 100)}%`;
+  const deltaColor = (d) => d > 0 ? '#2E7D32' : (d < 0 ? '#b3543a' : '#888');
+
+  body.innerHTML = p.players.map(row => `
+    <tr>
+      <td>${row.player}</td>
+      <td><span class="status-badge ${row.status}">${row.status}</span></td>
+      <td class="num">${row.pre_days}</td>
+      <td class="num">${row.post_days}</td>
+      <td class="num">${pct(row.pre_rate)}</td>
+      <td class="num">${pct(row.post_rate)}</td>
+      <td class="num" style="color:${deltaColor(row.rate_delta)}">
+        ${row.rate_delta > 0 ? '+' : ''}${pct(row.rate_delta)}
+      </td>
+    </tr>
+  `).join('');
 }
 
 init();

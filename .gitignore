@@ -1,0 +1,33 @@
+# Secrets & sessions
+den_credentials.json
+den_session.json
+
+# Generated outputs — rebuilt on every run (docs/ is the exception — tracked for GitHub Pages)
+output/
+*.pdf
+
+# Live data files
+data/master_history_raw.csv
+data/latest_scrape.csv
+
+# Virtual environment
+.venv/
+
+# Monitor runtime pointers (live files under ~/Library/Application Support/PBMonitor)
+signup-monitor/logs
+signup-monitor/signup_viewer.html
+signup_monitor_state.json
+
+# macOS
+.DS_Store
+data/backups/
+diag*.js
+scraper/*.bak
+scraper/*.bak2
+scraper/*.bak3
+
+# Launcher runtime state — not source code, changes constantly
+launcher/launch_log.jsonl
+launcher/launcher_config.json
+launcher/logs/
+data/den_current_members.csv

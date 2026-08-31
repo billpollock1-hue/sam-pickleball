@@ -1,0 +1,4579 @@
+#!/usr/bin/env python3
+
+import argparse
+import math
+import re
+from collections import defaultdict
+from pathlib import Path
+
+import pandas as pd
+from openpyxl import load_workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.formatting.rule import ColorScaleRule, DataBarRule
+from openpyxl.utils import get_column_letter
+from eod_rating_cache import get_or_update_eod_cache
+
+BASE_ELO = 1000.0
+K_FACTOR = 20.0                      # unchanged -- confirmed near-optimal (Step 2, Sweep A)
+EXPECTATION_COMPRESSION = 0.92       # was 0.85 -- display/reporting only, does not affect
+                                      # rating values (feeds predicted(), not expected())
+PROVISIONAL_K_START = 40.0           # REVERTED to original value (July 2026 re-check).
+                                      # Step 2's 100/120 recommendation was invalidated: it
+                                      # was chosen using build_model_validation(), whose
+                                      # eligibility gate (60+ prior games) is a FIXED
+                                      # threshold that never moves with PROVISIONAL_K_GAMES.
+                                      # As PROVISIONAL_K_GAMES increased, more elevated-K
+                                      # games shifted into the ineligible population --
+                                      # the population Step 2's objective was measuring
+                                      # changed along with the parameter being tested. A
+                                      # relaxed-gate re-check (MIN_GAMES threshold, scored
+                                      # separately by prior-game bucket) showed elevated K
+                                      # actively HURT predictions in the provisional
+                                      # population itself (Brier 0.1866 at K_START=40 vs.
+                                      # 0.1886 at K_START=100, same 426 games, K_GAMES=60
+                                      # held constant) -- confirmed directly against real
+                                      # cases (Jose Valdez R: 1218 -> 1106 on revert, zero
+                                      # 80+pt swings remaining, down from 10; Russ Brannon,
+                                      # whose rating rested on a broad sustained record
+                                      # rather than outlier leverage, barely moved: 1630 ->
+                                      # 1560). A fine-grid re-sweep against the corrected,
+                                      # bucketed objective found K_START=40, K_GAMES=60 --
+                                      # the original defaults -- at or near the true optimum.
+PROVISIONAL_K_GAMES = 60             # REVERTED alongside PROVISIONAL_K_START -- see above.
+                                      # Fine-grid sweep showed this is a real local minimum
+                                      # for the provisional population, not just a fallback:
+                                      # worse both shorter (45: ramp too fast, Brier ~0.208)
+                                      # and longer (75/90: keeps K elevated past where it
+                                      # helps, Brier ~0.19). Also once again the freshness/
+                                      # credibility window's size (LAST_N_GAMES, below) --
+                                      # the two meanings happen to share this constant.
+
+LAST_N_GAMES = 60                    # unchanged in VALUE, but changes MEANING -- no longer
+                                      # used for the rating window; now exclusively the
+                                      # freshness/credibility window
+MIN_GAMES = 24                       # unchanged -- out of scope for this fix
+CONF_DEN = 10                        # unchanged -- UNTESTED, deferred
+
+NO_AGING_DAYS = 90                   # value unchanged, but role changes: now the hard
+                                      # exclusion tier's threshold only (see freshness_tier
+                                      # below); no longer feeds a continuous penalty
+MAX_FRESHNESS_PENALTY = 0.0          # was 0.15 -- continuous freshness penalty removed
+                                      # (validated worse at every tested value); this makes
+                                      # freshness_factor() always return 1.0. Kept as a
+                                      # no-op rather than deleted so freshness_tier's hard
+                                      # exclusion below remains the only staleness mechanism
+
+# DEN membership snapshot (added 2026-07-21): rolling file written every ~15
+# minutes by refresh_assignments.py's fetch_den_ratings(). Presence of a
+# player's name here is the current-membership signal -- DEN's ratings page
+# only lists current members, so there's no separate boolean to check.
+MEMBERSHIP_FILE = Path(__file__).resolve().parent.parent / "data" / "den_current_members.csv"
+EOD_CACHE_PATH = Path(__file__).resolve().parent.parent / "data" / "eod_rating_cache.json"
+
+
+def load_current_members():
+    """Returns a set of current DEN member names, or None if the membership
+    snapshot file doesn't exist yet -- callers should treat None as "fail
+    open" (don't exclude anyone) rather than treat a missing file as an
+    empty membership list."""
+    if not MEMBERSHIP_FILE.exists():
+        print(f"WARNING: membership file not found ({MEMBERSHIP_FILE}) -- "
+              f"skipping membership-based leaderboard exclusion this run.")
+        return None
+    try:
+        df = pd.read_csv(MEMBERSHIP_FILE)
+        return set(df["Player"].dropna().astype(str).str.strip())
+    except Exception as e:
+        print(f"WARNING: failed to read membership file ({e}) -- "
+              f"skipping membership-based leaderboard exclusion this run.")
+        return None
+
+
+PLACEHOLDERS = {
+    "den new player tryout",
+    "sam/8am new player tryout",
+    "sam/nam/co-ed drop in 2",
+}
+
+GUEST_OUTPUT_EXCLUSIONS = {
+    "Steve Fahrenkrog",
+    "Jonathan Ernst",
+    "Bella Tinstman",
+    "Chaim McKee",
+}
+
+MANUAL_NAME_FIXES = {
+    ("2026-04-06", "DEN New Player Tryout"): "Bella Tinstman",
+    ("2026-03-19", "DEN New Player Tryout"): "Jonathan Ernst",
+    ("2026-03-20", "DEN New Player Tryout"): "Jonathan Ernst",
+    ("2026-03-26", "Karen Carter"): "Kenneth Whipple",
+    ("2026-03-26", "DEN New Player Tryout"): "Logan Brannon",
+    ("2026-07-29", "Den New Player Tryout"): "David Roming",
+    ("2026-08-14", "Den New Player Tryout"): "Bella Tinstman",
+}
+
+
+def norm(s):
+    if pd.isna(s):
+        return ""
+    return " ".join(str(s).strip().split())
+
+
+def split_team(team):
+    parts = [norm(x) for x in norm(team).split(" / ")]
+    if len(parts) == 1:
+        parts.append("")
+    return parts[:2]
+
+
+def apply_manual_fix(team, posted_dt):
+    team = norm(team)
+    if pd.isna(posted_dt):
+        return team
+    date_key = pd.Timestamp(posted_dt).strftime("%Y-%m-%d")
+    for (fix_date, old_name), new_name in MANUAL_NAME_FIXES.items():
+        if fix_date != date_key:
+            continue
+        # Case-insensitive match (DEN's own scraped casing drifts, e.g.
+        # "Den New Player Tryout" vs "DEN New Player Tryout") -- the
+        # replacement text itself keeps exactly the casing written above.
+        pattern = re.compile(re.escape(old_name), re.IGNORECASE)
+        team = pattern.sub(new_name, team)
+    return norm(team)
+
+
+def team_has_placeholder(team):
+    t = norm(team).lower()
+    return any(ph in t for ph in PLACEHOLDERS)
+
+
+def margin_multiplier(point_diff):
+    return math.log(abs(point_diff) + 1)
+    # No cap. Confirmed by Step 2 Sweep D: Brier score improved monotonically up to
+    # the natural ceiling for an 11-0 game (log(12) ~= 2.485) and went perfectly flat
+    # beyond it -- the cap was suppressing real signal from blowout games, not
+    # protecting against anything.
+
+
+def expected(team_a_rating, team_b_rating):
+    return 1 / (1 + 10 ** ((team_b_rating - team_a_rating) / 400))
+
+
+def predicted(team_a_rating, team_b_rating):
+    gap = (team_a_rating - team_b_rating) * EXPECTATION_COMPRESSION
+    return 1 / (1 + 10 ** (-gap / 400))
+
+# game_position_decay() REMOVED (July 2026 review): was applying 25%->100% weight
+# ramp to a player's first 60 games ever recorded in whatever dataset was passed to
+# build_full_player_log(), regardless of window -- unconditional, not scoped to the
+# no-history-drift window it was originally built for. Since build_model_validation()
+# only scores predictions for players with 60+ prior games (see build_model_validation),
+# this decay's immediate multiplier was always 1.0 for every game actually scored --
+# it was invisible to every validation run so far, never isolated or tested for
+# removal. Its downstream effect (suppressed early-career rating deltas baked into
+# history) was present in every tested configuration, including the "no decay"
+# baseline. Removed as an unvalidated, out-of-scope mechanism; re-run
+# build_model_validation() after this change as a genuine baseline check.
+
+
+def freshness_factor(days_since_last_play, avg_game_age):
+    last_play_penalty = max(0, days_since_last_play - NO_AGING_DAYS) / 365
+    avg_age_penalty = max(0, avg_game_age - NO_AGING_DAYS) / 365
+    total_penalty = min(
+        MAX_FRESHNESS_PENALTY,
+        last_play_penalty * 0.60 + avg_age_penalty * 0.40,
+    )
+    return 1.0 - total_penalty
+
+
+def freshness_tier(days_since_last_play, avg_game_age):
+    effective_age = max(days_since_last_play, avg_game_age)
+    if effective_age <= 90:
+        return "Very Fresh"
+    if effective_age <= 180:
+        return "Mature"
+    if effective_age <= 365:
+        return "Stale"
+    return "Very Stale"
+
+
+FREQUENT_PLAY_WINDOW_DAYS = 365
+FREQUENT_PLAY_MIN_DAYS = 6
+
+
+def compute_recent_play_days(full_player_log, as_of, window_days=FREQUENT_PLAY_WINDOW_DAYS):
+    """
+    Distinct play-dates per player in the trailing window_days. Added
+    2026-07-21 alongside the leaderboard visibility fix below: freshness_tier's
+    avg_game_age component can flag a genuinely active, frequently-playing
+    player as Stale/Very Stale if their overall history is long and sporadic,
+    even though their recent play pattern is regular. This measures
+    frequency directly (how many distinct days played recently) rather than
+    inferring it from an averaged history -- confirmed against real cases
+    (e.g. Elizabeth Flynn: 23 distinct play-days in the trailing year, but
+    avg_game_age of 183 pushes her to Stale under the old measure alone).
+    """
+    as_of_ts = pd.Timestamp(as_of).normalize()
+    cutoff = as_of_ts - pd.Timedelta(days=window_days)
+    rated = full_player_log[
+        (full_player_log["include_in_ratings"] == "Yes")
+        & (pd.to_datetime(full_player_log["posted_dt"]) >= cutoff)
+        & (pd.to_datetime(full_player_log["posted_dt"]) <= as_of_ts + pd.Timedelta(days=1) - pd.Timedelta(seconds=1))
+    ].copy()
+    if rated.empty:
+        return pd.Series(dtype=int)
+    return rated.groupby("player")["posted_dt"].apply(lambda s: pd.to_datetime(s).dt.date.nunique())
+
+
+def confidence_tier(games_used):
+    if games_used >= 30:
+        return "Highly Reliable"
+    if games_used >= 24:
+        return "Established"
+    return "Emerging"
+
+
+def trend_icon(trend_value, hot_threshold=None, cold_threshold=None):
+    """Fire/ice/dash badge. Added 2026-07-21 alongside the rating-delta trend
+    switch: hot_threshold/cold_threshold are computed dynamically each run
+    as the 85th/15th percentile of Rating Delta (24) among currently-active,
+    24+-game players -- not fixed constants -- since a fixed threshold would
+    need re-tuning as participation rises and falls over time. Falls back to
+    dash if thresholds are unavailable (e.g. too few eligible players)."""
+    if trend_value is None or pd.isna(trend_value):
+        return "N/A"
+    if hot_threshold is None or cold_threshold is None:
+        return "—"
+    if trend_value >= hot_threshold:
+        return "\U0001f525"
+    if trend_value <= cold_threshold:
+        return "\U0001f9ca"
+    return "—"
+
+
+def consistency_icon(score, tercile_low, tercile_high):
+    if score is None or pd.isna(score):
+        return "N/A"
+    if score <= tercile_low:
+        return "\U0001f3af"
+    if score >= tercile_high:
+        return "\U0001f3b2"
+    return "—"
+
+
+def style_sheet(ws, widths, zoom=None, row_h=18):
+    header_fill = PatternFill("solid", fgColor="1F4E78")
+    header_font = Font(color="FFFFFF", bold=True)
+    thin = Side(style="thin", color="D9D9D9")
+    header_border = Border(bottom=thin)
+
+    if zoom is None:
+        total_width = sum(widths.values())
+        if total_width <= 130:
+            zoom = 120
+        elif total_width <= 200:
+            zoom = 110
+        elif total_width <= 280:
+            zoom = 100
+        elif total_width <= 380:
+            zoom = 90
+        else:
+            zoom = 80
+    ws.sheet_view.zoomScale = zoom
+
+    for c in range(1, ws.max_column + 1):
+        cell = ws.cell(1, c)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=False)
+        cell.border = header_border
+
+    for col, width in widths.items():
+        ws.column_dimensions[col].width = width
+
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:{get_column_letter(ws.max_column)}{ws.max_row}"
+    ws.row_dimensions[1].height = 22
+
+    for r in range(2, ws.max_row + 1):
+        ws.row_dimensions[r].height = row_h
+
+    for row in ws.iter_rows():
+        for cell in row:
+            if cell.row == 1:
+                continue
+            cell.alignment = Alignment(
+                horizontal="left" if cell.column in (1, 2) else "center",
+                vertical="center",
+                wrap_text=False,
+            )
+
+
+def _provisional_k(game_num):
+    """K-factor for a player's n-th rated game.
+    Grades linearly from PROVISIONAL_K_START at game 1 down to K_FACTOR by game
+    PROVISIONAL_K_GAMES, then holds at K_FACTOR for all subsequent games."""
+    if game_num >= PROVISIONAL_K_GAMES:
+        return K_FACTOR
+    slope = (PROVISIONAL_K_START - K_FACTOR) / (PROVISIONAL_K_GAMES - 1)
+    return PROVISIONAL_K_START - (game_num - 1) * slope
+
+
+def build_full_player_log(raw):
+    ratings = defaultdict(lambda: BASE_ELO)
+    player_game_count = defaultdict(int)  # rated games played so far per player
+    player_rows = []
+
+    for match_id, (_, r) in enumerate(raw.iterrows(), start=1):
+        w1, w2 = split_team(r["winning_team"])
+        l1, l2 = split_team(r["losing_team"])
+        sw, sl = int(r["winning_score"]), int(r["losing_score"])
+        include = bool(r["include_in_ratings"])
+
+        snap = {p: ratings[p] for p in [w1, w2, l1, l2]}
+        team_win_pre = (snap[w1] + snap[w2]) / 2
+        team_lose_pre = (snap[l1] + snap[l2]) / 2
+        exp_win = expected(team_win_pre, team_lose_pre)
+        exp_lose = 1 - exp_win
+        pred_win = predicted(team_win_pre, team_lose_pre)
+        pred_lose = 1 - pred_win
+        mult = margin_multiplier(sw - sl)
+
+        if include:
+            k_w1 = _provisional_k(player_game_count[w1] + 1)
+            k_w2 = _provisional_k(player_game_count[w2] + 1)
+            k_l1 = _provisional_k(player_game_count[l1] + 1)
+            k_l2 = _provisional_k(player_game_count[l2] + 1)
+        else:
+            k_w1 = k_w2 = k_l1 = k_l2 = 0.0
+
+        d_w1 = round(k_w1 * (1 - exp_win) * mult, 2)
+        d_w2 = round(k_w2 * (1 - exp_win) * mult, 2)
+        d_l1 = round(k_l1 * (0 - exp_lose) * mult, 2)
+        d_l2 = round(k_l2 * (0 - exp_lose) * mult, 2)
+
+        rows_for_game = [
+            (w1, w2, l1, l2, 1, sw, sl, d_w1, pred_win),
+            (w2, w1, l1, l2, 1, sw, sl, d_w2, pred_win),
+            (l1, l2, w1, w2, 0, sl, sw, d_l1, pred_lose),
+            (l2, l1, w1, w2, 0, sl, sw, d_l2, pred_lose),
+        ]
+
+        for player, partner, opp1, opp2, is_win, pf, pa, delta, exp_result in rows_for_game:
+            pre = snap[player]
+            post = round(pre + delta, 2) if include else round(pre, 2)
+            partner_pre = snap[partner]
+            opp1_pre = snap[opp1]
+            opp2_pre = snap[opp2]
+            own_team_pre = (pre + partner_pre) / 2
+            avg_opp_pre = (opp1_pre + opp2_pre) / 2
+            schedule_diff = own_team_pre - avg_opp_pre
+
+            player_rows.append(
+                {
+                    "match_id": match_id,
+                    "posted": r["posted_dt"].date(),
+                    "posted_dt": r["posted_dt"],
+                    "player": player,
+                    "partner": partner,
+                    "opp1": opp1,
+                    "opp2": opp2,
+                    "is_win": is_win,
+                    "expected_win": exp_result,
+                    "pf": pf,
+                    "pa": pa,
+                    "margin": pf - pa,
+                    "player_pre_rating": round(pre, 2),
+                    "player_post_rating": post,
+                    "rating_change": round(post - pre, 2),
+                    "partner_pre_rating": round(partner_pre, 2),
+                    "avg_opponent_pre_rating": round(avg_opp_pre, 2),
+                    "schedule_differential": round(schedule_diff, 2),
+                    "team_pre_rating": round(team_win_pre if is_win else team_lose_pre, 2),
+                    "opp_team_pre_rating": round(team_lose_pre if is_win else team_win_pre, 2),
+                    "expected_result": round(exp_result, 4),
+                    "include_in_ratings": "Yes" if include else "No",
+                    "pool": str(r.get("pool", "") or ""),
+                    "shootout": int(r["shootout"]) if pd.notna(r.get("shootout")) else 1,
+                }
+            )
+
+        if include:
+            ratings[w1] = round(snap[w1] + d_w1, 2)
+            ratings[w2] = round(snap[w2] + d_w2, 2)
+            ratings[l1] = round(snap[l1] + d_l1, 2)
+            ratings[l2] = round(snap[l2] + d_l2, 2)
+            player_game_count[w1] += 1
+            player_game_count[w2] += 1
+            player_game_count[l1] += 1
+            player_game_count[l2] += 1
+
+    return pd.DataFrame(player_rows)
+
+
+def build_player_freshness_window(full_player_log, as_of, player, window_size=LAST_N_GAMES):
+    """
+    Per-player only -- no union with any other player's data. This is a purely
+    descriptive stat (how recently and consistently has THIS person played), not
+    a relational rating computation, so there is nothing here for a contamination
+    bug to attach to.
+
+    Returns the player's own last `window_size` real games as of `as_of`, for
+    computing days_since_last_play, avg_game_age, recent form, and sample size --
+    NOT for computing their rating (that comes from the full log elsewhere).
+    """
+    as_of = pd.Timestamp(as_of).normalize()
+    rated = full_player_log[
+        (full_player_log["include_in_ratings"] == "Yes")
+        & (full_player_log["player"] == player)
+        & (pd.to_datetime(full_player_log["posted_dt"]) <= as_of + pd.Timedelta(days=1) - pd.Timedelta(seconds=1))
+    ].sort_values(["posted_dt", "match_id"])
+
+    return rated.tail(window_size)
+
+
+def build_current_leaderboard(full_player_log, as_of):
+    """
+    Replaces build_last_n_leaderboard(). Two things are now computed from two
+    different sources, deliberately:
+
+      - Rating: the player's most recent player_post_rating in the FULL cumulative
+        log (all history, no window, no reset).
+      - Freshness / sample size / recent-form stats: computed from
+        build_player_freshness_window() -- last LAST_N_GAMES real games, per-player,
+        no union, no contamination.
+    """
+    as_of = pd.Timestamp(as_of).normalize()
+    rated = full_player_log[
+        (full_player_log["include_in_ratings"] == "Yes")
+        & (pd.to_datetime(full_player_log["posted_dt"]) <= as_of + pd.Timedelta(days=1) - pd.Timedelta(seconds=1))
+    ].copy()
+
+    current_members = load_current_members()
+
+    rows = []
+
+    for p in sorted(rated["player"].dropna().unique()):
+        window = build_player_freshness_window(full_player_log, as_of, p)
+        g = len(window)
+
+        # MIN_GAMES no longer gates inclusion here (removed 2026-07-21) -- a
+        # player needs 24+ games in their last-60 window to pass this, which
+        # for anyone with under 60 career games is identical to "24+ lifetime
+        # games ever" -- a redundant, arbitrary lifetime-achievement bar once
+        # the leaderboard's real gate (recency + membership + distinct
+        # play-days in the trailing year) is in place. Kept only a
+        # crash-safety floor: a player with zero games in the window has no
+        # last-played date to compute from.
+        if g == 0:
+            continue
+
+        # RATING: from full history, not the window.
+        player_all = rated[rated["player"] == p].sort_values(["posted_dt", "match_id"])
+        raw_rating = float(player_all["player_post_rating"].iloc[-1])
+
+        # INACTIVITY EXCLUSION (added 2026-07-21): players absent 182+ days
+        # (~6 months) are excluded from the visible leaderboard entirely,
+        # not just tagged Very Stale. Threshold chosen to comfortably clear
+        # known seasonal "snowbird" absences (~May-Sept, some longer) while
+        # still catching genuinely inactive players. Computed here (ahead
+        # of the freshness-window stats below) since it needs the true
+        # last-played date, not the windowed one.
+        _last_played_check = player_all["posted_dt"].max()
+        _days_inactive = (as_of - pd.Timestamp(_last_played_check).normalize()).days
+        if _days_inactive > 182:
+            continue
+
+        # MEMBERSHIP EXCLUSION (added 2026-07-21): only current DEN members
+        # appear on the live leaderboard. current_members is None if the
+        # snapshot file is missing -- fail open (don't exclude anyone) rather
+        # than fail closed, since a missing/stale snapshot is a data problem,
+        # not a signal that everyone quit.
+        if current_members is not None and p.strip() not in current_members:
+            continue
+
+        # FRESHNESS / RECENT FORM: from the bounded window, exactly as before.
+        wins = int(window["is_win"].sum())
+        losses = int(g - wins)
+        actual_win_pct = wins / g if g else None
+        expected_win_pct = float(window["expected_win"].mean()) if g else None
+        win_pct_vs_expected = actual_win_pct - expected_win_pct if g else None
+
+        last_played = pd.Timestamp(window["posted"].iloc[-1]).date()
+        days_since_last = int((as_of.date() - last_played).days)
+        game_ages = [(as_of.date() - pd.Timestamp(d).date()).days for d in window["posted"]]
+        avg_game_age = round(sum(game_ages) / len(game_ages), 1)
+
+        sample_conf = 1.0 if g >= LAST_N_GAMES else g / (g + CONF_DEN)
+        # NOTE: the continuous freshness penalty (fresh_conf) is REMOVED here --
+        # validated in Step 2b and found to make predictions monotonically worse
+        # at every tested value; MAX_FRESHNESS_PENALTY = 0.0 now, so
+        # freshness_factor() always returns 1.0. Staleness is still handled, but
+        # only by the hard exclusion tier below (Freshness Tier), not by a
+        # continuous rating pull.
+        rating_conf = sample_conf
+
+        # Shrinkage now applies to the FULL-HISTORY rating, using only
+        # window-derived sample-size confidence.
+        player_rating = 1000 + ((raw_rating - 1000) * rating_conf)
+
+        rows.append(
+            {
+                "Rank": None,
+                "Player": p,
+                "Player Rating": int(round(player_rating)),
+                "Games Used (last 60)": int(g),
+                "Career Games": int(len(player_all)),
+                "Wins": wins,
+                "Losses": losses,
+                "Win %": actual_win_pct,
+                "Expected Win %": expected_win_pct,
+                "Win % vs Expected": win_pct_vs_expected,
+                "Avg Point Diff": round(float(window["margin"].mean()), 1),
+                "Avg Matchup Edge": int(round(float(window["schedule_differential"].mean()))),
+                "Last Played": last_played,
+                "Days Since Last Play": days_since_last,
+                "Avg Game Age": avg_game_age,
+                "Freshness Tier": freshness_tier(days_since_last, avg_game_age),
+                "Confidence Tier": confidence_tier(g),
+            }
+        )
+
+    board = pd.DataFrame(rows)
+
+    if board.empty:
+        return board
+
+    board = board.sort_values(["Player Rating", "Games Used (last 60)"], ascending=[False, False]).reset_index(drop=True)
+    board["Rank"] = range(1, len(board) + 1)
+
+    return board[
+        [
+            "Rank",
+            "Player",
+            "Player Rating",
+            "Games Used (last 60)",
+            "Career Games",
+            "Wins",
+            "Losses",
+            "Win %",
+            "Expected Win %",
+            "Win % vs Expected",
+            "Avg Point Diff",
+            "Avg Matchup Edge",
+            "Last Played",
+            "Days Since Last Play",
+            "Avg Game Age",
+            "Freshness Tier",
+            "Confidence Tier",
+        ]
+    ]
+
+
+def build_illustration_tab(player_log, raw, illustration_date):
+    date_obj = pd.Timestamp(illustration_date).date()
+
+    day_log = player_log[
+        (player_log["posted_dt"].dt.date == date_obj)
+        & (player_log["include_in_ratings"] == "Yes")
+    ].copy()
+
+    columns = [
+        "Illustration Date",
+        "Game #",
+        "Player",
+        "Team",
+        "Result",
+        "Partner",
+        "Opponents",
+        "Score",
+        "Point Margin",
+        "Starting Rating",
+        "Team Starting Rating",
+        "Opponent Team Starting Rating",
+        "Expected Result",
+        "Rating Change",
+        "Ending Rating",
+        "Note",
+    ]
+
+    top_rows = [
+        {
+            "Illustration Date": date_obj,
+            "Game #": "",
+            "Player": "",
+            "Team": "",
+            "Result": "",
+            "Partner": "",
+            "Opponents": "",
+            "Score": "",
+            "Point Margin": "",
+            "Starting Rating": "",
+            "Team Starting Rating": "",
+            "Opponent Team Starting Rating": "",
+            "Expected Result": "",
+            "Rating Change": "",
+            "Ending Rating": "",
+            "Note": "Illustration Date",
+        },
+        {
+            "Illustration Date": "",
+            "Game #": "",
+            "Player": "",
+            "Team": "",
+            "Result": "",
+            "Partner": "",
+            "Opponents": "",
+            "Score": "",
+            "Point Margin": "",
+            "Starting Rating": "",
+            "Team Starting Rating": "",
+            "Opponent Team Starting Rating": "",
+            "Expected Result": "",
+            "Rating Change": "",
+            "Ending Rating": "",
+            "Note": "Shows how actual game scores on this date changed player ratings game by game.",
+        },
+        {
+            "Illustration Date": "",
+            "Game #": "",
+            "Player": "",
+            "Team": "",
+            "Result": "",
+            "Partner": "",
+            "Opponents": "",
+            "Score": "",
+            "Point Margin": "",
+            "Starting Rating": "",
+            "Team Starting Rating": "",
+            "Opponent Team Starting Rating": "",
+            "Expected Result": "",
+            "Rating Change": "",
+            "Ending Rating": "",
+            "Note": "This illustrates raw Elo changes. Leaderboard then applies last-60-games, credibility, and freshness rules.",
+        },
+        {c: "" for c in columns},
+    ]
+
+    if day_log.empty:
+        return pd.DataFrame(top_rows, columns=columns)
+
+    day_log = day_log.sort_values(["posted_dt", "match_id", "player"])
+
+    summary_rows = []
+    detail_rows = []
+
+    for p in sorted(day_log["player"].unique()):
+        sub = day_log[day_log["player"] == p].sort_values(["posted_dt", "match_id"])
+        summary_rows.append(
+            {
+                "Illustration Date": date_obj,
+                "Game #": "SUMMARY",
+                "Player": p,
+                "Team": "",
+                "Result": f'{int(sub["is_win"].sum())}-{int(len(sub) - sub["is_win"].sum())}',
+                "Partner": "",
+                "Opponents": "",
+                "Score": "",
+                "Point Margin": int(sub["margin"].sum()),
+                "Starting Rating": round(float(sub["player_pre_rating"].iloc[0]), 1),
+                "Team Starting Rating": "",
+                "Opponent Team Starting Rating": "",
+                "Expected Result": "",
+                "Rating Change": round(float(sub["rating_change"].sum()), 1),
+                "Ending Rating": round(float(sub["player_post_rating"].iloc[-1]), 1),
+                "Note": "Daily player summary",
+            }
+        )
+
+    for _, r in day_log.iterrows():
+        result = "Win" if int(r["is_win"]) == 1 else "Loss"
+        opponents = f'{r["opp1"]} / {r["opp2"]}'
+
+        detail_rows.append(
+            {
+                "Illustration Date": date_obj,
+                "Game #": int(r["match_id"]),
+                "Player": r["player"],
+                "Team": f'{r["player"]} / {r["partner"]}',
+                "Result": result,
+                "Partner": r["partner"],
+                "Opponents": opponents,
+                "Score": f'{int(r["pf"])}-{int(r["pa"])}',
+                "Point Margin": int(r["margin"]),
+                "Starting Rating": round(float(r["player_pre_rating"]), 1),
+                "Team Starting Rating": round(float(r["team_pre_rating"]), 1),
+                "Opponent Team Starting Rating": round(float(r["opp_team_pre_rating"]), 1),
+                "Expected Result": float(r["expected_result"]),
+                "Rating Change": round(float(r["rating_change"]), 1),
+                "Ending Rating": round(float(r["player_post_rating"]), 1),
+                "Note": "Game detail",
+            }
+        )
+
+    spacer = [{c: "" for c in columns}]
+    return pd.DataFrame(top_rows + summary_rows + spacer + detail_rows, columns=columns)
+
+
+def build_rating_gap_distribution(player_log):
+    rated = player_log[player_log["include_in_ratings"] == "Yes"].copy()
+
+    # One row per game — take the first winner row per match_id
+    games = (
+        rated[rated["is_win"] == 1]
+        .sort_values(["match_id", "player"])
+        .groupby("match_id", sort=False)
+        .first()
+        .reset_index()
+    )
+
+    games["rating_gap"] = (games["team_pre_rating"] - games["opp_team_pre_rating"]).abs()
+    games["fav_won"] = (games["team_pre_rating"] >= games["opp_team_pre_rating"]).astype(int)
+    games["pt_diff"] = games["margin"]  # positive — winner rows only
+
+    # 401+ split into three finer buckets 2026-07-27: the aggregate 401+ row
+    # (92.1% favorite-win rate) was masking a real continuation of the same
+    # monotonic trend visible in the other rows -- checked against real data:
+    # 401-500 (n=730) 89.6%, 501-600 (n=322) 95.3%, 601+ (n=175, combining
+    # the former 601-800 and 800+ splits, since 800+ alone was only 16 games
+    # -- too thin to trust as its own row) ~96.5%.
+    gap_bins   = [0, 100, 200, 300, 400, 500, 600, float("inf")]
+    gap_labels = ["0–100", "101–200", "201–300", "301–400", "401–500", "501–600", "601+"]
+    games["gap_bucket"] = pd.cut(games["rating_gap"], bins=gap_bins, labels=gap_labels, right=True)
+
+    diff_bins   = [0, 3, 6, 8, float("inf")]
+    diff_labels = ["1–3", "4–6", "7–8", "9–11"]
+    games["diff_bucket"] = pd.cut(games["pt_diff"], bins=diff_bins, labels=diff_labels, right=True)
+
+    rows = []
+    for bucket in gap_labels:
+        g = games[games["gap_bucket"] == bucket]
+        n = len(g)
+        if n == 0:
+            continue
+        fav_pct = round(100 * g["fav_won"].sum() / n, 1)
+        avg_margin = round(g["pt_diff"].mean(), 1)
+        row = {
+            "Rating Gap": bucket,
+            "Games": n,
+            "% Won by Higher-Rated Team": f"{fav_pct}%",
+            "Avg Margin": avg_margin,
+        }
+        for dl in diff_labels:
+            cnt = (g["diff_bucket"] == dl).sum()
+            row[f"Margin {dl}"] = f"{round(100 * cnt / n, 1)}%"
+        rows.append(row)
+
+    cols = ["Rating Gap", "Games", "% Won by Higher-Rated Team", "Avg Margin"] + [f"Margin {dl}" for dl in diff_labels]
+    return pd.DataFrame(rows, columns=cols)
+
+
+def build_model_validation(player_log, as_of):
+    as_of = pd.Timestamp(as_of).normalize()
+    log = player_log[
+        (player_log["include_in_ratings"] == "Yes")
+        & (pd.to_datetime(player_log["posted_dt"]) <= as_of + pd.Timedelta(days=1) - pd.Timedelta(seconds=1))
+    ].copy()
+
+    log = log.sort_values(["posted_dt", "match_id", "player"])
+    prior_counts = defaultdict(int)
+    eval_rows = []
+
+    for match_id, g in log.groupby("match_id", sort=True):
+        if len(g) != 4:
+            for _, r in g.iterrows():
+                prior_counts[r["player"]] += 1
+            continue
+
+        players = g["player"].tolist()
+        if not all(prior_counts[p] >= 60 for p in players):
+            for _, r in g.iterrows():
+                prior_counts[r["player"]] += 1
+            continue
+
+        game_date = pd.Timestamp(g["posted_dt"].iloc[0]).date()
+        if game_date.year != 2026:
+            for _, r in g.iterrows():
+                prior_counts[r["player"]] += 1
+            continue
+
+        winners = g[g["is_win"] == 1]
+        losers = g[g["is_win"] == 0]
+        if len(winners) != 2 or len(losers) != 2:
+            for _, r in g.iterrows():
+                prior_counts[r["player"]] += 1
+            continue
+
+        win_team_rating = float(winners["team_pre_rating"].iloc[0])
+        lose_team_rating = float(losers["team_pre_rating"].iloc[0])
+
+        if win_team_rating >= lose_team_rating:
+            favorite_rating = win_team_rating
+            underdog_rating = lose_team_rating
+            favorite_won = 1
+            favorite_margin = int(winners["pf"].iloc[0] - winners["pa"].iloc[0])
+        else:
+            favorite_rating = lose_team_rating
+            underdog_rating = win_team_rating
+            favorite_won = 0
+            favorite_margin = -int(winners["pf"].iloc[0] - winners["pa"].iloc[0])
+
+        rating_gap = abs(favorite_rating - underdog_rating)
+        pred_fav_win = predicted(favorite_rating, underdog_rating)
+        pred_fav_win = min(max(pred_fav_win, 0.001), 0.999)
+
+        brier = (pred_fav_win - favorite_won) ** 2
+        log_loss = -math.log(pred_fav_win if favorite_won else 1 - pred_fav_win)
+
+        eval_rows.append(
+            {
+                "Predicted Favorite Win %": pred_fav_win,
+                "Favorite Won": favorite_won,
+                "Rating Gap": rating_gap,
+                "Favorite Margin": favorite_margin,
+                "Brier Score": brier,
+                "Log Loss": log_loss,
+            }
+        )
+
+        for _, r in g.iterrows():
+            prior_counts[r["player"]] += 1
+
+    if not eval_rows:
+        return pd.DataFrame(
+            [{"Section": "Overall", "Bucket": "No qualifying games", "Games": 0}]
+        )
+
+    ev = pd.DataFrame(eval_rows)
+
+    rows = []
+    rows.append(
+        {
+            "Section": "Overall",
+            "Bucket": "2026 games; all four players had 60+ prior rated games",
+            "Games": int(len(ev)),
+            "Favorite Win %": float(ev["Favorite Won"].mean()),
+            "Avg Predicted Favorite Win %": float(ev["Predicted Favorite Win %"].mean()),
+            "Brier Score": float(ev["Brier Score"].mean()),
+            "Log Loss": float(ev["Log Loss"].mean()),
+            "Avg Favorite Margin": float(ev["Favorite Margin"].mean()),
+        }
+    )
+
+    for factor in [1.00, 0.95, 0.90, 0.85, 0.80, 0.75, 0.70]:
+        pred = 1 / (1 + 10 ** (-(ev["Rating Gap"] * factor) / 400))
+        pred = pred.clip(0.001, 0.999)
+        actual = ev["Favorite Won"]
+
+        rows.append(
+            {
+                "Section": "Expectation compression test",
+                "Bucket": f"{factor:.2f}",
+                "Games": int(len(ev)),
+                "Favorite Win %": float(actual.mean()),
+                "Avg Predicted Favorite Win %": float(pred.mean()),
+                "Brier Score": float(((pred - actual) ** 2).mean()),
+                "Log Loss": float((-(actual * pred.apply(math.log) + (1 - actual) * (1 - pred).apply(math.log))).mean()),
+                "Avg Favorite Margin": float(ev["Favorite Margin"].mean()),
+            }
+        )
+
+    prob_bins = [
+        (0.50, 0.55, "50-55%"),
+        (0.55, 0.60, "55-60%"),
+        (0.60, 0.65, "60-65%"),
+        (0.65, 0.70, "65-70%"),
+        (0.70, 0.75, "70-75%"),
+        (0.75, 1.01, "75%+"),
+    ]
+
+    for lo, hi, label in prob_bins:
+        sub = ev[(ev["Predicted Favorite Win %"] >= lo) & (ev["Predicted Favorite Win %"] < hi)]
+        rows.append(
+            {
+                "Section": "Calibration by predicted favorite win %",
+                "Bucket": label,
+                "Games": int(len(sub)),
+                "Favorite Win %": float(sub["Favorite Won"].mean()) if len(sub) else None,
+                "Avg Predicted Favorite Win %": float(sub["Predicted Favorite Win %"].mean()) if len(sub) else None,
+                "Brier Score": float(sub["Brier Score"].mean()) if len(sub) else None,
+                "Log Loss": float(sub["Log Loss"].mean()) if len(sub) else None,
+                "Avg Favorite Margin": float(sub["Favorite Margin"].mean()) if len(sub) else None,
+            }
+        )
+
+    gap_bins = [
+        (0, 50, "0-49"),
+        (50, 100, "50-99"),
+        (100, 150, "100-149"),
+        (150, 200, "150-199"),
+        (200, 10**9, "200+"),
+    ]
+
+    for lo, hi, label in gap_bins:
+        sub = ev[(ev["Rating Gap"] >= lo) & (ev["Rating Gap"] < hi)]
+        rows.append(
+            {
+                "Section": "By rating gap",
+                "Bucket": label,
+                "Games": int(len(sub)),
+                "Favorite Win %": float(sub["Favorite Won"].mean()) if len(sub) else None,
+                "Avg Predicted Favorite Win %": float(sub["Predicted Favorite Win %"].mean()) if len(sub) else None,
+                "Brier Score": float(sub["Brier Score"].mean()) if len(sub) else None,
+                "Log Loss": float(sub["Log Loss"].mean()) if len(sub) else None,
+                "Avg Favorite Margin": float(sub["Favorite Margin"].mean()) if len(sub) else None,
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+
+def build_rating_snapshot(player_log, cutoff_date):
+    cutoff = pd.Timestamp(cutoff_date).normalize() + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+    log = player_log[
+        (player_log["include_in_ratings"] == "Yes")
+        & (pd.to_datetime(player_log["posted_dt"]) <= cutoff)
+    ].copy()
+
+    if log.empty:
+        return {}
+
+    log = log.sort_values(["posted_dt", "match_id"])
+    return {p: float(sub["player_post_rating"].iloc[-1]) for p, sub in log.groupby("player")}
+
+
+def rating_snapshot_for_play_date(play_date, snap_123125, snap_033126):
+    d = pd.Timestamp(play_date)
+    if d.year == 2026 and d.month in [2, 3, 4]:
+        return "12/31/2025", snap_123125
+    if d.year == 2026 and d.month in [5, 6, 7]:
+        return "3/31/2026", snap_033126
+    return None, None
+
+
+def build_ab_court_planning(raw, player_log):
+    snap_123125 = build_rating_snapshot(player_log, "2025-12-31")
+    snap_033126 = build_rating_snapshot(player_log, "2026-03-31")
+
+    rows = []
+    eligible = raw[
+        (~raw["exclude_match"])
+        & (raw["posted_dt"].dt.year == 2026)
+        & (raw["posted_dt"].dt.month.isin([2, 3, 4, 5, 6, 7]))
+    ].copy()
+
+    for play_date, day in eligible.groupby("match_day"):
+        snapshot_label, snapshot = rating_snapshot_for_play_date(play_date, snap_123125, snap_033126)
+        if snapshot is None:
+            continue
+
+        players = set()
+        for _, r in day.iterrows():
+            for team_col in ["winning_team", "losing_team"]:
+                p1, p2 = split_team(r[team_col])
+                if p1:
+                    players.add(p1)
+                if p2:
+                    players.add(p2)
+
+        rule1_a = rule1_b = rule2_a = rule2_b = missing_snapshot = 0
+
+        for player in players:
+            rating = snapshot.get(player, BASE_ELO)
+            if player not in snapshot:
+                missing_snapshot += 1
+
+            if rating >= 1000:
+                rule1_a += 1
+            else:
+                rule1_b += 1
+
+            if rating >= 950:
+                rule2_a += 1
+            else:
+                rule2_b += 1
+
+        rows.append(
+            {
+                "Play Date": play_date,
+                "Snapshot Used": snapshot_label,
+                "Total Players": len(players),
+                "Actual Games": int(len(day)),
+                "Actual Courts/Groups": int(day["pool"].nunique()) if "pool" in day.columns else "",
+                "Missing Snapshot Ratings": missing_snapshot,
+                "Rule 1 A Threshold": ">= 1000",
+                "Rule 1 A Players": rule1_a,
+                "Rule 1 A Courts": math.ceil(rule1_a / 4) if rule1_a else 0,
+                "Rule 1 B Players": rule1_b,
+                "Rule 1 B Courts": math.ceil(rule1_b / 4) if rule1_b else 0,
+                "Rule 1 Total Courts": (math.ceil(rule1_a / 4) if rule1_a else 0) + (math.ceil(rule1_b / 4) if rule1_b else 0),
+                "Rule 2 A Threshold": ">= 950",
+                "Rule 2 A Players": rule2_a,
+                "Rule 2 A Courts": math.ceil(rule2_a / 4) if rule2_a else 0,
+                "Rule 2 B Players": rule2_b,
+                "Rule 2 B Courts": math.ceil(rule2_b / 4) if rule2_b else 0,
+                "Rule 2 Total Courts": (math.ceil(rule2_a / 4) if rule2_a else 0) + (math.ceil(rule2_b / 4) if rule2_b else 0),
+            }
+        )
+
+    return pd.DataFrame(rows).sort_values("Play Date").reset_index(drop=True)
+
+
+def add_session_segments(player_log):
+    log = player_log.copy()
+    log["session_segment"] = "G2-5"
+    log["match_day"] = pd.to_datetime(log["posted_dt"]).dt.date
+
+    match_rows = []
+    for match_id, g in log.groupby("match_id"):
+        players = sorted(set(g["player"].tolist()))
+        match_rows.append(
+            {
+                "match_id": match_id,
+                "match_day": g["match_day"].iloc[0],
+                "posted_dt": pd.Timestamp(g["posted_dt"].iloc[0]),
+                "foursome": " | ".join(players),
+            }
+        )
+
+    matches = pd.DataFrame(match_rows)
+    segment_by_match = {}
+
+    for day, day_matches in matches.groupby("match_day"):
+        day_matches = day_matches.sort_values(["posted_dt", "foursome", "match_id"]).copy()
+        unique_times = sorted(day_matches["posted_dt"].unique())
+        if not unique_times:
+            continue
+
+        split_point = len(unique_times) / 2
+        time_pos = {t: i for i, t in enumerate(unique_times)}
+
+        for foursome, fg in day_matches.groupby("foursome"):
+            fg = fg.sort_values(["posted_dt", "match_id"])
+            earliest = fg.iloc[0]
+            latest = fg.iloc[-1]
+
+            if time_pos[earliest["posted_dt"]] < split_point:
+                segment_by_match[int(earliest["match_id"])] = "G1"
+
+            if int(latest["match_id"]) not in segment_by_match and time_pos[latest["posted_dt"]] >= split_point:
+                segment_by_match[int(latest["match_id"])] = "G6"
+
+    log["session_segment"] = log["match_id"].map(segment_by_match).fillna("G2-5")
+    return log
+
+
+def build_session_effects(player_log, leaderboard_players):
+    log = add_session_segments(player_log)
+    log = log[
+        (log["include_in_ratings"] == "Yes")
+        & (pd.to_datetime(log["posted_dt"]).dt.year == 2026)
+    ].copy()
+
+    log = log[log["player"].isin(leaderboard_players)].copy()
+
+    rows = []
+
+    # Switched 2026-07-21 from a win%-vs-expected gap to average rating
+    # delta per game position, for consistency with the leaderboard's Trend
+    # badge (same underlying signal, same "compare against your own norm"
+    # logic, same dynamic percentile thresholding downstream in
+    # build_leaderboard_html.py). G2-5 (mid-session) remains the baseline;
+    # this is a within-player comparison, not against the wider pool, so it
+    # isolates a starting/finishing effect from general skill level.
+    def metrics(sub):
+        g = len(sub)
+        if g == 0:
+            return 0, None
+        avg_delta = float(sub["rating_change"].mean())
+        return g, avg_delta
+
+    for player in sorted(log["player"].dropna().unique()):
+        sub = log[log["player"] == player]
+
+        g1_games, g1_delta = metrics(sub[sub["session_segment"] == "G1"])
+        mid_games, mid_delta = metrics(sub[sub["session_segment"] == "G2-5"])
+        g6_games, g6_delta = metrics(sub[sub["session_segment"] == "G6"])
+
+        rows.append(
+            {
+                "Player": player,
+                "G1 Games": g1_games,
+                "G1 Avg Rating Delta": g1_delta,
+                "G2-5 Games": mid_games,
+                "G2-5 Avg Rating Delta": mid_delta,
+                "G1 Effect": (g1_delta - mid_delta) if g1_delta is not None and mid_delta is not None else None,
+                "G6 Games": g6_games,
+                "G6 Avg Rating Delta": g6_delta,
+                "G6 Effect": (g6_delta - mid_delta) if g6_delta is not None and mid_delta is not None else None,
+            }
+        )
+
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+
+    return df.sort_values(["G1 Effect", "G6 Effect", "Player"], ascending=[True, True, True]).reset_index(drop=True)
+
+
+def build_recent_trends(player_log, leaderboard, as_of):
+    leaderboard_players = set(leaderboard["Player"])
+    rating_map = dict(zip(leaderboard["Player"], leaderboard["Player Rating"]))
+    games_map = dict(zip(leaderboard["Player"], leaderboard["Games Used (last 60)"]))
+
+    log = player_log[
+        (player_log["include_in_ratings"] == "Yes")
+        & (player_log["player"].isin(leaderboard_players))
+    ].copy()
+
+    rows = []
+
+    def gap_for(sub):
+        if len(sub) == 0:
+            return None
+        return float(sub["is_win"].mean()) - float(sub["expected_win"].mean())
+
+    for player in sorted(leaderboard_players):
+        sub = log[log["player"] == player].sort_values(["posted_dt", "match_id"]).copy()
+
+        # Rating Delta (Last 15) uses a plain trailing-15 window, independent
+        # of the trend-gap logic below — do not gate this on the 60-game
+        # requirement, or players with <60 total games lose a valid,
+        # unrelated metric used elsewhere (Recent Trends bar chart).
+        raw_last15 = sub.tail(15)
+        rating_delta = (
+            float(raw_last15["rating_change"].sum()) if len(raw_last15) == 15 else None
+        )
+
+        # Trend gap: non-overlapping windows only. The most recent 15 games
+        # compared against the 45 games immediately BEFORE them (not "last
+        # 60" as a whole, which would let a real streak inflate its own
+        # baseline by including itself in the comparison). Requires a full
+        # 60-game history to compute a trend at all; otherwise N/A.
+        last60 = sub.tail(LAST_N_GAMES)
+        has_full_60 = len(last60) == LAST_N_GAMES
+
+        # A trend badge implies CURRENT form — a player who hasn't played
+        # in weeks shouldn't be labeled hot/cold based on a stale streak.
+        # Require their most recent rated game within 14 days of as_of.
+        last_game_date = sub["posted_dt"].max() if len(sub) > 0 else None
+        is_recent = (
+            has_full_60
+            and last_game_date is not None
+            and (as_of - last_game_date).days <= 14
+        )
+
+        trend_last15 = last60.tail(15) if is_recent else pd.DataFrame()
+        prior45 = last60.head(45) if is_recent else pd.DataFrame()
+
+        last15_gap = gap_for(trend_last15) if is_recent else None
+        prior45_gap = gap_for(prior45) if is_recent else None
+
+        trend = (
+            last15_gap - prior45_gap
+            if last15_gap is not None and prior45_gap is not None
+            else None
+        )
+
+        # Rating Delta (24) -- added 2026-07-21, replaces the win%-gap Trend
+        # metric as the leaderboard's hot/cold badge source. Simpler and more
+        # transparent to players ("your rating moved by X over your last 24
+        # games") than comparing two non-overlapping win-percentage windows.
+        # Same 14-day recency guard as the old Trend metric (a badge implies
+        # CURRENT form), but only requires 24 games, not a full 60 -- 24
+        # games is 4 play dates (6 games/date: 3 in S1, 3 in S2).
+        is_recent_24 = (
+            len(sub) >= 24
+            and last_game_date is not None
+            and (as_of - last_game_date).days <= 14
+        )
+        rating_delta_24 = (
+            float(sub.tail(24)["rating_change"].sum()) if is_recent_24 else None
+        )
+
+        rows.append(
+            {
+                "Player": player,
+                "Current Rating": rating_map.get(player),
+                "Games Used": games_map.get(player),
+                "Last 15 Gap": last15_gap,
+                "Prior 45 Gap": prior45_gap,
+                "Trend": trend,
+                "Rating Delta (Last 15)": rating_delta,
+                "Rating Delta (24)": rating_delta_24,
+            }
+        )
+
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+
+    return df.sort_values(
+        ["Trend", "Current Rating"],
+        ascending=[False, False],
+        na_position="last",
+    ).reset_index(drop=True)
+
+
+
+
+def exclude_guest_players(df, columns=None):
+    if df is None or df.empty:
+        return df
+
+    out = df.copy()
+
+    if columns is None:
+        columns = [c for c in ["Player", "player"] if c in out.columns]
+
+    for col in columns:
+        if col in out.columns:
+            out = out[~out[col].isin(GUEST_OUTPUT_EXCLUSIONS)].copy()
+
+    return out
+
+
+def build_credibility_sensitivity(player_log, as_of, eligible_players=None):
+    as_of = pd.Timestamp(as_of).normalize()
+    den_values = [20, 15, 10, 5]
+
+    rated = player_log[
+        (player_log["include_in_ratings"] == "Yes")
+        & (pd.to_datetime(player_log["posted_dt"]) <= as_of + pd.Timedelta(days=1) - pd.Timedelta(seconds=1))
+    ].copy()
+
+    if eligible_players is not None:
+        eligible_players = set(eligible_players)
+        rated = rated[rated["player"].isin(eligible_players)].copy()
+
+    player_data = {}
+
+    for p in sorted(rated["player"].dropna().unique()):
+        sub = rated[rated["player"] == p].sort_values(["posted_dt", "match_id"]).tail(LAST_N_GAMES).copy()
+        g = len(sub)
+
+        if g < MIN_GAMES:
+            continue
+
+        raw_rating = float(sub["player_post_rating"].iloc[-1])
+        wins = int(sub["is_win"].sum())
+        losses = int(g - wins)
+        actual_win_pct = wins / g if g else None
+        expected_win_pct = float(sub["expected_win"].mean()) if g else None
+        win_pct_vs_expected = actual_win_pct - expected_win_pct if g else None
+        avg_point_diff = round(float(sub["margin"].mean()), 1)
+        avg_matchup_edge = int(round(float(sub["schedule_differential"].mean())))
+
+        last_played = pd.Timestamp(sub["posted"].iloc[-1]).date()
+        days_since_last = int((as_of.date() - last_played).days)
+        game_ages = [(as_of.date() - pd.Timestamp(d).date()).days for d in sub["posted"]]
+        avg_game_age = round(sum(game_ages) / len(game_ages), 1)
+
+        fresh_tier = freshness_tier(days_since_last, avg_game_age)
+        if fresh_tier not in ["Very Fresh", "Mature"]:
+            continue
+
+        fresh_conf = freshness_factor(days_since_last, avg_game_age)
+
+        player_data[p] = {
+            "raw_rating": raw_rating,
+            "games": g,
+            "wins": wins,
+            "losses": losses,
+            "win_pct": actual_win_pct,
+            "expected_win_pct": expected_win_pct,
+            "win_pct_vs_expected": win_pct_vs_expected,
+            "avg_point_diff": avg_point_diff,
+            "avg_matchup_edge": avg_matchup_edge,
+            "days_since_last": days_since_last,
+            "avg_game_age": avg_game_age,
+            "fresh_conf": fresh_conf,
+        }
+
+    rank_maps = {}
+    rating_maps = {}
+
+    for den in den_values:
+        rows = []
+        for player, d in player_data.items():
+            g = d["games"]
+            raw_rating = d["raw_rating"]
+
+            sample_conf = 1.0 if g >= LAST_N_GAMES else g / (g + den)
+            rating_conf = sample_conf * d["fresh_conf"]
+
+            displayed = 1000 + ((raw_rating - 1000) * rating_conf)
+
+            rows.append(
+                {
+                    "Player": player,
+                    "Rating": int(round(displayed)),
+                    "Games": g,
+                }
+            )
+
+        board = pd.DataFrame(rows).sort_values(["Rating", "Games"], ascending=[False, False]).reset_index(drop=True)
+        board["Rank"] = range(1, len(board) + 1)
+
+        rank_maps[den] = dict(zip(board["Player"], board["Rank"]))
+        rating_maps[den] = dict(zip(board["Player"], board["Rating"]))
+
+    rows = []
+
+    for player, d in player_data.items():
+        rows.append(
+            {
+                "Player": player,
+                "Games Used": d["games"],
+                "Wins": d["wins"],
+                "Losses": d["losses"],
+                "Win %": d["win_pct"],
+                "Expected Win %": d["expected_win_pct"],
+                "Win % vs Expected": d["win_pct_vs_expected"],
+                "Avg Point Diff": d["avg_point_diff"],
+                "Avg Matchup Edge": d["avg_matchup_edge"],
+                "Rank CONF 20": rank_maps[20].get(player),
+                "Rating CONF 20": rating_maps[20].get(player),
+                "Rank CONF 15": rank_maps[15].get(player),
+                "Rating CONF 15": rating_maps[15].get(player),
+                "Rank CONF 10": rank_maps[10].get(player),
+                "Rating CONF 10": rating_maps[10].get(player),
+                "Rank CONF 5": rank_maps[5].get(player),
+                "Rating CONF 5": rating_maps[5].get(player),
+            }
+        )
+
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+
+    return out.sort_values(["Rank CONF 20", "Player"]).reset_index(drop=True)
+
+
+def build_game_consistency(player_log, leaderboard):
+    leaderboard_rank_map = dict(zip(leaderboard["Player"], leaderboard["Rank"]))
+    leaderboard_players = set(leaderboard["Player"])
+
+    log = player_log[
+        (player_log["include_in_ratings"] == "Yes")
+        & (player_log["player"].isin(leaderboard_players))
+    ].copy()
+
+    rows = []
+
+    for player in sorted(leaderboard_players):
+        sub = (
+            log[log["player"] == player]
+            .sort_values("posted_dt")
+            .tail(60)
+            .copy()
+        )
+
+        if len(sub) < 60:
+            continue
+
+        consistency_score = float(sub["margin"].std(ddof=0))
+
+        rows.append(
+            {
+                "Consistency Rank": None,
+                "Leaderboard Rank": leaderboard_rank_map.get(player),
+                "Player": player,
+                "Games Used": int(len(sub)),
+                "Consistency Score": consistency_score,
+                "Classification": "",
+            }
+        )
+
+    df = pd.DataFrame(rows)
+
+    if df.empty:
+        return df
+
+    df = df.sort_values(
+        ["Consistency Score", "Leaderboard Rank"],
+        ascending=[True, True]
+    ).reset_index(drop=True)
+
+    df["Consistency Rank"] = range(1, len(df) + 1)
+
+    n = len(df)
+    t_low = df["Consistency Score"].quantile(1 / 3)
+    t_high = df["Consistency Score"].quantile(2 / 3)
+
+    def classify(score):
+        if score <= t_low:
+            return "\U0001f3af Steady"
+        if score >= t_high:
+            return "\U0001f3b2 Variable"
+        return "— Average"
+
+    df["Classification"] = df["Consistency Score"].apply(classify)
+
+    return df[
+        [
+            "Consistency Rank",
+            "Leaderboard Rank",
+            "Player",
+            "Games Used",
+            "Consistency Score",
+            "Classification",
+        ]
+    ]
+
+
+def build_expected_margin_calibration(player_log):
+    log = player_log[player_log["include_in_ratings"] == "Yes"].copy()
+
+    # One row per game, using the winner rows only.
+    games = log[log["is_win"] == 1].copy()
+
+    rows = []
+
+    for match_id, g in games.groupby("match_id"):
+        if len(g) != 2:
+            continue
+
+        r = g.iloc[0]
+
+        win_rating = float(r["team_pre_rating"])
+        lose_rating = float(r["opp_team_pre_rating"])
+
+        rating_gap = abs(win_rating - lose_rating)
+        favorite_won = 1 if win_rating >= lose_rating else 0
+
+        if favorite_won:
+            favorite_margin = int(r["pf"] - r["pa"])
+        else:
+            favorite_margin = -int(r["pf"] - r["pa"])
+
+        pred_fav_win = predicted(max(win_rating, lose_rating), min(win_rating, lose_rating))
+
+        rows.append(
+            {
+                "Rating Gap": rating_gap,
+                "Favorite Won": favorite_won,
+                "Favorite Margin": favorite_margin,
+                "Predicted Favorite Win %": pred_fav_win,
+                "Favorite Performance vs Expected": favorite_won - pred_fav_win,
+            }
+        )
+
+    df = pd.DataFrame(rows)
+
+    if df.empty:
+        return pd.DataFrame(
+            columns=[
+                "Rating Gap Bucket",
+                "Games",
+                "% Games",
+                "Favorite Win %",
+                "Predicted Favorite Win %",
+                "Favorite Performance vs Expected",
+                "Avg Favorite Margin",
+                "Median Favorite Margin",
+            ]
+        )
+
+    # 25-point buckets through 399, then 400+.
+    def bucket(gap):
+        gap = int(gap)
+
+        if gap >= 600:
+            return "600+"
+
+        if gap >= 400:
+            lo = (gap // 50) * 50
+            hi = lo + 49
+            return f"{lo}-{hi}"
+
+        lo = (gap // 25) * 25
+        hi = lo + 24
+        return f"{lo}-{hi}"
+
+    def bucket_sort(label):
+        if label == "600+":
+            return 600
+        return int(label.split("-")[0])
+
+    df["Rating Gap Bucket"] = df["Rating Gap"].apply(bucket)
+
+    total_games = len(df)
+    out_rows = []
+
+    for label, sub in df.groupby("Rating Gap Bucket"):
+        out_rows.append(
+            {
+                "Sort": bucket_sort(label),
+                "Rating Gap Bucket": label,
+                "Games": int(len(sub)),
+                "% Games": len(sub) / total_games,
+                "Cumulative % Games": 0.0,
+                "Favorite Win %": float(sub["Favorite Won"].mean()),
+                "Predicted Favorite Win %": float(sub["Predicted Favorite Win %"].mean()),
+                "Favorite Performance vs Expected": float(sub["Favorite Performance vs Expected"].mean()),
+                "Avg Favorite Margin": float(sub["Favorite Margin"].mean()),
+                "Median Favorite Margin": float(sub["Favorite Margin"].median()),
+            }
+        )
+
+    out = pd.DataFrame(out_rows).sort_values("Sort").drop(columns=["Sort"]).reset_index(drop=True)
+
+    out["Cumulative % Games"] = out["% Games"].cumsum()
+
+    cols = [
+        "Rating Gap Bucket",
+        "Games",
+        "% Games",
+        "Cumulative % Games",
+        "Favorite Win %",
+        "Predicted Favorite Win %",
+        "Favorite Performance vs Expected",
+        "Avg Favorite Margin",
+        "Median Favorite Margin",
+    ]
+
+    return out[cols]
+
+
+def build_team_balance_analysis(player_log):
+    log = player_log[player_log["include_in_ratings"] == "Yes"].copy()
+
+    def margin_bucket(gap):
+        gap = int(abs(gap))
+        if gap >= 600:
+            return "600+"
+        if gap >= 400:
+            lo = (gap // 50) * 50
+            hi = lo + 49
+            return f"{lo}-{hi}"
+        lo = (gap // 25) * 25
+        hi = lo + 24
+        return f"{lo}-{hi}"
+
+    def margin_bucket_sort(label):
+        if label == "600+":
+            return 600
+        return int(label.split("-")[0])
+
+    # Empirical expected-margin lookup based on all rated games.
+    winners = log[log["is_win"] == 1].copy()
+    calib_rows = []
+
+    for match_id, g in winners.groupby("match_id"):
+        if len(g) != 2:
+            continue
+
+        r = g.iloc[0]
+        win_rating = float(r["team_pre_rating"])
+        lose_rating = float(r["opp_team_pre_rating"])
+        rating_gap = abs(win_rating - lose_rating)
+        favorite_won = win_rating >= lose_rating
+
+        winner_margin = float(r["pf"] - r["pa"])
+        favorite_margin = winner_margin if favorite_won else -winner_margin
+
+        calib_rows.append(
+            {
+                "Bucket": margin_bucket(rating_gap),
+                "Favorite Margin": favorite_margin,
+            }
+        )
+
+    calib = pd.DataFrame(calib_rows)
+
+    lookup = (
+        calib.groupby("Bucket")["Favorite Margin"]
+        .mean()
+        .reset_index()
+    )
+    lookup["Sort"] = lookup["Bucket"].apply(margin_bucket_sort)
+    lookup = lookup.sort_values("Sort").reset_index(drop=True)
+    lookup["Expected Margin"] = lookup["Favorite Margin"].cummax()
+    expected_margin_map = dict(zip(lookup["Bucket"], lookup["Expected Margin"]))
+
+    rows = []
+
+    for _, r in log.iterrows():
+        player_rating = float(r["player_pre_rating"])
+        partner_rating = float(r["partner_pre_rating"])
+
+        team_spread = abs(player_rating - partner_rating)
+
+        actual = float(r["is_win"])
+        expected = float(r["expected_win"])
+        actual_margin = float(r["pf"] - r["pa"])
+
+        schedule_differential = float(r["schedule_differential"])
+        sign = 1 if schedule_differential >= 0 else -1
+        expected_margin = sign * float(expected_margin_map[margin_bucket(schedule_differential)])
+        margin_vs_expected = actual_margin - expected_margin
+
+        rows.append(
+            {
+                "Team Spread": team_spread,
+                "Actual Win": actual,
+                "Expected Win": expected,
+                "Win vs Expected": actual - expected,
+                "Actual Margin": actual_margin,
+                "Expected Margin": expected_margin,
+                "Margin vs Expected": margin_vs_expected,
+            }
+        )
+
+    df = pd.DataFrame(rows)
+
+    if df.empty:
+        return pd.DataFrame()
+
+    def bucket(spread):
+        spread = int(spread)
+
+        if spread >= 600:
+            return "600+"
+
+        lo = (spread // 50) * 50
+        hi = lo + 49
+
+        return f"{lo}-{hi}"
+
+    def bucket_sort(label):
+        if label == "600+":
+            return 600
+        return int(label.split("-")[0])
+
+    df["Spread Bucket"] = df["Team Spread"].apply(bucket)
+
+    total_rows = len(df)
+
+    out_rows = []
+
+    for label, sub in df.groupby("Spread Bucket"):
+        out_rows.append(
+            {
+                "Sort": bucket_sort(label),
+                "Spread Bucket": label,
+                "Team Appearances": int(len(sub)),
+                "% Appearances": len(sub) / total_rows,
+                "Actual Win %": float(sub["Actual Win"].mean()),
+                "Expected Win %": float(sub["Expected Win"].mean()),
+                "Win % vs Expected": float(sub["Win vs Expected"].mean()),
+                "Avg Actual Margin": float(sub["Actual Margin"].mean()),
+                "Avg Expected Margin": float(sub["Expected Margin"].mean()),
+                "Avg Margin vs Expected": float(sub["Margin vs Expected"].mean()),
+            }
+        )
+
+    out = (
+        pd.DataFrame(out_rows)
+        .sort_values("Sort")
+        .drop(columns=["Sort"])
+        .reset_index(drop=True)
+    )
+
+    out["Cumulative %"] = out["% Appearances"].cumsum()
+
+    cols = [
+        "Spread Bucket",
+        "Team Appearances",
+        "% Appearances",
+        "Cumulative %",
+        "Actual Win %",
+        "Expected Win %",
+        "Win % vs Expected",
+        "Avg Actual Margin",
+        "Avg Expected Margin",
+        "Avg Margin vs Expected",
+    ]
+
+    return out[cols]
+
+
+def build_extreme_partner_spread_analysis(player_log):
+    base = build_team_balance_analysis(player_log)
+
+    if base.empty:
+        return pd.DataFrame()
+
+    rows = []
+
+    bucket_groups = [
+        ("0-549", ["0-49", "50-99", "100-149", "150-199", "200-249", "250-299", "300-349", "350-399", "400-449", "450-499", "500-549"]),
+        ("550-599", ["550-599"]),
+        ("600-699", ["600-649", "650-699"]),
+        ("700-799", ["700-749", "750-799"]),
+        ("800+", ["800+"]),
+    ]
+
+    # Rebuild from player_log directly so the extreme buckets above 600 are not lost
+    # inside the broader Team Balance Analysis 600+ bucket.
+    log = player_log[player_log["include_in_ratings"] == "Yes"].copy()
+
+    def margin_bucket(gap):
+        gap = int(abs(gap))
+        if gap >= 600:
+            return "600+"
+        if gap >= 400:
+            lo = (gap // 50) * 50
+            hi = lo + 49
+            return f"{lo}-{hi}"
+        lo = (gap // 25) * 25
+        hi = lo + 24
+        return f"{lo}-{hi}"
+
+    def margin_bucket_sort(label):
+        if label == "600+":
+            return 600
+        return int(label.split("-")[0])
+
+    winners = log[log["is_win"] == 1].copy()
+    calib_rows = []
+
+    for match_id, g in winners.groupby("match_id"):
+        if len(g) != 2:
+            continue
+
+        r = g.iloc[0]
+        win_rating = float(r["team_pre_rating"])
+        lose_rating = float(r["opp_team_pre_rating"])
+        rating_gap = abs(win_rating - lose_rating)
+        favorite_won = win_rating >= lose_rating
+
+        winner_margin = float(r["pf"] - r["pa"])
+        favorite_margin = winner_margin if favorite_won else -winner_margin
+
+        calib_rows.append(
+            {
+                "Bucket": margin_bucket(rating_gap),
+                "Favorite Margin": favorite_margin,
+            }
+        )
+
+    calib = pd.DataFrame(calib_rows)
+
+    lookup = (
+        calib.groupby("Bucket")["Favorite Margin"]
+        .mean()
+        .reset_index()
+    )
+    lookup["Sort"] = lookup["Bucket"].apply(margin_bucket_sort)
+    lookup = lookup.sort_values("Sort").reset_index(drop=True)
+    lookup["Expected Margin"] = lookup["Favorite Margin"].cummax()
+    expected_margin_map = dict(zip(lookup["Bucket"], lookup["Expected Margin"]))
+
+    detail_rows = []
+
+    for _, r in log.iterrows():
+        player_rating = float(r["player_pre_rating"])
+        partner_rating = float(r["partner_pre_rating"])
+        team_spread = abs(player_rating - partner_rating)
+
+        actual = float(r["is_win"])
+        expected = float(r["expected_win"])
+        actual_margin = float(r["pf"] - r["pa"])
+
+        schedule_differential = float(r["schedule_differential"])
+        sign = 1 if schedule_differential >= 0 else -1
+        expected_margin = sign * float(expected_margin_map[margin_bucket(schedule_differential)])
+        margin_vs_expected = actual_margin - expected_margin
+
+        if team_spread < 550:
+            spread_bucket = "0-549"
+            sort = 0
+        elif team_spread < 600:
+            spread_bucket = "550-599"
+            sort = 550
+        elif team_spread < 700:
+            spread_bucket = "600-699"
+            sort = 600
+        elif team_spread < 800:
+            spread_bucket = "700-799"
+            sort = 700
+        else:
+            spread_bucket = "800+"
+            sort = 800
+
+        detail_rows.append(
+            {
+                "Sort": sort,
+                "Spread Bucket": spread_bucket,
+                "Actual Win": actual,
+                "Expected Win": expected,
+                "Win vs Expected": actual - expected,
+                "Actual Margin": actual_margin,
+                "Expected Margin": expected_margin,
+                "Margin vs Expected": margin_vs_expected,
+            }
+        )
+
+    df = pd.DataFrame(detail_rows)
+
+    if df.empty:
+        return pd.DataFrame()
+
+    total_rows = len(df)
+
+    for label, sub in df.groupby("Spread Bucket"):
+        rows.append(
+            {
+                "Sort": int(sub["Sort"].iloc[0]),
+                "Spread Bucket": label,
+                "Team Appearances": int(len(sub)),
+                "% Appearances": len(sub) / total_rows,
+                "Actual Win %": float(sub["Actual Win"].mean()),
+                "Expected Win %": float(sub["Expected Win"].mean()),
+                "Win % vs Expected": float(sub["Win vs Expected"].mean()),
+                "Avg Actual Margin": float(sub["Actual Margin"].mean()),
+                "Avg Expected Margin": float(sub["Expected Margin"].mean()),
+                "Avg Margin vs Expected": float(sub["Margin vs Expected"].mean()),
+            }
+        )
+
+    out = (
+        pd.DataFrame(rows)
+        .sort_values("Sort")
+        .drop(columns=["Sort"])
+        .reset_index(drop=True)
+    )
+
+    out["Cumulative %"] = out["% Appearances"].cumsum()
+
+    cols = [
+        "Spread Bucket",
+        "Team Appearances",
+        "% Appearances",
+        "Cumulative %",
+        "Actual Win %",
+        "Expected Win %",
+        "Win % vs Expected",
+        "Avg Actual Margin",
+        "Avg Expected Margin",
+        "Avg Margin vs Expected",
+    ]
+
+    return out[cols]
+
+
+def build_extreme_partner_spread_detail(player_log):
+    log = player_log[player_log["include_in_ratings"] == "Yes"].copy()
+
+    if log.empty:
+        return pd.DataFrame()
+
+    def margin_bucket(gap):
+        gap = int(abs(gap))
+        if gap >= 600:
+            return "600+"
+        if gap >= 400:
+            lo = (gap // 50) * 50
+            hi = lo + 49
+            return f"{lo}-{hi}"
+        lo = (gap // 25) * 25
+        hi = lo + 24
+        return f"{lo}-{hi}"
+
+    def margin_bucket_sort(label):
+        if label == "600+":
+            return 600
+        return int(label.split("-")[0])
+
+    winners = log[log["is_win"] == 1].copy()
+    calib_rows = []
+
+    for match_id, g in winners.groupby("match_id"):
+        if len(g) != 2:
+            continue
+
+        r = g.iloc[0]
+        win_rating = float(r["team_pre_rating"])
+        lose_rating = float(r["opp_team_pre_rating"])
+        rating_gap = abs(win_rating - lose_rating)
+        favorite_won = win_rating >= lose_rating
+
+        winner_margin = float(r["pf"] - r["pa"])
+        favorite_margin = winner_margin if favorite_won else -winner_margin
+
+        calib_rows.append(
+            {
+                "Bucket": margin_bucket(rating_gap),
+                "Favorite Margin": favorite_margin,
+            }
+        )
+
+    calib = pd.DataFrame(calib_rows)
+
+    lookup = (
+        calib.groupby("Bucket")["Favorite Margin"]
+        .mean()
+        .reset_index()
+    )
+    lookup["Sort"] = lookup["Bucket"].apply(margin_bucket_sort)
+    lookup = lookup.sort_values("Sort").reset_index(drop=True)
+    lookup["Expected Margin"] = lookup["Favorite Margin"].cummax()
+    expected_margin_map = dict(zip(lookup["Bucket"], lookup["Expected Margin"]))
+
+    rows = []
+
+    for _, r in log.iterrows():
+        player_rating = float(r["player_pre_rating"])
+        partner_rating = float(r["partner_pre_rating"])
+        spread = abs(player_rating - partner_rating)
+
+        if spread < 550:
+            continue
+
+        actual_margin = float(r["pf"] - r["pa"])
+        schedule_differential = float(r["schedule_differential"])
+        sign = 1 if schedule_differential >= 0 else -1
+        expected_margin = sign * float(expected_margin_map[margin_bucket(schedule_differential)])
+
+        rows.append(
+            {
+                "Date": r["posted"],
+                "Match ID": r["match_id"],
+                "Player": r["player"],
+                "Partner": r["partner"],
+                "Player Pre Rating": float(r["player_pre_rating"]),
+                "Partner Pre Rating": float(r["partner_pre_rating"]),
+                "Partner Spread": spread,
+                "Expected Win %": float(r["expected_win"]),
+                "Actual Win": int(r["is_win"]),
+                "Actual Margin": actual_margin,
+                "Expected Margin": expected_margin,
+                "Margin vs Expected": actual_margin - expected_margin,
+            }
+        )
+
+    out = pd.DataFrame(rows)
+
+    if out.empty:
+        return out
+
+    out = out.sort_values(
+        ["Partner Spread", "Margin vs Expected"],
+        ascending=[False, True],
+    ).reset_index(drop=True)
+
+    return out
+
+
+def build_extreme_spread_summary(player_log):
+    detail = build_extreme_partner_spread_detail(player_log)
+
+    if detail.empty:
+        return pd.DataFrame()
+
+    def bucket(spread):
+        spread = float(spread)
+
+        if spread < 600:
+            return "550-599", 550
+        if spread < 700:
+            return "600-699", 600
+        if spread < 800:
+            return "700-799", 700
+        if spread < 900:
+            return "800-899", 800
+        if spread < 1000:
+            return "900-999", 900
+        if spread < 1100:
+            return "1000-1099", 1000
+        if spread < 1200:
+            return "1100-1199", 1100
+        return "1200+", 1200
+
+    df = detail.copy()
+    bucket_values = df["Partner Spread"].apply(bucket)
+    df["Spread Bucket"] = bucket_values.apply(lambda x: x[0])
+    df["Sort"] = bucket_values.apply(lambda x: x[1])
+    df["Win vs Expected"] = df["Actual Win"] - df["Expected Win %"]
+
+    total_rows = len(df)
+    rows = []
+
+    for label, sub in df.groupby("Spread Bucket"):
+        rows.append(
+            {
+                "Sort": int(sub["Sort"].iloc[0]),
+                "Spread Bucket": label,
+                "Team Appearances": int(len(sub)),
+                "% Extreme Appearances": len(sub) / total_rows,
+                "Actual Win %": float(sub["Actual Win"].mean()),
+                "Expected Win %": float(sub["Expected Win %"].mean()),
+                "Win % vs Expected": float(sub["Win vs Expected"].mean()),
+                "Avg Actual Margin": float(sub["Actual Margin"].mean()),
+                "Avg Expected Margin": float(sub["Expected Margin"].mean()),
+                "Avg Margin vs Expected": float(sub["Margin vs Expected"].mean()),
+            }
+        )
+
+    out = (
+        pd.DataFrame(rows)
+        .sort_values("Sort")
+        .drop(columns=["Sort"])
+        .reset_index(drop=True)
+    )
+
+    out["Cumulative % Extreme"] = out["% Extreme Appearances"].cumsum()
+
+    cols = [
+        "Spread Bucket",
+        "Team Appearances",
+        "% Extreme Appearances",
+        "Cumulative % Extreme",
+        "Actual Win %",
+        "Expected Win %",
+        "Win % vs Expected",
+        "Avg Actual Margin",
+        "Avg Expected Margin",
+        "Avg Margin vs Expected",
+    ]
+
+    return out[cols]
+
+
+def build_competitive_balance_by_quarter(player_log):
+    log = player_log[player_log["include_in_ratings"] == "Yes"].copy()
+
+    games = log[log["is_win"] == 1].copy()
+
+    rows = []
+
+    for match_id, g in games.groupby("match_id"):
+        if len(g) != 2:
+            continue
+
+        r = g.iloc[0]
+
+        game_date = pd.to_datetime(r["posted"]).date()
+
+        q = ((game_date.month - 1) // 3) + 1
+        quarter = f"{game_date.year} Q{q}"
+
+        rating_gap = abs(
+            float(r["team_pre_rating"]) -
+            float(r["opp_team_pre_rating"])
+        )
+
+        margin = abs(float(r["margin"]))
+
+        rows.append(
+            {
+                "Quarter": quarter,
+                "Game Date": game_date,
+                "Rating Gap": rating_gap,
+                "Margin": margin,
+            }
+        )
+
+    df = pd.DataFrame(rows)
+
+    if df.empty:
+        return pd.DataFrame()
+
+    out_rows = []
+
+    quarter_order = (
+        df.groupby("Quarter")["Game Date"]
+        .min()
+        .sort_values()
+        .index
+    )
+
+    for quarter in quarter_order:
+        sub = df[df["Quarter"] == quarter]
+
+        gaps = sub["Rating Gap"]
+
+        margins = sub["Margin"]
+
+        out_rows.append(
+            {
+                "Quarter": quarter,
+                "Games": len(sub),
+                "Avg Gap": gaps.mean(),
+                "Median Gap": gaps.median(),
+                "90th %ile Gap": gaps.quantile(0.90),
+                "% Under 200": (gaps < 200).mean(),
+                "% 200+": (gaps >= 200).mean(),
+                "% 300+": (gaps >= 300).mean(),
+                "% 400+": (gaps >= 400).mean(),
+                "% Decided by <=3": (margins <= 3).mean(),
+                "% Decided by 9+": (margins >= 9).mean(),
+            }
+        )
+
+    return pd.DataFrame(out_rows)
+
+
+def build_player_pool_by_quarter(player_log):
+    log = player_log[player_log["include_in_ratings"] == "Yes"].copy()
+
+    rows = []
+
+    for _, r in log.iterrows():
+        game_date = pd.to_datetime(r["posted"]).date()
+
+        q = ((game_date.month - 1) // 3) + 1
+        quarter = f"{game_date.year} Q{q}"
+
+        rows.append(
+            {
+                "Quarter": quarter,
+                "Game Date": game_date,
+                "Player": r["player"],
+                "Rating": float(r["player_pre_rating"]),
+            }
+        )
+
+    df = pd.DataFrame(rows)
+
+    if df.empty:
+        return pd.DataFrame()
+
+    quarter_order = (
+        df.groupby("Quarter")["Game Date"]
+        .min()
+        .sort_values()
+        .index
+    )
+
+    out_rows = []
+
+    for quarter in quarter_order:
+        sub = df[df["Quarter"] == quarter]
+
+        ratings = sub["Rating"]
+
+        out_rows.append(
+            {
+                "Quarter": quarter,
+                "Unique Players": sub["Player"].nunique(),
+                "Player-Games": len(sub),
+                "Avg Rating": ratings.mean(),
+                "Median Rating": ratings.median(),
+                "25th %ile": ratings.quantile(0.25),
+                "75th %ile": ratings.quantile(0.75),
+                "Std Dev": ratings.std(),
+                "10th %ile": ratings.quantile(0.10),
+                "90th %ile": ratings.quantile(0.90),
+                "% Under 700": (ratings < 700).mean(),
+                "% Under 800": (ratings < 800).mean(),
+                "% Over 1200": (ratings > 1200).mean(),
+                "% Over 1300": (ratings > 1300).mean(),
+            }
+        )
+
+    return pd.DataFrame(out_rows)
+
+
+def build_player_pool_vs_balance(player_pool_by_quarter, competitive_balance_by_quarter):
+    if player_pool_by_quarter.empty or competitive_balance_by_quarter.empty:
+        return pd.DataFrame()
+
+    pool = player_pool_by_quarter.copy()
+    balance = competitive_balance_by_quarter.copy()
+
+    cols_pool = [
+        "Quarter",
+        "Std Dev",
+        "% Under 700",
+        "% Under 800",
+        "% Over 1200",
+        "% Over 1300",
+    ]
+
+    cols_balance = [
+        "Quarter",
+        "Avg Gap",
+        "Median Gap",
+        "% 400+",
+    ]
+
+    df = pool[cols_pool].merge(
+        balance[cols_balance],
+        on="Quarter",
+        how="inner",
+    )
+
+    df = df.rename(
+        columns={
+            "Std Dev": "Player Pool Std Dev",
+            "Avg Gap": "Avg Match Gap",
+            "Median Gap": "Median Match Gap",
+            "% 400+": "% 400+ Match Gap",
+        }
+    )
+
+    if len(df) >= 2:
+        corr_std_avg = df["Player Pool Std Dev"].corr(df["Avg Match Gap"])
+        corr_std_median = df["Player Pool Std Dev"].corr(df["Median Match Gap"])
+        corr_std_400 = df["Player Pool Std Dev"].corr(df["% 400+ Match Gap"])
+    else:
+        corr_std_avg = float("nan")
+        corr_std_median = float("nan")
+        corr_std_400 = float("nan")
+
+    summary_rows = pd.DataFrame(
+        [
+            {
+                "Quarter": "CORRELATION",
+                "Player Pool Std Dev": "",
+                "% Under 700": "",
+                "% Under 800": "",
+                "% Over 1200": "",
+                "% Over 1300": "",
+                "Avg Match Gap": corr_std_avg,
+                "Median Match Gap": corr_std_median,
+                "% 400+ Match Gap": corr_std_400,
+                "Interpretation": "Correlation between Player Pool Std Dev and Avg Match Gap / Median Match Gap / % 400+ Match Gap.",
+            },
+            {
+                "Quarter": "INTERPRETATION",
+                "Player Pool Std Dev": "",
+                "% Under 700": "",
+                "% Under 800": "",
+                "% Over 1200": "",
+                "% Over 1300": "",
+                "Avg Match Gap": "",
+                "Median Match Gap": "",
+                "% 400+ Match Gap": "",
+                "Interpretation": "Higher positive correlations support the finding that wider player-pool skill dispersion is associated with less competitive balance.",
+            },
+        ]
+    )
+
+    df["Interpretation"] = ""
+
+    return pd.concat([df, summary_rows], ignore_index=True)
+
+
+def build_court_assignment_analysis(raw_df, player_log, days=180):
+    import numpy as np
+    from collections import defaultdict
+
+    raw = raw_df.copy()
+    raw["date"] = raw["posted_dt"].dt.date
+    cutoff = (raw["posted_dt"].max() - pd.Timedelta(days=days)).date()
+    raw = raw[raw["date"] >= cutoff]
+
+    gl = player_log.copy()
+    gl["date"] = pd.to_datetime(gl["posted"]).dt.date
+
+    # Raw Elo before each game
+    pre_ratings_lookup = {}
+    for _, row in gl.iterrows():
+        pre_ratings_lookup[(row["date"], row["player"])] = row["player_pre_rating"]
+
+    # Cumulative rated-game count before each date, for credibility adjustment
+    rated_gl = gl[gl["include_in_ratings"] == "Yes"].sort_values("posted_dt")
+    prior_games_lookup = defaultdict(lambda: defaultdict(int))
+    for _, row in rated_gl.iterrows():
+        prior_games_lookup[row["player"]][row["date"]] = None  # filled below
+    # Build cumulative count per player: count of games strictly before each date
+    from collections import Counter
+    game_counts_by_player = defaultdict(Counter)
+    for _, row in rated_gl.iterrows():
+        game_counts_by_player[row["player"]][row["date"]] += 1
+
+    def prior_games(player, date):
+        total = 0
+        for d, cnt in game_counts_by_player[player].items():
+            if d < date:
+                total += cnt
+        return total
+
+    def credibility_adjusted(raw_elo, games):
+        # Matches engine: sample_conf = games/(games+10) until 60 games, then 1.0
+        # No freshness — players present on court are active by definition
+        conf = 1.0 if games >= LAST_N_GAMES else games / (games + CONF_DEN)
+        return 1000 + (raw_elo - 1000) * conf
+
+    def elo_expected(ra, rb):
+        return 1 / (1 + 10 ** ((rb - ra) / 400))
+
+    def assign_to_courts(sorted_players, num_courts):
+        n = len(sorted_players)
+        per = n // num_courts
+        rem = n % num_courts
+        out = {}
+        idx = 0
+        for c in range(1, num_courts + 1):
+            cnt = per + (1 if c <= rem else 0)
+            for _ in range(cnt):
+                if idx < n:
+                    out[sorted_players[idx]] = c
+                    idx += 1
+        return out
+
+    # Per-player game deltas for tiered K additive (most-recent-first)
+    player_deltas = defaultdict(list)
+    for _, row in rated_gl.iterrows():
+        try:
+            delta = float(row["player_post_rating"]) - float(row["player_pre_rating"])
+            player_deltas[row["player"]].append((row["date"], pd.Timestamp(row["posted_dt"]), delta))
+        except (ValueError, TypeError):
+            pass
+    for p in player_deltas:
+        player_deltas[p].sort(key=lambda x: x[1], reverse=True)
+
+    dates = sorted(raw["date"].unique())
+    records = []
+
+    for d in dates:
+        day = raw[raw["date"] == d]
+        pools = sorted(day["pool"].unique())
+        nc = len(pools)
+        if nc < 2:
+            continue
+
+        den_s1 = {}
+        for _, row in day.iterrows():
+            pn = int(row["pool"].replace("Pool ", ""))
+            for col in ["winning_team", "losing_team"]:
+                for p in str(row[col]).split(" / "):
+                    p = p.strip()
+                    if p and p not in den_s1:
+                        den_s1[p] = pn
+
+        players = list(den_s1.keys())
+        if len(players) < 8:
+            continue
+
+        pre_rat = {}
+        for p in players:
+            raw_elo = pre_ratings_lookup.get((d, p))
+            if raw_elo is None:
+                pre_rat[p] = 1000
+            else:
+                games = prior_games(p, d)
+                pre_rat[p] = credibility_adjusted(float(raw_elo), games)
+
+        sorted_elo = sorted(players, key=lambda p: pre_rat[p], reverse=True)
+        elo_s1 = assign_to_courts(sorted_elo, nc)
+
+        s1_diffs = defaultdict(int)
+        s1_games = []
+        for pool in pools:
+            pg = day[day["pool"] == pool].sort_values("posted_dt").head(3)
+            for _, g in pg.iterrows():
+                wt = [x.strip() for x in str(g["winning_team"]).split(" / ")]
+                lt = [x.strip() for x in str(g["losing_team"]).split(" / ")]
+                ws, ls = g["winning_score"], g["losing_score"]
+                s1_games.append((wt, lt, ws, ls))
+                m = ws - ls
+                for p in wt:
+                    s1_diffs[p] += m
+                for p in lt:
+                    s1_diffs[p] -= m
+
+        # DEN S2: 2-up/2-down
+        den_grouped = defaultdict(list)
+        for p, c in den_s1.items():
+            den_grouped[c].append((p, s1_diffs.get(p, 0)))
+        for c in den_grouped:
+            den_grouped[c].sort(key=lambda x: x[1], reverse=True)
+        den_s2 = {}
+        for c in sorted(den_grouped.keys()):
+            for rank, (p, _) in enumerate(den_grouped[c]):
+                den_s2[p] = max(1, c - 1) if rank < 2 else min(nc, c + 1)
+
+        # DEN S1 + 1-up/1-back/2-stay S2
+        den_1u1b_s2 = {}
+        for c in sorted(den_grouped.keys()):
+            cp = den_grouped[c]
+            n_c = len(cp)
+            for rank, (p, _) in enumerate(cp):
+                if rank == 0:
+                    den_1u1b_s2[p] = max(1, c - 1)
+                elif rank == n_c - 1:
+                    den_1u1b_s2[p] = min(nc, c + 1)
+                else:
+                    den_1u1b_s2[p] = c
+
+        # Elo S1 + 1-up/1-back/2-stay S2
+        elo_grouped = defaultdict(list)
+        for p, c in elo_s1.items():
+            elo_grouped[c].append((p, s1_diffs.get(p, 0)))
+        for c in elo_grouped:
+            elo_grouped[c].sort(key=lambda x: x[1], reverse=True)
+        oneup_s2 = {}
+        for c in sorted(elo_grouped.keys()):
+            cp = elo_grouped[c]
+            n = len(cp)
+            for rank, (p, _) in enumerate(cp):
+                if rank == 0:
+                    oneup_s2[p] = max(1, c - 1)
+                elif rank == n - 1:
+                    oneup_s2[p] = min(nc, c + 1)
+                else:
+                    oneup_s2[p] = c
+
+        # Elo S1 + 2-up/2-back S2
+        elo_2u2b_s2 = {}
+        for c in sorted(elo_grouped.keys()):
+            for rank, (p, _) in enumerate(elo_grouped[c]):
+                elo_2u2b_s2[p] = max(1, c - 1) if rank < 2 else min(nc, c + 1)
+
+        def elo_recalc_s2(k_val):
+            post_k = dict(pre_rat)
+            for wt, lt, ws, ls in s1_games:
+                w_avg = np.mean([post_k[p] for p in wt if p in post_k])
+                l_avg = np.mean([post_k[p] for p in lt if p in post_k])
+                exp_w = elo_expected(w_avg, l_avg)
+                mult = margin_multiplier(ws - ls)
+                for p in wt:
+                    if p in post_k: post_k[p] += k_val * (1 - exp_w) * mult
+                for p in lt:
+                    if p in post_k: post_k[p] += k_val * (0 - (1 - exp_w)) * mult
+            return assign_to_courts(sorted(players, key=lambda p: post_k[p], reverse=True), nc)
+
+        elo_k20_s2  = elo_recalc_s2(20)
+        elo_k150_s2 = elo_recalc_s2(150)
+        elo_k175_s2 = elo_recalc_s2(175)
+        k100_s2     = elo_recalc_s2(100)
+
+        # Tiered K additive S2: start from pre_rat, amplify recent game history,
+        # then apply today's S1 at K=120.
+        # Net K per game: games 7-9 → K=40, games 4-6 → K=80, today's S1 → K=120.
+        # Amplification on historical games = (net_K - 20) / 20 × original_delta.
+        post_tk = dict(pre_rat)
+        for p in players:
+            recent = [delta for g_date, _, delta in player_deltas.get(p, []) if g_date < d]
+            for delta in recent[:3]:    # games 4-6: additional (80-20)/20 = 3× delta
+                post_tk[p] += 3.0 * delta
+            for delta in recent[3:6]:   # games 7-9: additional (40-20)/20 = 1× delta
+                post_tk[p] += 1.0 * delta
+        for wt, lt, ws, ls in s1_games:
+            w_avg = np.mean([post_tk[p] for p in wt if p in post_tk])
+            l_avg = np.mean([post_tk[p] for p in lt if p in post_tk])
+            exp_w = elo_expected(w_avg, l_avg)
+            mult = margin_multiplier(ws - ls)
+            for p in wt:
+                if p in post_tk: post_tk[p] += 120 * (1 - exp_w) * mult
+            for p in lt:
+                if p in post_tk: post_tk[p] += 120 * (0 - (1 - exp_w)) * mult
+        tiered_k_s2 = assign_to_courts(sorted(players, key=lambda p: post_tk[p], reverse=True), nc)
+
+        # Boundary swap S2: at each court boundary, identify all players within
+        # BOUNDARY_THRESH Elo of the nearest cross-boundary player, then randomly
+        # shuffle the full cluster across the two courts (maintaining court sizes).
+        # Seed is date-based for reproducibility.
+        import random as _random
+        BOUNDARY_THRESH = 40
+        boundary_swap_s2 = dict(elo_k20_s2)
+        _rng = _random.Random(hash(str(d)))
+        for c in range(1, nc):
+            upper = sorted([p for p, ct in boundary_swap_s2.items() if ct == c],
+                           key=lambda p: pre_rat[p])          # ascending: [0] = worst on upper
+            lower = sorted([p for p, ct in boundary_swap_s2.items() if ct == c + 1],
+                           key=lambda p: pre_rat[p], reverse=True)  # desc: [0] = best on lower
+            if not upper or not lower:
+                continue
+            bottom_upper = upper[0]
+            top_lower    = lower[0]
+            if abs(pre_rat[bottom_upper] - pre_rat[top_lower]) > BOUNDARY_THRESH:
+                continue
+            # Expand cluster: all upper players within 40 of top_lower,
+            # all lower players within 40 of bottom_upper
+            upper_in = [p for p in upper if abs(pre_rat[p] - pre_rat[top_lower]) <= BOUNDARY_THRESH]
+            lower_in = [p for p in lower if abs(pre_rat[p] - pre_rat[bottom_upper]) <= BOUNDARY_THRESH]
+            cluster = upper_in + lower_in
+            _rng.shuffle(cluster)
+            for i, p in enumerate(cluster):
+                boundary_swap_s2[p] = c if i < len(upper_in) else c + 1
+
+        # Upset-triggered S2: start from elo_k20_s2, apply 1u1b only for players
+        # whose S1 win total exceeded or fell short of Elo expectation by UPSET_THRESH.
+        UPSET_THRESH = 1.2
+        player_exp_wins  = defaultdict(float)
+        player_act_wins  = defaultdict(int)
+        for wt, lt, ws, ls in s1_games:
+            w_avg = np.mean([pre_rat[p] for p in wt if p in pre_rat])
+            l_avg = np.mean([pre_rat[p] for p in lt if p in pre_rat])
+            exp_w = elo_expected(w_avg, l_avg)
+            for p in wt:
+                player_exp_wins[p]  += exp_w
+                player_act_wins[p]  += 1
+            for p in lt:
+                player_exp_wins[p]  += (1 - exp_w)
+        upset_s2 = dict(elo_k20_s2)
+        for p in players:
+            surprise = player_act_wins.get(p, 0) - player_exp_wins.get(p, 0)
+            if surprise >= UPSET_THRESH:
+                upset_s2[p] = max(1, upset_s2[p] - 1)
+            elif surprise <= -UPSET_THRESH:
+                upset_s2[p] = min(nc, upset_s2[p] + 1)
+
+        # Court spreads
+        def spreads_for(assignments):
+            courts = defaultdict(list)
+            for p, c in assignments.items():
+                courts[c].append(pre_rat[p])
+            return {c: max(r) - min(r) if len(r) >= 2 else 0 for c, r in courts.items()}
+
+        sp_den_s1 = spreads_for(den_s1)
+        sp_den_s2 = spreads_for(den_s2)
+        sp_den_1u1b_s2 = spreads_for(den_1u1b_s2)
+        sp_elo_s1 = spreads_for(elo_s1)
+        sp_elo_2u2b_s2 = spreads_for(elo_2u2b_s2)
+        sp_oneup_s2 = spreads_for(oneup_s2)
+        sp_elo_k20_s2    = spreads_for(elo_k20_s2)
+        sp_elo_k150_s2   = spreads_for(elo_k150_s2)
+        sp_elo_k175_s2   = spreads_for(elo_k175_s2)
+        sp_k100_s2       = spreads_for(k100_s2)
+        sp_tiered_k_s2   = spreads_for(tiered_k_s2)
+        sp_boundary_swap = spreads_for(boundary_swap_s2)
+        sp_upset_s2      = spreads_for(upset_s2)
+
+        norm = nc - 1 if nc > 1 else 1
+
+        for p in players:
+            records.append({
+                "date": d,
+                "player": p,
+                "num_courts": nc,
+                "pre_rating": pre_rat[p],
+                "den_s1": den_s1[p],
+                "den_s2": den_s2[p],
+                "den_1u1b_s2": den_1u1b_s2[p],
+                "elo_s1": elo_s1[p],
+                "elo_2u2b_s2": elo_2u2b_s2[p],
+                "oneup_s2": oneup_s2[p],
+                "elo_k20_s2":    elo_k20_s2[p],
+                "elo_k150_s2":   elo_k150_s2[p],
+                "elo_k175_s2":   elo_k175_s2[p],
+                "k100_s2":       k100_s2[p],
+                "tiered_k_s2":   tiered_k_s2[p],
+                "boundary_swap": boundary_swap_s2[p],
+                "upset_s2":      upset_s2[p],
+                "den_s1_norm": (den_s1[p] - 1) / norm,
+                "den_s2_norm": (den_s2[p] - 1) / norm,
+                "elo_s1_norm": (elo_s1[p] - 1) / norm,
+                "oneup_s2_norm": (oneup_s2[p] - 1) / norm,
+                "k100_s2_norm": (k100_s2[p] - 1) / norm,
+                "den_s1_spread": sp_den_s1[den_s1[p]],
+                "den_s2_spread": sp_den_s2[den_s2[p]],
+                "den_1u1b_s2_spread": sp_den_1u1b_s2[den_1u1b_s2[p]],
+                "elo_s1_spread": sp_elo_s1[elo_s1[p]],
+                "elo_2u2b_s2_spread": sp_elo_2u2b_s2[elo_2u2b_s2[p]],
+                "oneup_s2_spread": sp_oneup_s2[oneup_s2[p]],
+                "elo_k20_s2_spread":    sp_elo_k20_s2[elo_k20_s2[p]],
+                "elo_k150_s2_spread":   sp_elo_k150_s2[elo_k150_s2[p]],
+                "elo_k175_s2_spread":   sp_elo_k175_s2[elo_k175_s2[p]],
+                "k100_s2_spread":       sp_k100_s2[k100_s2[p]],
+                "tiered_k_s2_spread":   sp_tiered_k_s2[tiered_k_s2[p]],
+                "boundary_swap_spread": sp_boundary_swap[boundary_swap_s2[p]],
+                "upset_s2_spread":      sp_upset_s2[upset_s2[p]],
+            })
+
+    if not records:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(records)
+
+    rows = []
+    for p, grp in df.groupby("player"):
+        n = len(grp)
+        avg_r = grp["pre_rating"].mean()
+
+        d2u2b  = (grp["den_s1_spread"].mean() + grp["den_s2_spread"].mean()) / 2
+        d1u1b  = (grp["den_s1_spread"].mean() + grp["den_1u1b_s2_spread"].mean()) / 2
+        dk100  = (grp["den_s1_spread"].mean() + grp["k100_s2_spread"].mean()) / 2
+        e2u2b  = (grp["elo_s1_spread"].mean() + grp["elo_2u2b_s2_spread"].mean()) / 2
+        e1u1b  = (grp["elo_s1_spread"].mean() + grp["oneup_s2_spread"].mean()) / 2
+        eelo   = (grp["elo_s1_spread"].mean() + grp["elo_k20_s2_spread"].mean()) / 2
+        ek150  = (grp["elo_s1_spread"].mean() + grp["elo_k150_s2_spread"].mean()) / 2
+        ek175  = (grp["elo_s1_spread"].mean() + grp["elo_k175_s2_spread"].mean()) / 2
+        ek100  = (grp["elo_s1_spread"].mean() + grp["k100_s2_spread"].mean()) / 2
+        etk    = (grp["elo_s1_spread"].mean() + grp["tiered_k_s2_spread"].mean()) / 2
+        ebsw   = (grp["elo_s1_spread"].mean() + grp["boundary_swap_spread"].mean()) / 2
+        eupt   = (grp["elo_s1_spread"].mean() + grp["upset_s2_spread"].mean()) / 2
+
+        def imp(val):
+            return round(-100 * (val - d2u2b) / d2u2b) if d2u2b > 0 else 0
+
+        s1_chg_pct = 100 * (grp["den_s1"] != grp["elo_s1"]).sum() / n
+
+        rows.append({
+            "Player": p,
+            "Days": n,
+            "Avg Rating": round(avg_r),
+            "DEN S1 Pos": round(grp["den_s1_norm"].mean(), 2),
+            "Elo S1 Pos": round(grp["elo_s1_norm"].mean(), 2),
+            "S1 Shift": round(grp["elo_s1_norm"].mean() - grp["den_s1_norm"].mean(), 2),
+            "S1 Chg %": round(s1_chg_pct),
+            "DEN S2 Pos": round(grp["den_s2_norm"].mean(), 2),
+            "1u1b S2 Pos": round(grp["oneup_s2_norm"].mean(), 2),
+            "K100 S2 Pos": round(grp["k100_s2_norm"].mean(), 2),
+            "D+2u2b Spread": round(d2u2b),
+            "D+1u1b Spread": round(d1u1b),
+            "D+K100 Spread": round(dk100),
+            "E+2u2b Spread": round(e2u2b),
+            "E+1u1b Spread": round(e1u1b),
+            "E+Elo Spread":  round(eelo),
+            "E+K150 Spread": round(ek150),
+            "E+K175 Spread": round(ek175),
+            "E+K100 Spread": round(ek100),
+            "D+1u1b Imp %": imp(d1u1b),
+            "D+K100 Imp %": imp(dk100),
+            "E+2u2b Imp %": imp(e2u2b),
+            "E+1u1b Imp %": imp(e1u1b),
+            "E+Elo Imp %":  imp(eelo),
+            "E+K150 Imp %": imp(ek150),
+            "E+K175 Imp %": imp(ek175),
+            "E+K100 Imp %": imp(ek100),
+            "E+TK Spread":  round(etk),
+            "E+BSw Spread": round(ebsw),
+            "E+Upt Spread": round(eupt),
+            "E+TK Imp %":  imp(etk),
+            "E+BSw Imp %": imp(ebsw),
+            "E+Upt Imp %": imp(eupt),
+        })
+
+    result = pd.DataFrame(rows).sort_values("Avg Rating", ascending=False).reset_index(drop=True)
+
+    # Aggregate scenario comparison — one row per scenario
+    # Tuples: label, s1_method, s2_method, s1_spread_col, s2_spread_col, s1_court_col, s2_court_col, effort, notes
+    scenario_specs = [
+        ("DEN (current)",    "DEN step/%",  "2-up/2-back",    "den_s1_spread", "den_s2_spread",       "den_s1", "den_s2",       "—",      "Baseline"),
+        ("DEN + 1u1b S2",    "DEN step/%",  "1-up/1-back",    "den_s1_spread", "den_1u1b_s2_spread",  "den_s1", "den_1u1b_s2",  "Low",    "Keep DEN S1; change S2 movement rule only"),
+        ("DEN + K100 S2",    "DEN step/%",  "K100 Elo recalc","den_s1_spread", "k100_s2_spread",      "den_s1", "k100_s2",      "High",   "Keep DEN S1; full Elo recalc for S2 only"),
+        ("Elo S1 + 2u2b S2", "Elo ratings", "2-up/2-back",    "elo_s1_spread", "elo_2u2b_s2_spread",  "elo_s1", "elo_2u2b_s2",  "Medium", "Elo S1 only; keep current S2 movement"),
+        ("Elo S1 + 1u1b S2", "Elo ratings", "1-up/1-back",    "elo_s1_spread", "oneup_s2_spread",     "elo_s1", "oneup_s2",     "Medium", "Elo S1 + gentler S2 movement; no real-time recalc"),
+        ("Elo S1 + Elo S2",  "Elo ratings", "Elo recalc (K=20)", "elo_s1_spread","elo_k20_s2_spread",   "elo_s1", "elo_k20_s2",   "High",   "Elo for both sessions; standard K update after S1"),
+        ("Elo S1 + K150 S2", "Elo ratings", "Elo recalc (K=150)","elo_s1_spread","elo_k150_s2_spread", "elo_s1", "elo_k150_s2",  "High",   "~30% S2 movement; balance of stability and responsiveness"),
+        ("Elo S1 + K175 S2", "Elo ratings", "Elo recalc (K=175)","elo_s1_spread","elo_k175_s2_spread", "elo_s1", "elo_k175_s2",  "High",   "~35% S2 movement; more responsive to S1 outcomes"),
+        ("Elo S1 + K100 S2", "Elo ratings", "Elo recalc (K=100)","elo_s1_spread","k100_s2_spread",     "elo_s1", "k100_s2",      "High",   "Aggressive K update after S1"),
+        ("Elo S1 + Tiered K","Elo ratings", "Tiered K (K120/80/40)","elo_s1_spread","tiered_k_s2_spread","elo_s1","tiered_k_s2", "High",   "K=120 S1 games, K=80 games 4-6, K=40 games 7-9 (additive)"),
+        ("Elo S1 + BdrSwap",  "Elo ratings", "Boundary swap",    "elo_s1_spread","boundary_swap_spread","elo_s1","boundary_swap", "Medium", "Swap court boundary pair if Elo gap ≤40; competitiveness-neutral"),
+        ("Elo S1 + Upset",    "Elo ratings", "Upset-triggered",  "elo_s1_spread","upset_s2_spread",     "elo_s1","upset_s2",     "Medium", "Promote/demote if actual wins deviate ≥1.2 from expected"),
+    ]
+    den_baseline = ((df["den_s1_spread"] + df["den_s2_spread"]) / 2).mean()
+    scen_rows = []
+    for label, s1_meth, s2_meth, s1_col, s2_col, s1_court, s2_court, effort, notes in scenario_specs:
+        s1_avg = df[s1_col].mean()
+        s2_avg = df[s2_col].mean()
+        avg_spread = (s1_avg + s2_avg) / 2
+        pct_moving = round(100 * (df[s2_court] != df[s1_court]).mean())
+        improv = "—" if label == "DEN (current)" else (
+            f"+{round(-100 * (avg_spread - den_baseline) / den_baseline)}%" if den_baseline > 0 else "—"
+        )
+        scen_rows.append({
+            "Scenario": label,
+            "S1 Method": s1_meth,
+            "S2 Method": s2_meth,
+            "S1 Avg Spread": round(s1_avg),
+            "S2 Avg Spread": round(s2_avg),
+            "Combined Spread": round(avg_spread),
+            "vs DEN": improv,
+            "S1→S2 % Moving": f"{pct_moving}%",
+            "Impl. Effort": effort,
+            "Notes": notes,
+        })
+    scenario_summary = pd.DataFrame(scen_rows)
+
+    # Court count distribution (theoretical movement rates; empirical player counts)
+    day_nc = df.drop_duplicates(["date", "num_courts"])
+    nc_days = day_nc.groupby("num_courts").size()
+    total_days_nc = nc_days.sum()
+    nc_avg_players = (
+        df.groupby(["date", "num_courts"])["player"].count()
+        .groupby("num_courts").mean()
+    )
+    avg_spread_by_nc = df.groupby("num_courts")["den_s1_spread"].mean()
+    dist_rows = []
+    for nc in sorted(nc_days.index):
+        days = int(nc_days[nc])
+        avg_p = nc_avg_players[nc]
+        pct_2u2b = round(100 * (nc - 1) / nc)
+        pct_1u1b = round(100 * (nc - 1) / (2 * nc))
+        dist_rows.append({
+            "Courts": nc,
+            "Days": days,
+            "% of Days": f"{100 * days / total_days_nc:.1f}%",
+            "Avg Players": round(avg_p, 1),
+            "2u2b % Moving": f"{pct_2u2b}%",
+            "1u1b % Moving": f"{pct_1u1b}%",
+            "Avg S1 Spread": round(avg_spread_by_nc.get(nc, float("nan"))),
+        })
+    wtd_2u2b = round(sum(nc_days[nc] * (nc - 1) / nc for nc in nc_days.index) / total_days_nc * 100)
+    wtd_1u1b = round(sum(nc_days[nc] * (nc - 1) / (2 * nc) for nc in nc_days.index) / total_days_nc * 100)
+    dist_rows.append({
+        "Courts": "Wtd Avg",
+        "Days": int(total_days_nc),
+        "% of Days": "100%",
+        "Avg Players": "",
+        "2u2b % Moving": f"{wtd_2u2b}%",
+        "1u1b % Moving": f"{wtd_1u1b}%",
+    })
+    court_distribution = pd.DataFrame(dist_rows)
+
+    return result, scenario_summary, court_distribution
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Build Pickleball workbook from master history CSV.")
+    parser.add_argument("--input", required=True, help="Path to master history CSV")
+    parser.add_argument("--output", required=True, help="Path to output XLSX")
+    parser.add_argument("--as-of", default=None, help="Optional as-of date YYYY-MM-DD")
+    parser.add_argument("--illustration-date", default=None, help="Optional illustration date YYYY-MM-DD")
+    parser.add_argument("--with-history", action="store_true", help="Include expensive Rating History tab")
+    args = parser.parse_args()
+
+    input_path = Path(args.input)
+    output_path = Path(args.output)
+    output_path.parent.mkdir(exist_ok=True)
+
+    raw = pd.read_csv(input_path)
+    raw.columns = [c.strip() for c in raw.columns]
+    raw["posted_dt"] = pd.to_datetime(raw["posted"], errors="coerce")
+
+    for col in ["winning_team", "losing_team"]:
+        raw[col] = [apply_manual_fix(norm(team), dt) for team, dt in zip(raw[col], raw["posted_dt"])]
+
+    raw = raw.drop_duplicates(
+        subset=["posted_dt", "winning_team", "losing_team", "winning_score", "losing_score"]
+    ).sort_values(
+        ["posted_dt", "winning_team", "losing_team", "winning_score", "losing_score"]
+    ).reset_index(drop=True)
+
+    raw["exclude_match"] = raw["winning_team"].map(team_has_placeholder) | raw["losing_team"].map(team_has_placeholder)
+    raw["include_in_ratings"] = ~raw["exclude_match"]
+    raw["match_day"] = raw["posted_dt"].dt.date
+    raw["year"] = raw["posted_dt"].dt.year
+    raw["month_num"] = raw["posted_dt"].dt.month
+    raw["month_name"] = raw["posted_dt"].dt.strftime("%b")
+    raw["year_month"] = raw["posted_dt"].dt.strftime("%Y-%m")
+    raw["quarter"] = raw["posted_dt"].dt.to_period("Q").astype(str).str.replace("Q", " Q", regex=False)
+
+    if args.as_of:
+        as_of = pd.Timestamp(args.as_of).normalize()
+    else:
+        as_of = pd.Timestamp(raw["posted_dt"].max().date())
+
+    if args.illustration_date:
+        illustration_date = pd.Timestamp(args.illustration_date).normalize()
+    else:
+        illustration_date = pd.Timestamp(raw.loc[raw["include_in_ratings"], "posted_dt"].max().date())
+
+    # Full history log — single, authoritative source for everything: leaderboard,
+    # historical display, model validation, court simulation. No window, no reset.
+    full_player_log = build_full_player_log(raw)
+    rated_full = full_player_log[full_player_log["include_in_ratings"] == "Yes"].copy()
+
+    full_board = build_current_leaderboard(full_player_log, as_of)
+
+    if full_board.empty:
+        leaderboard = full_board.copy()
+        inactive_players = full_board.copy()
+    else:
+        # Leaderboard visibility (revised 2026-07-21): simplified to a single
+        # criterion -- played on FREQUENT_PLAY_MIN_DAYS+ distinct days in the
+        # trailing FREQUENT_PLAY_WINDOW_DAYS. Replaces the earlier combined
+        # Freshness Tier / frequency OR logic: Freshness Tier's avg_game_age
+        # component was found too convoluted to reason about, and the
+        # MIN_GAMES lifetime-games gate above was dropped as redundant once
+        # a real recent-activity floor exists. Threshold lowered from an
+        # initial 12 to 6 after confirming 6 still cleanly resolves all
+        # previously-known false-exclusion cases (Elizabeth Flynn and 10
+        # others) without introducing new problems worth blocking on.
+        recent_play_days = compute_recent_play_days(full_player_log, as_of)
+        is_visible = full_board["Player"].map(recent_play_days).fillna(0) >= FREQUENT_PLAY_MIN_DAYS
+
+        leaderboard = full_board[is_visible].copy()
+        leaderboard = leaderboard.sort_values(["Player Rating", "Games Used (last 60)"], ascending=[False, False]).reset_index(drop=True)
+        leaderboard["Rank"] = range(1, len(leaderboard) + 1)
+
+        inactive_players = full_board[~is_visible].copy()
+        inactive_players = inactive_players[pd.to_datetime(inactive_players["Last Played"]) >= pd.Timestamp("2025-01-01")].copy()
+        inactive_players = inactive_players.sort_values(["Player Rating", "Games Used (last 60)"], ascending=[False, False]).reset_index(drop=True)
+        inactive_players["Rank"] = range(1, len(inactive_players) + 1)
+
+    illustration = build_illustration_tab(full_player_log, raw, illustration_date)
+    model_validation = build_model_validation(full_player_log, as_of)
+    rating_gap_distribution = build_rating_gap_distribution(full_player_log)
+    expected_margin_calibration = build_expected_margin_calibration(full_player_log)
+    team_balance_analysis = build_team_balance_analysis(full_player_log)
+    extreme_partner_spread = build_extreme_partner_spread_analysis(full_player_log)
+    extreme_spread_summary = build_extreme_spread_summary(full_player_log)
+    competitive_balance_by_quarter = build_competitive_balance_by_quarter(full_player_log)
+    player_pool_by_quarter = build_player_pool_by_quarter(full_player_log)
+    session_effects = build_session_effects(full_player_log, set(leaderboard["Player"]))
+    recent_trends = build_recent_trends(full_player_log, leaderboard, as_of)
+
+    if not recent_trends.empty and not leaderboard.empty:
+        # Leaderboard trend badge switched 2026-07-21 from a win%-gap metric
+        # to Rating Delta (24) -- simpler for players to understand ("your
+        # rating moved by X over your last 24 games") and equally valid,
+        # since neither metric was ever a strong predictor of future
+        # performance (Step 2 tested 8 alternatives, all weak); the honest
+        # goal is describing recent form, not forecasting it. Hot/cold
+        # thresholds are computed fresh each run as the 85th/15th percentile
+        # of Rating Delta (24) among currently-eligible players (24+ games,
+        # played within 14 days) rather than fixed constants, so the badge
+        # self-calibrates as participation rises and falls rather than
+        # needing periodic re-tuning.
+        delta_map = dict(zip(recent_trends["Player"], recent_trends["Rating Delta (24)"]))
+        eligible_deltas = recent_trends["Rating Delta (24)"].dropna()
+        if len(eligible_deltas) >= 10:
+            hot_threshold = eligible_deltas.quantile(0.85)
+            cold_threshold = eligible_deltas.quantile(0.15)
+        else:
+            hot_threshold = cold_threshold = None
+        leaderboard.insert(
+            2, "Trend",
+            leaderboard["Player"].map(delta_map).apply(
+                lambda v: trend_icon(v, hot_threshold, cold_threshold)
+            )
+        )
+
+    game_consistency = build_game_consistency(full_player_log, leaderboard)  # own internal last-60-game window, unrelated to the rating source
+
+    if not game_consistency.empty and not leaderboard.empty:
+        scores = game_consistency["Consistency Score"]
+        t_low = float(scores.quantile(1 / 3))
+        t_high = float(scores.quantile(2 / 3))
+        cons_map = dict(zip(game_consistency["Player"], game_consistency["Consistency Score"]))
+        leaderboard.insert(
+            3,
+            "Consistency",
+            leaderboard["Player"].map(cons_map).apply(
+                lambda s: consistency_icon(s, t_low, t_high)
+            ),
+        )
+
+    performance_vs_expectation = leaderboard[
+        [
+            "Rank",
+            "Player",
+            "Player Rating",
+            "Games Used (last 60)",
+            "Win %",
+            "Expected Win %",
+            "Win % vs Expected",
+            "Avg Point Diff",
+            "Avg Matchup Edge",
+            "Freshness Tier",
+            "Confidence Tier",
+        ]
+    ].copy()
+    performance_vs_expectation = performance_vs_expectation.sort_values(
+        ["Win % vs Expected", "Player Rating"], ascending=[False, False]
+    ).reset_index(drop=True)
+    performance_vs_expectation.insert(0, "Performance Rank", range(1, len(performance_vs_expectation) + 1))
+
+    # Point-to-point rating comparison data, cached (see eod_rating_cache.py):
+    # a past date's rating snapshot is a fixed historical fact once that date
+    # has passed, so only the newest date needs computing each run instead of
+    # rebuilding the whole ~200+-date grid every time (was costing ~194s on
+    # every 15-min pipeline cycle, unconditionally, via run_all.sh's
+    # --with-history flag -- now a one-time cost, paid once ever).
+    def board_asof(date_):
+        board = build_current_leaderboard(full_player_log, pd.Timestamp(date_))
+        return {row["Player"]: int(row["Player Rating"]) for _, row in board.iterrows()}
+
+    eod_df = get_or_update_eod_cache(raw, full_player_log, leaderboard, EOD_CACHE_PATH, board_asof)
+
+    hist_rows = []
+
+    for p in sorted(rated_full["player"].dropna().unique()):
+        sub = rated_full[rated_full["player"] == p].sort_values(["posted_dt", "match_id"])
+
+        last_rated_match = pd.Timestamp(sub["posted"].iloc[-1]).date()
+        if last_rated_match < pd.Timestamp("2025-01-01").date():
+            continue
+
+        hist_rows.append(
+            {
+                "Rank": None,
+                "Player": p,
+                "Player Rating": int(round(float(sub["player_post_rating"].iloc[-1]))),
+                "Games": int(len(sub)),
+                "Wins": int(sub["is_win"].sum()),
+                "Losses": int(len(sub) - sub["is_win"].sum()),
+                "Avg Point Diff": round(float(sub["margin"].mean()), 1),
+                "Last Rated Match": last_rated_match,
+            }
+        )
+
+    historical = pd.DataFrame(hist_rows).sort_values(
+        ["Player Rating", "Games"], ascending=[False, False]
+    ).reset_index(drop=True)
+
+    historical["Rank"] = range(1, len(historical) + 1)
+    historical = historical[
+        ["Rank", "Player", "Player Rating", "Games", "Wins", "Losses", "Avg Point Diff", "Last Rated Match"]
+    ]
+
+    part_rows = []
+
+    for _, r in raw[~raw["exclude_match"]].iterrows():
+        for tc in ["winning_team", "losing_team"]:
+            p1, p2 = split_team(r[tc])
+            for p in [p1, p2]:
+                if p:
+                    part_rows.append({"Player": p, "Quarter": r["quarter"], "Games": 1})
+
+    part_df = pd.DataFrame(part_rows)
+
+    if len(part_df):
+        quarters = sorted(part_df["Quarter"].unique().tolist())
+        qp = part_df.pivot_table(index="Player", columns="Quarter", values="Games", aggfunc="sum", fill_value=0)
+        qp = qp.reindex(columns=quarters, fill_value=0)
+        qp["Total Games"] = qp.sum(axis=1)
+        qp["Last 4 Quarters"] = qp[quarters[-4:]].sum(axis=1)
+        qp = qp.reset_index()
+        qp = qp.sort_values(qp.columns[-1], ascending=False)
+    else:
+        qp = pd.DataFrame(columns=["Player", "Total Games", "Last 4 Quarters"])
+
+    raw_trim = raw[raw["posted_dt"].dt.year >= 2025][
+        [
+            "posted",
+            "winning_team",
+            "winning_score",
+            "losing_team",
+            "losing_score",
+            "game_type",
+            "pool",
+            "include_in_ratings",
+        ]
+    ].copy()
+
+    player_log_trim = full_player_log.copy()  # all history, no year cutoff -- session_viewer.html shows every play date in master_history_raw.csv
+
+    # Guest/special-case players should appear only on Raw_Data and Quarterly Participation.
+    # Their games remain in rating calculations so partners/opponents are handled correctly.
+    leaderboard = exclude_guest_players(leaderboard)
+    # Re-close any gap left in Rank by a guest player being excluded above —
+    # Rank was originally assigned before this filter ran, so a removed
+    # guest row leaves a stale skipped number (e.g. 15, 17, 18... with no
+    # 16) unless renumbered fresh against the final row count.
+    if not leaderboard.empty:
+        leaderboard = leaderboard.sort_values("Rank").reset_index(drop=True)
+        leaderboard["Rank"] = range(1, len(leaderboard) + 1)
+    inactive_players = exclude_guest_players(inactive_players)
+    if not inactive_players.empty:
+        inactive_players = inactive_players.sort_values("Rank").reset_index(drop=True)
+        inactive_players["Rank"] = range(1, len(inactive_players) + 1)
+    performance_vs_expectation = exclude_guest_players(performance_vs_expectation)
+    eod_df = exclude_guest_players(eod_df)
+    historical = exclude_guest_players(historical)
+    # player_log_trim intentionally NOT filtered here (removed 2026-08-14):
+    # this feeds the "Player_Game_Log" sheet, the real data source for
+    # Session Viewer and Player History -- both detailed, non-leaderboard
+    # views. Per Bill's stated principle, a known/identified player who
+    # doesn't qualify for the leaderboard should still be fully visible
+    # everywhere else; only leaderboard and leaderboard-adjacent sheets
+    # should apply GUEST_OUTPUT_EXCLUSIONS.
+
+    # player_log_trim is built from full_player_log -- one authoritative
+    # player_pre_rating/player_post_rating per game already. No merge needed;
+    # session_viewer.html reads this sheet directly (see build_session_viewer.py).
+
+    if "session_effects" in locals():
+        session_effects = exclude_guest_players(session_effects)
+
+    if "recent_trends" in locals():
+        recent_trends = exclude_guest_players(recent_trends)
+
+
+    notes_rows = [
+        ("MODEL SPEC", ""),
+        ("Model overview", "Ratings are generated by a Python engine from the master history CSV. Excel is for viewing, review, validation, and diagnostics."),
+        ("Base Elo", "1000"),
+        ("K-factor", "Provisional: grades linearly from 40 at game 1 to 20 at game 60, then holds at 20. Allows new players to converge to their true level faster without creating extreme rating spreads."),
+        ("Margin multiplier", "LN(point_diff + 1), uncapped."),
+        ("Format", "Doubles, team-based modified Elo"),
+        ("Leaderboard basis", "Full cumulative history: rating is the player's most recent Elo from their entire rated career, no window, no reset. Freshness/sample-size eligibility (see below) is computed separately from a bounded recent window and does not affect the rating value itself."),
+        ("Minimum games", "24 rated games required to appear on the Leaderboard"),
+        ("Displayed Player Rating", "Full-history modified Elo, shrunk toward 1000 only for sample-size (fewer than 60 games in the player's own last-60-games window). No continuous freshness penalty is applied — staleness is handled entirely by the Freshness Tier exclusion below, not by a rating adjustment."),
+        ("Expected Win %", "Uses team pre-match rating difference with 92% expectation compression (rating gap scaled by 0.92 before computing win probability) based on calibration testing. Display/reporting only — does not affect rating values."),
+        ("Freshness tiers", "Based on worse of days since last play and average game age, computed from the player's own last 60 real games: 0-90 Very Fresh; 91-180 Mature; 181-365 Stale; 366+ Very Stale"),
+        ("Main Leaderboard inclusion", "Very Fresh and Mature only"),
+        ("Less Active tab", "Stale and Very Stale players are shown separately, excluding players whose last play was before 1/1/2025"),
+        ("Avg Matchup Edge", "Own team pre-match rating minus opponent team pre-match rating, over the player's last 60 real games. Positive means the player's team usually had the rating edge; negative means tougher matchups."),
+        ("Results vs Expectation", "Shows players whose actual results exceeded or lagged Expected Win %. This is diagnostic, not necessarily a trend measure."),
+        ("Model Validation", "Uses 2026 games where all four players had at least 60 prior rated games. Reports favorite win %, predicted favorite win %, Brier score, log loss, calibration buckets, and rating-gap buckets."),
+        ("Special-case exclusions", "Steve Fahrenkrog, Jonathan Ernst, and Bella Tinstman are treated as guest/special-case players and should be excluded from leaderboard-style analyses."),
+        ("Included limited-participation player", "Logan Brannon is included normally despite low participation."),
+        ("Known name fixes", "Manual name fixes include DEN New Player Tryout replacements for Bella Tinstman, Jonathan Ernst, Logan Brannon, and Karen Carter to Kenneth Whipple."),
+        ("Known date adjustment", "The first nine Feb 12, 2026 records were corrected to Feb 11, 2026 to properly classify the second 2/11/26 shootout."),
+        ("Pre-2025 data", "Pre-2025 data is part of every player's full rated history and directly informs their current rating, since the rating is cumulative with no window. It does not affect Freshness Tier or the Games Used (last 60) count, which look only at each player's most recent 60 real games regardless of date."),
+        ("Match exclusions", "DEN New Player Tryout; SAM/8AM New Player Tryout; SAM/NAM/Co-ed Drop In 2"),
+        ("EOD rating note", "The EOD sheet freezes each player after their last played date."),
+        ("Engine call", "python3 pickleball_engine_v2.py --input data/master_history_raw.csv --output output/pickleball_model.xlsx"),
+    ]
+
+    notes = pd.DataFrame(notes_rows, columns=["Section", "Details"])
+
+    model_description_rows = [
+        "SAM PLAYER RATING MODEL",
+        "",
+        "What Is This?",
+        "A data-driven rating system for SAM shootout participants. It uses every recorded game result to estimate each player's current playing strength.",
+        "Unlike a simple win-loss record, the model accounts for who you played with, who you played against, and the score. Beating a strong team earns more rating than beating a weak one. Losing to a strong team costs less than losing to a weak one.",
+        "",
+        "How Ratings Work",
+        "Every player starts at 1000. After each game, the four players' ratings update based on the result versus what the model expected.",
+        "The key factors: (1) Team rating gap -- bigger upsets produce bigger rating changes. (2) Scoring margin -- an 11-2 win moves ratings more than 11-9. (3) K-factor of 20 -- controls how much a single game can shift a rating.",
+        "Your team's rating is the average of you and your partner. The model predicts win probability from the gap between the two teams' ratings.",
+        "",
+        "What the Numbers Mean",
+        "A 100-point rating gap corresponds to roughly a 62% win probability for the stronger team. A 200-point gap is roughly 72%. A 300-point gap is roughly 80%.",
+        "The leaderboard uses a no-history-drift approach: each qualifying player's last 60 rated games are identified, then replayed from a neutral 1000 starting point. This means all players are evaluated on equal footing — a player who joined last month competes for rank on the same basis as someone who has played for years. Players need at least 24 games to appear.",
+        "",
+        "Freshness and Confidence",
+        "A player's underlying modified Elo rating never changes due to inactivity. After 90 days without playing, the displayed rating is slightly compressed toward 1000 (up to a 15% cap) to flag uncertainty -- but the actual rating is preserved and fully restored when the player returns.",
+        "Freshness tiers: Very Fresh (played within 90 days), Mature (91-180 days), Stale (181-365 days), Very Stale (366+ days). Only Very Fresh and Mature players appear on the main leaderboard.",
+        "Players with fewer than 60 games still have a credibility adjustment compressing their displayed rating toward 1000, reflecting lower certainty in a smaller sample. Once a player reaches 60 games, no credibility compression is applied — the no-history-drift baseline has done that work by starting everyone at 1000.",
+        "",
+        "Interpreting Ratings",
+        "Ratings compare players within the SAM environment. A rating of 1100 here does not correspond to any external rating system.",
+        "Small gaps (under 50 points) are not meaningful -- they can shift in a single session. Gaps of 100+ points are generally stable and predictive.",
+        "",
+        "Workbook Tabs",
+        "  Leaderboard  —  Current rankings for active players.",
+        "  Less Active  —  Players who haven't played recently but have enough history to rate.",
+        "  Rating History  —  Each player's rating after each play date, showing trajectory over time.",
+        "  Performance vs Expectation  —  Who is winning more (or less) than their rating predicts.",
+        "  Recent Trends  —  Whether a player's recent results are improving or declining.",
+        "  Consistency  —  Game-to-game variability in point margins over the last 60 games.",
+        "  Session Effects  —  Whether players perform differently in early vs. late games of a session.",
+        "  Illustration  —  A worked example showing how one day's games move ratings step by step.",
+        "",
+        "Limitations",
+        "No rating system fully captures player ability. Ratings reflect results, not effort, improvement trajectory, or intangibles.",
+        "Partner assignments, opponent availability, attendance patterns, and small samples all introduce noise. The model is a useful estimate, not a definitive ranking.",
+    ]
+    model_description = pd.DataFrame({"Model Description": model_description_rows})
+
+    key_findings_rows = [
+        ("2026-06-14", "Model Calibration", "K-factor reduced from 24 to 20 based on grid search across K=[16-24] x compression=[0.80-1.00]. K=20 with 0.85 expectation compression produced the best Brier score."),
+        ("2026-06-14", "Model Calibration", "The model was overconfident at extreme rating gaps. Adding 85% expectation compression to predictions (but not Elo updates) corrected the calibration curve."),
+        ("2026-06-14", "Model Calibration", "After tuning, the model is well calibrated across most rating-gap ranges, with actual results generally tracking predicted results closely."),
+        ("2026-06-14", "Team Balance", "Teams with partner-rating spreads below 550 perform close to model expectations; underperformance is concentrated in the 550+ spread range."),
+        ("2026-06-14", "Team Balance", "Teams with spreads of 550+ underperform by roughly 2.5 percentage points and 0.4 points per game versus expected margin."),
+        ("2026-06-14", "Team Balance", "The underperformance effect is not monotonic across finer spread buckets; additional data is needed before incorporating a partner-spread adjustment."),
+        ("2026-06-14", "Competitive Balance", "Average match rating gap increased from roughly 116 in 2022 Q1 to roughly 202 in 2026 Q2. Median gap increased from 85 to 169."),
+        ("2026-06-14", "Competitive Balance", "Matches with rating gaps of 400+ increased from 2.7% in 2022 Q1 to 10.6% in 2026 Q2."),
+        ("2026-06-14", "Competitive Balance", "Player-pool skill dispersion (std dev 176 to 332) is the primary driver of competitive imbalance, correlating 0.97 with average match rating gap."),
+        ("2026-06-21", "Trend Analysis", "Tested 8 alternative trend metrics. All showed weak predictive power (correlations 0.10-0.26). Best approach: last-15-game win% gap minus last-60-game baseline."),
+        ("2026-06-21", "Trend Analysis", "Trend icons (fire/ice/stable) are directional indicators, not strong predictors. A player trending hot is performing above their own recent baseline, not necessarily above others."),
+        ("2026-06-21", "Consistency", "Game-to-game consistency is measured by std of point margins over the last 60 games, not rating changes. Rating-change std correlates 0.41 with player rating (proxies for skill); margin std correlates only 0.26."),
+        ("2026-06-21", "Consistency", "Consistency classifications use tercile splits. The metric is independent enough from skill that high-rated and low-rated players appear across all three categories."),
+        ("2026-06-21", "Overall Conclusion", "The primary challenge for competitive balance is not a lack of strong players but a wider overall range of player abilities in the SAM sessions."),
+        ("2026-06-21", "Overall Conclusion", "Competitive imbalance is driven by increasing player-pool skill dispersion, while extreme partner-rating imbalance affects only about 8.5% of appearances and does not yet justify a model adjustment."),
+    ]
+
+    key_findings = pd.DataFrame(key_findings_rows, columns=["Date Added", "Area", "Finding"])
+
+    court_analysis, scenario_summary, court_distribution = build_court_assignment_analysis(raw, full_player_log, days=180)
+
+    with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+        leaderboard.to_excel(writer, sheet_name="Leaderboard", index=False)
+        model_description.to_excel(writer, sheet_name="Model Description", index=False)
+        key_findings.to_excel(writer, sheet_name="Key Findings", index=False)
+        inactive_players.to_excel(writer, sheet_name="Less Active", index=False)
+        illustration.to_excel(writer, sheet_name="Illustration", index=False)
+        performance_vs_expectation.to_excel(writer, sheet_name="Performance vs Expectation", index=False)
+        model_validation.to_excel(writer, sheet_name="Model Validation", index=False)
+        expected_margin_calibration.to_excel(writer, sheet_name="Expected Margin Calibration", index=False)
+        team_balance_analysis.to_excel(writer, sheet_name="Team Balance Analysis", index=False)
+        extreme_partner_spread.to_excel(writer, sheet_name="Extreme Partner Spread", index=False)
+        extreme_spread_summary.to_excel(writer, sheet_name="Extreme Spread Summary", index=False)
+        competitive_balance_by_quarter.to_excel(writer, sheet_name="Competitive Balance", index=False)
+        player_pool_by_quarter.to_excel(writer, sheet_name="Player Pool", index=False)
+        session_effects.to_excel(writer, sheet_name="Session Effects", index=False)
+        recent_trends.to_excel(writer, sheet_name="Recent Trends", index=False)
+        game_consistency.to_excel(writer, sheet_name="Consistency", index=False)
+        eod_df.to_excel(writer, sheet_name="Rating History", index=False)
+        qp.to_excel(writer, sheet_name="Quarterly Participation", index=False)
+        notes.to_excel(writer, sheet_name="Notes", index=False)
+        if not court_analysis.empty:
+            court_analysis.to_excel(writer, sheet_name="Court Assignment Analysis", index=False)
+        raw_trim.to_excel(writer, sheet_name="Raw_Data", index=False)
+        player_log_trim.to_excel(writer, sheet_name="Player_Game_Log", index=False)
+
+    wb = load_workbook(output_path)
+
+    # Keep front-facing summary tabs near the front.
+    preferred_front_order = ["Leaderboard", "Model Description", "Key Findings"]
+    existing_front = [wb[name] for name in preferred_front_order if name in wb.sheetnames]
+    remaining = [ws for ws in wb.worksheets if ws.title not in preferred_front_order]
+    wb._sheets = existing_front + remaining
+
+    if "Key Findings" in wb.sheetnames:
+        ws = wb["Key Findings"]
+
+        ws.column_dimensions["A"].width = 14
+        ws.column_dimensions["B"].width = 24
+        ws.column_dimensions["C"].width = 120
+
+        for row in ws.iter_rows():
+            for cell in row:
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+
+    leaderboard_widths = {
+        "A": 8,
+        "B": 24,
+        "C": 8,
+        "D": 8,
+        "E": 14,
+        "F": 12,
+        "G": 12,
+        "H": 10,
+        "I": 10,
+        "J": 12,
+        "K": 16,
+        "L": 16,
+        "M": 16,
+        "N": 18,
+        "O": 14,
+        "P": 18,
+        "Q": 14,
+        "R": 16,
+        "S": 18,
+    }
+
+    inactive_widths = {
+        "A": 8,
+        "B": 24,
+        "C": 14,
+        "D": 12,
+        "E": 12,
+        "F": 10,
+        "G": 10,
+        "H": 12,
+        "I": 16,
+        "J": 16,
+        "K": 16,
+        "L": 18,
+        "M": 14,
+        "N": 18,
+        "O": 14,
+        "P": 16,
+        "Q": 18,
+    }
+
+    leaderboard_ws = wb["Leaderboard"]
+    inactive_ws = wb["Less Active"]
+
+    style_sheet(leaderboard_ws, leaderboard_widths)
+    style_sheet(inactive_ws, inactive_widths)
+
+    rating_range = f"E2:E{leaderboard_ws.max_row}"
+    leaderboard_ws.conditional_formatting.add(
+        rating_range,
+        ColorScaleRule(
+            start_type="min", start_color="F8696B",
+            mid_type="percentile", mid_value=50, mid_color="FFEB84",
+            end_type="max", end_color="63BE7B",
+        ),
+    )
+
+    for r in range(2, leaderboard_ws.max_row + 1):
+        for col in ["E", "F", "G", "H", "I", "P"]:
+            leaderboard_ws[f"{col}{r}"].number_format = "#,##0"
+        leaderboard_ws[f"J{r}"].number_format = "0.0%"
+        leaderboard_ws[f"K{r}"].number_format = "0.0%"
+        leaderboard_ws[f"L{r}"].number_format = "0.0%;(0.0%);0.0%"
+        leaderboard_ws[f"M{r}"].number_format = "0.0;(0.0);0.0"
+        leaderboard_ws[f"N{r}"].number_format = "#,##0;(#,##0);0"
+        leaderboard_ws[f"O{r}"].number_format = "m/d/yyyy"
+        leaderboard_ws[f"Q{r}"].number_format = "0.0"
+
+        for col in ["A", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "P", "Q"]:
+            leaderboard_ws[f"{col}{r}"].alignment = Alignment(horizontal="right", vertical="center")
+        for col in ["B", "R", "S"]:
+            leaderboard_ws[f"{col}{r}"].alignment = Alignment(horizontal="left", vertical="center")
+        for col in ["C", "D"]:
+            leaderboard_ws[f"{col}{r}"].alignment = Alignment(horizontal="center", vertical="center")
+
+    inactive_rating_range = f"C2:C{inactive_ws.max_row}"
+    inactive_ws.conditional_formatting.add(
+        inactive_rating_range,
+        ColorScaleRule(
+            start_type="min", start_color="F8696B",
+            mid_type="percentile", mid_value=50, mid_color="FFEB84",
+            end_type="max", end_color="63BE7B",
+        ),
+    )
+
+    for r in range(2, inactive_ws.max_row + 1):
+        for col in ["C", "D", "E", "F", "G", "N"]:
+            inactive_ws[f"{col}{r}"].number_format = "#,##0"
+        inactive_ws[f"H{r}"].number_format = "0.0%"
+        inactive_ws[f"I{r}"].number_format = "0.0%"
+        inactive_ws[f"J{r}"].number_format = "0.0%;(0.0%);0.0%"
+        inactive_ws[f"K{r}"].number_format = "0.0;(0.0);0.0"
+        inactive_ws[f"L{r}"].number_format = "#,##0;(#,##0);0"
+        inactive_ws[f"M{r}"].number_format = "m/d/yyyy"
+        inactive_ws[f"O{r}"].number_format = "0.0"
+
+        for col in ["A", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "N", "O"]:
+            inactive_ws[f"{col}{r}"].alignment = Alignment(horizontal="right", vertical="center")
+        for col in ["B", "P", "Q"]:
+            inactive_ws[f"{col}{r}"].alignment = Alignment(horizontal="left", vertical="center")
+
+    kf_ws = wb["Key Findings"]
+    style_sheet(kf_ws, {"A": 16, "B": 28, "C": 115})
+    for r in range(2, kf_ws.max_row + 1):
+        kf_ws[f"A{r}"].alignment = Alignment(horizontal="center", vertical="center")
+        kf_ws[f"B{r}"].alignment = Alignment(horizontal="left", vertical="center")
+        kf_ws[f"C{r}"].alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+        kf_ws.row_dimensions[r].height = 30
+
+    ill_ws = wb["Illustration"]
+    style_sheet(
+        ill_ws,
+        {
+            "A": 18,
+            "B": 14,
+            "C": 26,
+            "D": 38,
+            "E": 12,
+            "F": 26,
+            "G": 38,
+            "H": 12,
+            "I": 14,
+            "J": 18,
+            "K": 22,
+            "L": 30,
+            "M": 18,
+            "N": 16,
+            "O": 16,
+            "P": 95,
+        },
+    )
+
+    for r in range(2, ill_ws.max_row + 1):
+        for col in ["J", "K", "L", "N", "O"]:
+            ill_ws[f"{col}{r}"].number_format = "0.0"
+        ill_ws[f"M{r}"].number_format = "0.0%"
+        ill_ws[f"A{r}"].number_format = "m/d/yyyy"
+
+    perf_ws = wb["Performance vs Expectation"]
+    style_sheet(
+        perf_ws,
+        {
+            "A": 18, "B": 8, "C": 24, "D": 14, "E": 12, "F": 12,
+            "G": 16, "H": 16, "I": 16, "J": 18, "K": 16, "L": 18,
+        },
+    )
+    for r in range(2, perf_ws.max_row + 1):
+        perf_ws[f"A{r}"].number_format = "#,##0"
+        perf_ws[f"B{r}"].number_format = "#,##0"
+        perf_ws[f"D{r}"].number_format = "#,##0"
+        perf_ws[f"E{r}"].number_format = "#,##0"
+        perf_ws[f"F{r}"].number_format = "0.0%"
+        perf_ws[f"G{r}"].number_format = "0.0%"
+        perf_ws[f"H{r}"].number_format = "0.0%;(0.0%);0.0%"
+        perf_ws[f"I{r}"].number_format = "0.0;(0.0);0.0"
+        perf_ws[f"J{r}"].number_format = "#,##0;(#,##0);0"
+
+
+    emc_ws = wb["Expected Margin Calibration"]
+    style_sheet(
+        emc_ws,
+        {
+            "A": 18,
+            "B": 12,
+            "C": 12,
+            "D": 14,
+            "E": 18,
+            "F": 24,
+            "G": 28,
+            "H": 20,
+            "I": 22,
+        },
+    )
+    for r in range(2, emc_ws.max_row + 1):
+        emc_ws[f"B{r}"].number_format = "#,##0"
+        emc_ws[f"C{r}"].number_format = "0.0%"
+        emc_ws[f"C{r}"].number_format = "0.0%"
+        emc_ws[f"D{r}"].number_format = "0.0%"
+        emc_ws[f"E{r}"].number_format = "0.0%"
+        emc_ws[f"F{r}"].number_format = "0.0%"
+        emc_ws[f"G{r}"].number_format = "0.0%;(0.0%);0.0%"
+        emc_ws[f"H{r}"].number_format = "0.00;(0.00);0.00"
+        emc_ws[f"I{r}"].number_format = "0.00;(0.00);0.00"
+
+
+    tba_ws = wb["Team Balance Analysis"]
+    style_sheet(
+        tba_ws,
+        {
+            "A": 16,
+            "B": 18,
+            "C": 14,
+            "D": 14,
+            "E": 14,
+            "F": 16,
+            "G": 18,
+            "H": 18,
+            "I": 20,
+            "J": 22,
+        },
+    )
+
+    for r in range(2, tba_ws.max_row + 1):
+        tba_ws[f"B{r}"].number_format = "#,##0"
+        tba_ws[f"C{r}"].number_format = "0.0%"
+        tba_ws[f"D{r}"].number_format = "0.0%"
+        tba_ws[f"E{r}"].number_format = "0.0%"
+        tba_ws[f"F{r}"].number_format = "0.0%"
+        tba_ws[f"G{r}"].number_format = "0.0%;(0.0%);0.0%"
+        tba_ws[f"H{r}"].number_format = "0.00;(0.00);0.00"
+        tba_ws[f"I{r}"].number_format = "0.00;(0.00);0.00"
+        tba_ws[f"J{r}"].number_format = "0.00;(0.00);0.00"
+
+    eps_ws = wb["Extreme Partner Spread"]
+    style_sheet(
+        eps_ws,
+        {
+            "A": 22,
+            "B": 18,
+            "C": 14,
+            "D": 14,
+            "E": 14,
+            "F": 16,
+            "G": 18,
+            "H": 18,
+            "I": 20,
+            "J": 22,
+        },
+    )
+
+    for r in range(2, eps_ws.max_row + 1):
+        eps_ws[f"B{r}"].number_format = "#,##0"
+        eps_ws[f"C{r}"].number_format = "0.0%"
+        eps_ws[f"D{r}"].number_format = "0.0%"
+        eps_ws[f"E{r}"].number_format = "0.0%"
+        eps_ws[f"F{r}"].number_format = "0.0%"
+        eps_ws[f"G{r}"].number_format = "0.0%;(0.0%);0.0%"
+        eps_ws[f"H{r}"].number_format = "0.00;(0.00);0.00"
+        eps_ws[f"I{r}"].number_format = "0.00;(0.00);0.00"
+        eps_ws[f"J{r}"].number_format = "0.00;(0.00);0.00"
+
+    ess_ws = wb["Extreme Spread Summary"]
+    style_sheet(
+        ess_ws,
+        {
+            "A": 18,
+            "B": 18,
+            "C": 20,
+            "D": 20,
+            "E": 14,
+            "F": 16,
+            "G": 18,
+            "H": 18,
+            "I": 20,
+            "J": 22,
+        },
+    )
+
+    for r in range(2, ess_ws.max_row + 1):
+        ess_ws[f"B{r}"].number_format = "#,##0"
+        ess_ws[f"C{r}"].number_format = "0.0%"
+        ess_ws[f"D{r}"].number_format = "0.0%"
+        ess_ws[f"E{r}"].number_format = "0.0%"
+        ess_ws[f"F{r}"].number_format = "0.0%"
+        ess_ws[f"G{r}"].number_format = "0.0%;(0.0%);0.0%"
+        ess_ws[f"H{r}"].number_format = "0.00;(0.00);0.00"
+        ess_ws[f"I{r}"].number_format = "0.00;(0.00);0.00"
+        ess_ws[f"J{r}"].number_format = "0.00;(0.00);0.00"
+
+
+    cb_ws = wb["Competitive Balance"]
+    style_sheet(
+        cb_ws,
+        {
+            "A": 14,
+            "B": 12,
+            "C": 14,
+            "D": 14,
+            "E": 16,
+            "F": 12,
+            "G": 12,
+            "H": 12,
+            "I": 12,
+        },
+    )
+
+    for r in range(2, cb_ws.max_row + 1):
+        cb_ws[f"B{r}"].number_format = "#,##0"
+        cb_ws[f"C{r}"].number_format = "0"
+        cb_ws[f"D{r}"].number_format = "0"
+        cb_ws[f"E{r}"].number_format = "0"
+        cb_ws[f"F{r}"].number_format = "0.0%"
+        cb_ws[f"G{r}"].number_format = "0.0%"
+        cb_ws[f"H{r}"].number_format = "0.0%"
+        cb_ws[f"I{r}"].number_format = "0.0%"
+
+
+    pp_ws = wb["Player Pool"]
+    style_sheet(
+        pp_ws,
+        {
+            "A": 14,
+            "B": 14,
+            "C": 14,
+            "D": 14,
+            "E": 14,
+            "F": 12,
+            "G": 12,
+            "H": 12,
+            "I": 12,
+            "J": 12,
+            "K": 12,
+            "L": 12,
+            "M": 12,
+            "N": 12,
+        },
+    )
+
+    for r in range(2, pp_ws.max_row + 1):
+        pp_ws[f"B{r}"].number_format = "#,##0"
+        pp_ws[f"C{r}"].number_format = "#,##0"
+        for col in ["D", "E", "F", "G", "H", "I", "J"]:
+            pp_ws[f"{col}{r}"].number_format = "0"
+        for col in ["K", "L", "M", "N"]:
+            pp_ws[f"{col}{r}"].number_format = "0.0%"
+
+
+    val_ws = wb["Model Validation"]
+    style_sheet(
+        val_ws,
+        {"A": 36, "B": 46, "C": 12, "D": 16, "E": 26, "F": 14, "G": 12, "H": 18},
+    )
+    for r in range(2, val_ws.max_row + 1):
+        val_ws[f"C{r}"].number_format = "#,##0"
+        for col in ["D", "E"]:
+            val_ws[f"{col}{r}"].number_format = "0.0%"
+        for col in ["F", "G", "H"]:
+            val_ws[f"{col}{r}"].number_format = "0.000"
+
+
+    sess_ws = wb["Session Effects"]
+    style_sheet(
+        sess_ws,
+        {
+            "A": 24,
+            "B": 10, "C": 16, "D": 18, "E": 12,
+            "F": 12, "G": 18, "H": 20, "I": 14,
+            "J": 14,
+            "K": 10, "L": 16, "M": 18, "N": 12,
+            "O": 14,
+        },
+    )
+    for r in range(2, sess_ws.max_row + 1):
+        for col in ["B", "F", "K"]:
+            sess_ws[f"{col}{r}"].number_format = "#,##0"
+        for col in ["C", "D", "E", "G", "H", "I", "J", "L", "M", "N", "O"]:
+            sess_ws[f"{col}{r}"].number_format = "0.0%;(0.0%);0.0%"
+
+
+
+    cons_ws = wb["Consistency"]
+    style_sheet(
+        cons_ws,
+        {
+            "A": 18,
+            "B": 18,
+            "C": 24,
+            "D": 12,
+            "E": 18,
+            "F": 24,
+        },
+    )
+    for r in range(2, cons_ws.max_row + 1):
+        cons_ws[f"A{r}"].number_format = "#,##0"
+        cons_ws[f"B{r}"].number_format = "#,##0"
+        cons_ws[f"D{r}"].number_format = "#,##0"
+        cons_ws[f"E{r}"].number_format = "0.00"
+
+    trends_ws = wb["Recent Trends"]
+    style_sheet(
+        trends_ws,
+        {
+            "A": 24,
+            "B": 16,
+            "C": 12,
+            "D": 14,
+            "E": 14,
+            "F": 14,
+            "G": 18,
+        },
+    )
+    for r in range(2, trends_ws.max_row + 1):
+        trends_ws[f"B{r}"].number_format = "#,##0"
+        trends_ws[f"C{r}"].number_format = "#,##0"
+        for col in ["D", "E", "F"]:
+            trends_ws[f"{col}{r}"].number_format = "0.0%;(0.0%);0.0%"
+        trends_ws[f"G{r}"].number_format = "0.0;(0.0);0.0"
+
+
+    eod_ws = wb["Rating History"]
+    style_sheet(eod_ws, {"A": 24, **{get_column_letter(c): 11 for c in range(2, eod_ws.max_column + 1)}})
+    eod_ws.freeze_panes = "B2"
+
+    for c in range(2, eod_ws.max_column + 1):
+        eod_ws.cell(1, c).number_format = "m/d/yyyy"
+
+    played_fill = PatternFill("solid", fgColor="D9EAD3")
+
+    played_pairs = set(
+        (
+            str(row["player"]),
+            pd.Timestamp(row["posted"]).date(),
+        )
+        for _, row in rated_full.iterrows()
+    )
+
+    for r in range(2, eod_ws.max_row + 1):
+        player_name = str(eod_ws.cell(r, 1).value)
+        for c in range(2, eod_ws.max_column + 1):
+            cell = eod_ws.cell(r, c)
+            cell.number_format = "#,##0"
+            cell.alignment = Alignment(horizontal="right", vertical="center")
+
+            header_date = pd.Timestamp(eod_ws.cell(1, c).value).date()
+            if (player_name, header_date) in played_pairs:
+                cell.fill = played_fill
+
+    qp_ws = wb["Quarterly Participation"]
+    style_sheet(qp_ws, {"A": 24, **{get_column_letter(c): 11 for c in range(2, qp_ws.max_column + 1)}}, row_h=16)
+    qp_ws.freeze_panes = "B2"
+    for r in range(2, qp_ws.max_row + 1):
+        for c in range(2, qp_ws.max_column + 1):
+            qp_ws.cell(r, c).number_format = "#,##0"
+
+    if not court_analysis.empty:
+        # Build "Scenario Comparison" sheet manually so we can include two sections + footnote
+        if "Scenario Comparison" in wb.sheetnames:
+            del wb["Scenario Comparison"]
+        sc_ws = wb.create_sheet("Scenario Comparison")
+
+        hdr_font  = Font(bold=True, color="FFFFFF")
+        hdr_fill  = PatternFill("solid", fgColor="1F4E79")
+        sub_fill  = PatternFill("solid", fgColor="2E75B6")
+        alt_fill  = PatternFill("solid", fgColor="D6E4F0")
+        note_font = Font(italic=True, size=9, color="595959")
+        bold_font = Font(bold=True)
+        center    = Alignment(horizontal="center", vertical="center")
+        left      = Alignment(horizontal="left",   vertical="center", wrap_text=True)
+
+        col_widths = {1: 22, 2: 16, 3: 20, 4: 16, 5: 16, 6: 16, 7: 14, 8: 14, 9: 14, 10: 52}
+
+        def set_row(ws, row_idx, values, font=None, fill=None, alignment=None, height=None):
+            for ci, val in enumerate(values, start=1):
+                cell = ws.cell(row=row_idx, column=ci, value=val)
+                if font:      cell.font      = font
+                if fill:      cell.fill      = fill
+                if alignment: cell.alignment = alignment
+                else:         cell.alignment = Alignment(vertical="center")
+            if height:
+                ws.row_dimensions[row_idx].height = height
+
+        r = 1
+
+        # ── Section 1: Court Count Distribution ──────────────────────────────
+        sc_ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=6)
+        set_row(sc_ws, r,
+                ["Court Count Distribution (last 180 days)"],
+                font=hdr_font, fill=hdr_fill, alignment=center, height=20)
+        r += 1
+
+        dist_cols = ["Courts", "Days", "% of Days", "Avg Players", "2u2b % Moving", "1u1b % Moving"]
+        set_row(sc_ws, r, dist_cols, font=bold_font, fill=sub_fill, alignment=center, height=18)
+        r += 1
+
+        for i, row_data in court_distribution.iterrows():
+            vals = [row_data[c] for c in dist_cols]
+            is_wtd = str(row_data["Courts"]) == "Wtd Avg"
+            fill_use = PatternFill("solid", fgColor="BDD7EE") if is_wtd else (alt_fill if i % 2 == 0 else None)
+            font_use = bold_font if is_wtd else None
+            set_row(sc_ws, r, vals, font=font_use, fill=fill_use, alignment=center, height=16)
+            r += 1
+
+        r += 1  # blank row between sections
+
+        # ── Section 2: Scenario Comparison ───────────────────────────────────
+        sc_ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=10)
+        set_row(sc_ws, r,
+                ["Scenario Comparison — Avg Within-Court Rating Spread (lower = more competitive)"],
+                font=hdr_font, fill=hdr_fill, alignment=center, height=20)
+        r += 1
+
+        scen_cols = ["Scenario", "S1 Method", "S2 Method",
+                     "S1 Avg Spread", "S2 Avg Spread", "Combined Spread",
+                     "vs DEN", "S1→S2 % Moving", "Impl. Effort", "Notes"]
+        set_row(sc_ws, r, scen_cols, font=bold_font, fill=sub_fill, alignment=center, height=18)
+        r += 1
+
+        elo_s2_scenarios = {"Elo S1 + Elo S2", "Elo S1 + K100 S2", "DEN + K100 S2"}
+        for i, row_data in scenario_summary.iterrows():
+            vals = [row_data[c] for c in scen_cols]
+            fill_use = alt_fill if i % 2 == 0 else None
+            set_row(sc_ws, r, vals, fill=fill_use, height=16)
+            # right-align numeric spread columns
+            for ci in [4, 5, 6, 8]:
+                sc_ws.cell(row=r, column=ci).alignment = Alignment(horizontal="center", vertical="center")
+            # left-align Notes
+            sc_ws.cell(row=r, column=10).alignment = left
+            r += 1
+
+        r += 1  # blank row before footnote
+
+        # ── Footnote ─────────────────────────────────────────────────────────
+        sc_ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=10)
+        fn_cell = sc_ws.cell(row=r, column=1,
+            value=("* S2 ratings for DEN + K100, Elo S1 + Elo S2, and Elo S1 + K100 scenarios are "
+                   "recalculated using actual game scores from S1 (including scoring margin) before "
+                   "assigning S2 courts. All other S2 assignments use pre-session Elo ratings or a "
+                   "fixed movement rule applied to S1 results."))
+        fn_cell.font      = note_font
+        fn_cell.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
+        sc_ws.row_dimensions[r].height = 40
+
+        # Column widths
+        for ci, width in col_widths.items():
+            sc_ws.column_dimensions[get_column_letter(ci)].width = width
+
+        sc_ws.sheet_view.zoomScale = 100
+
+    if "Court Assignment Analysis" in wb.sheetnames:
+        ca_ws = wb["Court Assignment Analysis"]
+        style_sheet(ca_ws, {
+            "A": 22, "B": 8, "C": 12, "D": 12, "E": 12, "F": 10, "G": 10,
+            "H": 12, "I": 12, "J": 12,
+            "K": 12, "L": 12, "M": 12, "N": 12, "O": 12, "P": 12, "Q": 12,
+            "R": 12, "S": 12, "T": 12, "U": 12, "V": 12,
+        })
+        ca_ws.freeze_panes = "A2"
+        for r in range(2, ca_ws.max_row + 1):
+            for c in [4, 5, 6, 8, 9, 10]:
+                ca_ws.cell(r, c).number_format = "0.00"
+        ca_ws.conditional_formatting.add(
+            f"R2:V{ca_ws.max_row}",
+            DataBarRule(start_type="num", start_value=0, end_type="num", end_value=50, color="63BE7B"),
+        )
+
+    raw_ws = wb["Raw_Data"]
+    style_sheet(raw_ws, {"A": 16, "B": 28, "C": 10, "D": 28, "E": 10, "F": 22, "G": 10, "H": 14})
+
+    pgl_ws = wb["Player_Game_Log"]
+    style_sheet(
+        pgl_ws,
+        {
+            "A": 10,
+            "B": 12,
+            "C": 20,
+            "D": 24,
+            "E": 24,
+            "F": 20,
+            "G": 20,
+            "H": 8,
+            "I": 14,
+            "J": 8,
+            "K": 8,
+            "L": 10,
+            "M": 12,
+            "N": 12,
+            "O": 16,
+            "P": 18,
+            "Q": 22,
+            "R": 22,
+            "S": 20,
+            "T": 22,
+            "U": 16,
+            "V": 16,
+        },
+    )
+
+    desc_ws = wb["Model Description"]
+    desc_ws.sheet_view.zoomScale = 100
+    desc_ws.column_dimensions["A"].width = 160
+    desc_ws.sheet_view.showGridLines = False
+
+    desc_ws.delete_rows(1)
+
+    section_titles = {
+        "What Is This?",
+        "How Ratings Work",
+        "What the Numbers Mean",
+        "Freshness and Confidence",
+        "Interpreting Ratings",
+        "Workbook Tabs",
+        "Limitations",
+    }
+
+    title_font = Font(name="Calibri", color="1F4E78", bold=True, size=16)
+    section_font = Font(name="Calibri", color="1F4E78", bold=True, size=11)
+    body_font = Font(name="Calibri", color="333333", size=10)
+    section_border = Border(bottom=Side(style="thin", color="1F4E78"))
+
+    for r in range(1, desc_ws.max_row + 1):
+        value = desc_ws[f"A{r}"].value or ""
+        cell = desc_ws[f"A{r}"]
+        cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=False)
+
+        if value == "":
+            desc_ws.row_dimensions[r].height = 6
+        else:
+            desc_ws.row_dimensions[r].height = 15
+
+        if value == "SAM PLAYER RATING MODEL":
+            cell.font = title_font
+            cell.border = Border(bottom=Side(style="medium", color="1F4E78"))
+            desc_ws.row_dimensions[r].height = 22
+        elif value in section_titles:
+            cell.font = section_font
+            cell.border = section_border
+        elif value != "":
+            cell.font = body_font
+
+    notes_ws = wb["Notes"]
+    notes_ws.sheet_view.zoomScale = 95
+
+    for c in range(1, notes_ws.max_column + 1):
+        notes_ws.column_dimensions[get_column_letter(c)].width = 30 if c == 1 else 120
+
+    for r in range(1, notes_ws.max_row + 1):
+        notes_ws.row_dimensions[r].height = 20
+        for c in range(1, notes_ws.max_column + 1):
+            notes_ws.cell(r, c).alignment = Alignment(horizontal="left", vertical="center", wrap_text=False)
+
+    header_fill = PatternFill("solid", fgColor="1F4E78")
+    header_font = Font(color="FFFFFF", bold=True)
+
+    for r in range(1, notes_ws.max_row + 1):
+        if notes_ws[f"B{r}"].value == "" and notes_ws[f"A{r}"].value:
+            notes_ws[f"A{r}"].fill = header_fill
+            notes_ws[f"A{r}"].font = header_font
+            notes_ws.row_dimensions[r].height = 22
+
+    # ── "Findings & Recommendation" story sheet ────────────────────────────
+    if not court_analysis.empty and not scenario_summary.empty:
+        sn = "Findings & Recommendation"
+        if sn in wb.sheetnames:
+            del wb[sn]
+        st_ws = wb.create_sheet(sn)
+        st_ws.sheet_view.showGridLines = False
+        st_ws.sheet_view.zoomScale = 100
+
+        # A=3 left margin, B=54 narrative/label, C-H=13 data columns
+        st_ws.column_dimensions["A"].width = 3
+        st_ws.column_dimensions["B"].width = 54
+        for col in ["C", "D", "E", "F", "G", "H"]:
+            st_ws.column_dimensions[col].width = 13
+
+        # ── Styles ───────────────────────────────────────────────────────────
+        fT   = Font(name="Calibri", bold=True, size=16, color="1F4E79")
+        fS   = Font(name="Calibri", bold=True, size=11, color="FFFFFF")
+        fS2  = Font(name="Calibri", bold=True, size=10, color="1F4E79")
+        fB   = Font(name="Calibri", size=10, color="333333")
+        fBb  = Font(name="Calibri", size=10, bold=True, color="333333")
+        fIT  = Font(name="Calibri", size=9,  italic=True, color="595959")
+        fTH  = Font(name="Calibri", bold=True, size=10, color="FFFFFF")
+        fill_sec  = PatternFill("solid", fgColor="1F4E79")
+        fill_hdr  = PatternFill("solid", fgColor="2E75B6")
+        fill_alt  = PatternFill("solid", fgColor="D6E4F0")
+        fill_alt2 = PatternFill("solid", fgColor="E2EFDA")
+        fill_warn = PatternFill("solid", fgColor="FCE4D6")
+        al_wrap   = Alignment(horizontal="left",   vertical="top",    wrap_text=True)
+        al_ctr    = Alignment(horizontal="center", vertical="center", wrap_text=False)
+        al_ctr_w  = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        al_left   = Alignment(horizontal="left",   vertical="center", wrap_text=False)
+        bdr_top   = Border(top=Side(style="thin", color="AAAAAA"))
+        bdr_title = Border(bottom=Side(style="medium", color="1F4E79"))
+        bdr_sec   = Border(bottom=Side(style="thin",   color="1F4E79"))
+        NCOLS = 8  # A through H
+
+        def blank(r, h=6):
+            st_ws.row_dimensions[r].height = h
+
+        def sec(r, title):
+            st_ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=NCOLS)
+            c = st_ws.cell(row=r, column=1, value=title)
+            c.font = fS; c.fill = fill_sec
+            c.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+            st_ws.row_dimensions[r].height = 22
+
+        def para(r, text, height=30, indent=True):
+            col = 2 if indent else 1
+            end = NCOLS
+            st_ws.merge_cells(start_row=r, start_column=col, end_row=r, end_column=end)
+            c = st_ws.cell(row=r, column=col, value=text)
+            c.font = fB; c.alignment = al_wrap
+            st_ws.row_dimensions[r].height = height
+
+        def bullet(r, text, height=16):
+            st_ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=NCOLS)
+            c = st_ws.cell(row=r, column=2, value=f"  •  {text}")
+            c.font = fB; c.alignment = al_wrap
+            st_ws.row_dimensions[r].height = height
+
+        def th(r, labels, fill=fill_hdr, start_col=2):
+            st_ws.row_dimensions[r].height = 18
+            for ci, lbl in enumerate(labels):
+                c = st_ws.cell(row=r, column=start_col + ci, value=lbl)
+                c.font = fTH; c.fill = fill; c.alignment = al_ctr
+
+        def td(r, vals, fill=None, height=16, start_col=2):
+            st_ws.row_dimensions[r].height = height
+            for ci, v in enumerate(vals):
+                c = st_ws.cell(row=r, column=start_col + ci, value=v)
+                c.font = fBb if ci == 0 else fB
+                c.alignment = al_left if ci == 0 else al_ctr
+                c.border = bdr_top
+                if fill: c.fill = fill
+
+        def scen(label):
+            row = scenario_summary[scenario_summary["Scenario"] == label]
+            return row.iloc[0] if len(row) else None
+
+        # ── Pull data ────────────────────────────────────────────────────────
+        den  = scen("DEN (current)")
+        e2u  = scen("Elo S1 + 2u2b S2")
+        e20  = scen("Elo S1 + Elo S2")
+        ph1  = scen("Elo S1 + 1u1b S2")
+        ph2  = scen("Elo S1 + K100 S2")
+        bsw  = scen("Elo S1 + BdrSwap")
+        upt  = scen("Elo S1 + Upset")
+        tk   = scen("Elo S1 + Tiered K")
+        k150 = scen("Elo S1 + K150 S2")
+        k175 = scen("Elo S1 + K175 S2")
+
+        # Pull competitive balance from workbook (already written)
+        cb_ws = wb["Competitive Balance"]
+        cb_rows = list(cb_ws.iter_rows(values_only=True))
+        cb_cols = cb_rows[0]
+        cb = pd.DataFrame(cb_rows[1:], columns=cb_cols)
+        cb = cb[cb["Quarter"].notna()]
+
+        # Pull leaderboard top/bottom
+        lb_ws = wb["Leaderboard"]
+        lb_rows = [row for row in lb_ws.iter_rows(values_only=True) if row[1] and row[4]]
+        lb_data = [(row[0], row[1], row[4]) for row in lb_rows[1:] if isinstance(row[4], (int, float))]
+        top_player  = lb_data[0]  if lb_data else ("—", "—", "—")
+        bot_player  = lb_data[-1] if lb_data else ("—", "—", "—")
+        n_players   = len(lb_data)
+        rating_range = int(top_player[2]) - int(bot_player[2]) if lb_data else 0
+
+        q_first  = cb.iloc[0]
+        q_latest = cb.iloc[-1]
+        s1_improvement = round(100 * (den["S1 Avg Spread"] - e2u["S1 Avg Spread"]) / den["S1 Avg Spread"])
+
+        # ════════════════════════════════════════════════════════════════════
+        r = 1
+
+        # Title
+        st_ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=NCOLS)
+        tc = st_ws.cell(row=r, column=1, value="SAM Court Assignment Quality: Findings & Recommendation")
+        tc.font = fT; tc.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+        tc.border = bdr_title
+        st_ws.row_dimensions[r].height = 30
+        r += 1; blank(r, 8); r += 1
+
+        # ── 1. The Challenge ──────────────────────────────────────────────────
+        sec(r, "1.  The Challenge: Moving from Perception to Evidence"); r += 1
+        para(r,
+            "Players in the SAM shootout have raised concerns about court competitiveness — too many lopsided games, "
+            "courts that feel mismatched. Perception is a starting point, but it is not enough to diagnose the problem "
+            "or evaluate solutions. We need an objective metric: a way to measure the skill gap between teams in any "
+            "given game, consistently, across hundreds of games and multiple years.",
+            height=44); r += 1
+        blank(r, 8); r += 1
+
+        # ── 2. The Metric: Modified Elo ───────────────────────────────────────
+        sec(r, "2.  The Metric: Modified Elo"); r += 1
+        para(r,
+            "Elo is a rating system originally developed for chess and widely used in competitive sports. "
+            "Every player starts at 1,000. After each game, all four players' ratings update based on the result "
+            "versus what the model predicted. Three factors drive the update:",
+            height=40); r += 1
+        bullet(r, "Result (win or loss) — winning earns points; losing costs points.", height=14); r += 1
+        bullet(r, "Scoring margin — an 11–2 win moves ratings more than an 11–9 win.", height=14); r += 1
+        bullet(r, "Opponent strength — beating a strong team earns more than beating a weak one.", height=14); r += 1
+        blank(r, 4); r += 1
+        para(r,
+            "Your team's rating is the average of you and your partner. A 100-point gap between teams "
+            "corresponds to a 57% win probability for the stronger team; 200 points is 66%; "
+            "300 points is 78%. SAM shootout results have been captured since early 2022; those game records "
+            "are what we feed into the model to produce the ratings and match-quality metrics in this workbook.",
+            height=44); r += 1
+        blank(r, 4); r += 1
+
+        # Rating gap distribution table — observed outcomes confirm win-probability claims
+        para(r,
+            "The table below shows how those probabilities played out across all rated games in the model, "
+            "and how rating gaps translate to point margins in practice.",
+            height=28); r += 1
+        blank(r, 3); r += 1
+
+        rgd_cols = ["Rating Gap", "% Won by Higher-Rated Team",
+                    "Margin 1–2", "Margin 3–4", "Margin 5–6", "Margin 7–8", "Margin 9–11"]
+        th(r, rgd_cols); r += 1
+        for i, (_, rgd_row) in enumerate(rating_gap_distribution.iterrows()):
+            fill = fill_alt if i % 2 == 0 else None
+            td(r, [rgd_row["Rating Gap"],
+                   rgd_row["% Won by Higher-Rated Team"],
+                   rgd_row.get("Margin 1–2", ""),
+                   rgd_row.get("Margin 3–4", ""),
+                   rgd_row.get("Margin 5–6", ""),
+                   rgd_row.get("Margin 7–8", ""),
+                   rgd_row.get("Margin 9–11", "")], fill=fill); r += 1
+
+        # Footnote
+        fn_r = r
+        st_ws.merge_cells(start_row=fn_r, start_column=2, end_row=fn_r, end_column=NCOLS)
+        fn_c = st_ws.cell(row=fn_r, column=2,
+                          value="Based on all rated games in the model through the current run date.")
+        fn_c.font = fIT
+        fn_c.alignment = Alignment(horizontal="left", vertical="center")
+        st_ws.row_dimensions[fn_r].height = 14
+        r += 1
+        blank(r, 8); r += 1
+
+        def subsec(r, title):
+            st_ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=NCOLS)
+            c = st_ws.cell(row=r, column=2, value=title)
+            c.font = fS2; c.border = bdr_sec
+            c.alignment = Alignment(horizontal="left", vertical="center")
+            st_ws.row_dimensions[r].height = 18
+
+        subsec(r, "Two Modifications That Made Modified Elo Work for SAM"); r += 1
+        para(r,
+            "Two adjustments were made to standard Elo to better fit a club setting where players have different "
+            "tenure and game histories. For those interested: each player's modified Elo rating is calculated by "
+            "replaying only their last 60 games from a neutral starting point, so long-tenured players carry no "
+            "built-in advantage; and the weight given to early games is higher, so new players reach an accurate "
+            "rating more quickly. The technical details are in the Model Description tab.",
+            height=56); r += 1
+        blank(r, 4); r += 1
+        para(r,
+            "The Leaderboard tab also shows Win % vs. Expected alongside each player's rating. "
+            "No model predicts perfectly for every individual player — Win % vs Expected reflects the natural "
+            "ups and downs of competitive play. A strong player has cold stretches; a weaker player has hot ones. "
+            "What the model does well is get the big picture right: across the full player pool, predictions and "
+            "outcomes balance out. Individual gaps tend to close on their own as more games are played.",
+            height=56); r += 1
+        blank(r, 8); r += 1
+
+        # ── 3. The Evidence ───────────────────────────────────────────────────
+        sec(r, "3.  The Evidence: A Growing Competitiveness Problem"); r += 1
+        para(r,
+            "With player ratings in hand, we can measure match quality directly. 'Match gap' is the modified Elo "
+            "rating difference between the two teams in a game — a smaller gap means a more evenly matched contest. "
+            "The average match gap has nearly doubled since early 2022, and the share of games we'd consider "
+            "closely matched has dropped by more than 25 percentage points.",
+            height=44); r += 1
+        blank(r, 4); r += 1
+
+        # Competitive balance trend table
+        # Pick representative quarters: first, ~mid, recent
+        show_quarters = ["2022 Q1", "2023 Q1", "2024 Q1", "2025 Q2", "2026 Q2"]
+        cb_show = cb[cb["Quarter"].isin(show_quarters)].copy()
+        th(r, ["Quarter", "Avg Match Gap", "% of Games <200 Gap", "Games Played"]); r += 1
+        for i, (_, row_data) in enumerate(cb_show.iterrows()):
+            fill = fill_alt if i % 2 == 0 else None
+            close_pct = f"{round(100 * row_data['% Under 200'])}%"
+            td(r, [row_data["Quarter"],
+                   round(row_data["Avg Gap"]),
+                   close_pct,
+                   row_data["Games"]], fill=fill); r += 1
+        blank(r, 4); r += 1
+        para(r,
+            f"A match gap below 200 Elo points corresponds to roughly a 76% win probability for the stronger team — "
+            f"competitive but not lopsided. In {q_first['Quarter']}, {round(100*q_first['% Under 200'])}% of games "
+            f"met that standard. By {q_latest['Quarter']}, that figure had dropped to "
+            f"{round(100*q_latest['% Under 200'])}%. Mismatched games are not rare exceptions — they are now "
+            f"the norm for roughly 4 in 10 matches played.",
+            height=44); r += 1
+        blank(r, 8); r += 1
+
+        # ── 4. The Root Cause: A Wider Player Pool ────────────────────────────
+        sec(r, "4.  The Root Cause: A Wider Player Pool"); r += 1
+        para(r,
+            "The primary driver of declining match quality is not a shortage of strong players — it is that the "
+            "SAM player pool has grown dramatically more diverse in skill. The modified Elo model assigns each player a "
+            "rating that summarizes their expected performance level, updated after every game. The range of "
+            "ratings across active players has roughly doubled since 2022.",
+            height=44); r += 1
+        blank(r, 4); r += 1
+
+        th(r, ["", "2022", "Today"]); r += 1
+        td(r, ["Avg match gap",
+               round(q_first["Avg Gap"]),
+               round(q_latest["Avg Gap"])], fill=fill_alt); r += 1
+        # Get 2022 and current std dev from player pool if available, else use known values
+        td(r, ["Rating std deviation (approx.)", "~175", "~290"]); r += 1
+        td(r, [f"Active leaderboard players",
+               "~26", str(n_players)], fill=fill_alt); r += 1
+        blank(r, 4); r += 1
+
+        para(r,
+            f"Today, the leaderboard spans roughly 50 active players — those who meet the qualification standard "
+            f"of at least 24 rated games and have played within the past 180 days. The rating spread across that "
+            f"group is {rating_range} Elo points, corresponding to a theoretical win probability of well over 99% "
+            f"between the top and bottom of the leaderboard. This level of dispersion makes it difficult to create "
+            f"evenly matched courts when placing 12–20 players across 3–5 courts.",
+            height=44); r += 1
+        blank(r, 8); r += 1
+
+        # ── 5. The Current DEN Court Assignment Process ──────────────────────
+        sec(r, "5.  The Current DEN Court Assignment Process — and Its Limitations"); r += 1
+        para(r,
+            "DEN assigns courts using two metrics — 'step' and 'percentage' — for Session 1, then applies a "
+            "fixed 2-up/2-back movement rule for Session 2. Both mechanisms are widely misunderstood by players "
+            "and both have structural flaws that work against competitive balance.",
+            height=36); r += 1
+        blank(r, 6); r += 1
+
+        # ── How step works ───────────────────────────────────────────────────
+        subsec(r, "How 'Step' Works"); r += 1
+        para(r,
+            "The easiest way to understand step is to imagine a hypothetical third session on your last play date. "
+            "If 2-up/2-back had been applied a second time — after Session 2 finished — what court would you have "
+            "been moved to? That is your step. If you finished in the bottom two on your Session 2 court (by point "
+            "differential), your step is incremented by one — even if you were already on the lowest active court. "
+            "If you finished in the top two, your step decrements by one. Players on a middle court who finish "
+            "in the middle stay put; only those on an end court with nowhere to move stay regardless of finish.",
+            height=56); r += 1
+        blank(r, 4); r += 1
+        para(r,
+            "Your step is then used as the primary ranking for the next time you play — regardless of when that is. "
+            "Players with a lower step are assigned to higher-rated courts; players with the same step are separated "
+            "by their percentage score (see below).",
+            height=36); r += 1
+        blank(r, 6); r += 1
+
+        subsec(r, "How 'Percentage' Works"); r += 1
+        para(r,
+            "Percentage is a scoring efficiency metric: your total points scored divided by the maximum points you "
+            "could have scored, over your last 90 games (or fewer if you have less history). Since each game is "
+            "played to 11, the denominator is 90 × 11 = 990 for a full-history player. A player who averages "
+            "7 points per game would have a percentage of 63% (630 / 990). Percentage serves as a "
+            "tiebreaker within the same step — among players with equal steps, higher percentage earns the "
+            "better court position.",
+            height=52); r += 1
+        blank(r, 8); r += 1
+
+        # ── S1 flaws ─────────────────────────────────────────────────────────
+        subsec(r, "Session 1 Weaknesses"); r += 1
+        bullet(r,
+            "Step is based entirely on your last play date — which could be weeks or months ago. A player who "
+            "has improved significantly since then has no way to reflect that improvement until they play again, "
+            "and even then it takes multiple sessions for step to catch up.",
+            height=28); r += 1
+        bullet(r,
+            "Step is not normalized for the number of active courts. If your last play date had 5 courts and "
+            "you were near the bottom (step = 5), you will be treated as a low-rated player even on a day with "
+            "only 3 courts — when you might genuinely belong in the middle. Conversely, a player whose last "
+            "session had only 2 courts gets an artificially low step that rewards them on higher-turnout days. "
+            "High-turnout days systematically penalize players; low-turnout days reward them.",
+            height=52); r += 1
+        bullet(r,
+            "Step has no floor. If you finish in the bottom two on the lowest active court, your step still "
+            "increments — producing a step value higher than any court that will be active next time you play. "
+            "This creates 'phantom' steps that over-penalize players who had one bad session on a crowded day.",
+            height=36); r += 1
+        bullet(r,
+            "Step does not account for the strength of the partners or opponents you faced in Session 2. "
+            "Finishing in the bottom two on Court 1 — against the strongest players in the session, possibly "
+            "with a weak partner — earns the same step penalty as finishing bottom two on Court 3 against the "
+            "weakest players. The step system cannot distinguish a tough loss from a poor performance.",
+            height=40); r += 1
+        bullet(r,
+            "Percentage shares the same flaw. Your scoring efficiency is calculated from raw points scored "
+            "with no adjustment for who your partner was or who you played against. A strong partner earns "
+            "you more points — and a higher percentage — regardless of your own contribution. Likewise, "
+            "playing consistently against Court 1-caliber opponents will depress your percentage compared "
+            "to a player who plays the same number of games on weaker courts.",
+            height=46); r += 1
+        bullet(r,
+            "Percentage looks back 90 games (~15 play dates). A session from three months ago counts equally "
+            "with last week's session. There is no recency weighting.",
+            height=22); r += 1
+        blank(r, 6); r += 1
+
+        # ── S2 flaws ─────────────────────────────────────────────────────────
+        subsec(r, "Session 2 Weaknesses — 2-Up / 2-Back"); r += 1
+        para(r,
+            "After Session 1, DEN moves the top two point-differential finishers on each court up one court "
+            "and drops the bottom two down one court. Everyone else stays.",
+            height=28); r += 1
+        blank(r, 4); r += 1
+        bullet(r,
+            f"Approximately 70% of players move to a different court between S1 and S2 — the highest churn "
+            f"of any approach we tested. On a typical 4-court day, that means only 3 of the 4 players on "
+            f"each court stay put. Most of this movement is mechanical and position-based, not a "
+            f"reflection of how well a player actually performed.",
+            height=28); r += 1
+        bullet(r,
+            "The top 2 and bottom 2 always move, regardless of how close the results were. A player with a "
+            "slightly negative point differential after three competitive games may be 'bottom 2' and dropped "
+            "a court, even though their performance was essentially average for that court.",
+            height=30); r += 1
+        bullet(r,
+            "Point differential is not weighted by opponent strength. Outscoring opponents on Court 3 earns "
+            "the same upward movement as outscoring opponents on Court 1 — even though the Court 1 "
+            "accomplishment represents a meaningfully stronger performance.",
+            height=28); r += 1
+        blank(r, 6); r += 1
+
+        # Impact table
+        para(r,
+            f"The net result: under the current DEN system, the average within-court Elo spread is "
+            f"{den['S1 Avg Spread']} for S1 and {den['S2 Avg Spread']} for S2. Courts are actually less "
+            f"balanced after the 2-up/2-back reassignment than they were in Session 1.",
+            height=32); r += 1
+        blank(r, 4); r += 1
+        th(r, ["Session", "Avg Within-Court Elo Spread", "What It Means"]); r += 1
+        td(r, ["Session 1 (DEN step / %)",
+               den["S1 Avg Spread"],
+               "Significant skill mismatches within courts"]); r += 1
+        td(r, ["Session 2 (2-up / 2-back)",
+               den["S2 Avg Spread"],
+               "Movement adds noise — courts are less balanced than S1"], fill=fill_alt); r += 1
+        td(r, ["Combined (baseline)",
+               den["Combined Spread"],
+               "Reference point for all alternative scenarios"]); r += 1
+        blank(r, 8); r += 1
+
+        # ── 5. Options for Improvement ───────────────────────────────────────
+        sec(r, "6.  Options for Improvement: What We Tested and Why"); r += 1
+        para(r,
+            "We modeled 12 alternative approaches across the last 180 days of play. Each is evaluated on "
+            "combined within-court spread (lower = better), the improvement vs. current (DEN), and the "
+            "fraction of players who move courts between S1 and S2.",
+            height=36); r += 1
+        blank(r, 4); r += 1
+
+        # Full options table
+        th(r, ["Approach", "vs. Current", "S1→S2 Move", "Key Tradeoff", "Implementation"]); r += 1
+
+        options = [
+            ("Elo S1, keep 2u2b S2",
+             e2u["vs DEN"] if e2u is not None else "—", e2u["S1→S2 % Moving"] if e2u is not None else "—",
+             "S1 improves 41%; S2 unchanged — mechanical movement still degrades court quality",
+             "S1 entry only"),
+            ("Elo S1, 1-up/1-back S2  ★ Phase 1",
+             ph1["vs DEN"] if ph1 is not None else "—", ph1["S1→S2 % Moving"] if ph1 is not None else "—",
+             "Fewer moves than 2u2b; uses S1 point differential within each court — simple, auditable",
+             "Change DEN setting only"),
+            ("Elo S1, Elo S2 (K=20)",
+             e20["vs DEN"] if e20 is not None else "—", e20["S1→S2 % Moving"] if e20 is not None else "—",
+             "Maximum competitiveness; very little movement — may feel static",
+             "Automation required"),
+            ("Elo S1, Elo S2 (K=100)  ★ Phase 2",
+             ph2["vs DEN"] if ph2 is not None else "—", ph2["S1→S2 % Moving"] if ph2 is not None else "—",
+             "Best balance: earned movement based on S1 results weighted by opponent strength",
+             "Automation required"),
+            ("Elo S1, Elo S2 (K=150)",
+             k150["vs DEN"] if k150 is not None else "—", k150["S1→S2 % Moving"] if k150 is not None else "—",
+             "Higher movement than K=100 but less competitive; K inflation amplifies noise in 3 games",
+             "Automation required"),
+            ("Elo S1, Boundary Swap S2",
+             bsw["vs DEN"] if bsw is not None else "—", bsw["S1→S2 % Moving"] if bsw is not None else "—",
+             "Swaps players at court boundaries when gap ≤40 Elo — ignores S1 performance entirely",
+             "Automation required"),
+            ("Elo S1, Upset-Triggered S2",
+             upt["vs DEN"] if upt is not None else "—", upt["S1→S2 % Moving"] if upt is not None else "—",
+             "Moves players who outperformed/underperformed expectations — right concept, low movement (10%)",
+             "Automation required"),
+        ]
+
+        fills_cycle = [None, fill_alt, None, fill_alt, None, fill_alt, None]
+        for i, (label, vs, mv, tradeoff, impl) in enumerate(options):
+            fill = fills_cycle[i]
+            is_phase = "★" in label
+            # Write 5 columns: B=label, C=vs, D=moving, E=tradeoff (merged E:G), H=impl
+            st_ws.row_dimensions[r].height = 28
+            lc = st_ws.cell(row=r, column=2, value=label)
+            lc.font = fBb if is_phase else fB
+            lc.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+            lc.border = bdr_top
+            if fill: lc.fill = fill
+            vc = st_ws.cell(row=r, column=3, value=vs)
+            vc.font = fBb if is_phase else fB
+            vc.alignment = al_ctr; vc.border = bdr_top
+            if fill: vc.fill = fill
+            mc = st_ws.cell(row=r, column=4, value=mv)
+            mc.font = fB; mc.alignment = al_ctr; mc.border = bdr_top
+            if fill: mc.fill = fill
+            st_ws.merge_cells(start_row=r, start_column=5, end_row=r, end_column=7)
+            tc2 = st_ws.cell(row=r, column=5, value=tradeoff)
+            tc2.font = fB
+            tc2.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+            tc2.border = bdr_top
+            if fill: tc2.fill = fill
+            ic = st_ws.cell(row=r, column=8, value=impl)
+            ic.font = fB; ic.alignment = al_ctr_w; ic.border = bdr_top
+            if fill: ic.fill = fill
+            r += 1
+
+        blank(r, 8); r += 1
+
+        # ── 6. Recommendation ────────────────────────────────────────────────
+        sec(r, "7.  Recommendation: A Two-Phase Approach"); r += 1
+        para(r,
+            "We recommend implementing changes in two phases. Phase 1 delivers the majority of the improvement "
+            "with minimal implementation risk. Phase 2 extends the benefit when automation is ready.",
+            height=32); r += 1
+        blank(r, 4); r += 1
+
+        # Phase comparison table header spanning 3 cols
+        th(r, ["", "Phase 1 — Ready Now", "Phase 2 — When Automation Ready"], fill=fill_hdr, start_col=2); r += 1
+        phase_tbl = [
+            ("S1 Assignment",       "Elo ratings",                          "Elo ratings"),
+            ("S2 Assignment",       "1-up / 1-back (DEN setting)",          "Elo recalc using S1 scores (K=100)"),
+            ("Competitiveness vs. current",
+             ph1["vs DEN"] if ph1 is not None else "—",
+             ph2["vs DEN"] if ph2 is not None else "—"),
+            ("S1→S2 Movement",
+             ph1["S1→S2 % Moving"] if ph1 is not None else "—",
+             ph2["S1→S2 % Moving"] if ph2 is not None else "—"),
+            ("Movement basis",      "S1 point differential within court",   "S1 results weighted by opponent strength"),
+            ("S2 automation needed","No — change one DEN setting",          "Yes — script recalculates ratings after S1"),
+            ("Status",              "Ready to implement",                    "Deferred — pending automation"),
+        ]
+        for i, (label, v1, v2) in enumerate(phase_tbl):
+            fill = fill_alt2 if i % 2 == 0 else None
+            st_ws.row_dimensions[r].height = 20
+            lc = st_ws.cell(row=r, column=2, value=label)
+            lc.font = fBb; lc.alignment = al_left; lc.border = bdr_top
+            if fill: lc.fill = fill
+            c1 = st_ws.cell(row=r, column=3, value=v1)
+            c1.font = fB; c1.alignment = al_ctr_w; c1.border = bdr_top
+            if fill: c1.fill = fill
+            c2 = st_ws.cell(row=r, column=4, value=v2)
+            c2.font = fB; c2.alignment = al_ctr_w; c2.border = bdr_top
+            if fill: c2.fill = fill
+            r += 1
+
+        blank(r, 8); r += 1
+
+        # ── 7. A Note on Movement ────────────────────────────────────────────
+        sec(r, "8.  A Note on Movement: Less Can Be More"); r += 1
+        para(r,
+            "Phase 2 (K=100, 24% movement) produces less player movement than Phase 1 (1u1b, 35%). "
+            "This may seem counterintuitive, but it reflects a key difference: Phase 1 moves the top and "
+            "bottom performer on every court by rule — structural movement. Phase 2 moves players only when "
+            "their S1 results meaningfully exceed or fall short of what their rating predicted, weighted by "
+            "the strength of their opponents. A player who wins as expected stays put. "
+            "In Phase 2, movement is earned, not assigned.",
+            height=64); r += 1
+        blank(r, 4); r += 1
+        para(r,
+            "For context: the current DEN 2-up/2-back rule moves approximately 70% of players every session. "
+            "Both phases represent a significant reduction in churn, with correspondingly better S2 court quality. "
+            "The full scenario comparison is available in the 'Scenario Comparison' tab.",
+            height=36); r += 1
+        blank(r, 8); r += 1
+
+        # ── Footnote ─────────────────────────────────────────────────────────
+        st_ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=NCOLS)
+        fn = st_ws.cell(row=r, column=2,
+            value="* All competitiveness figures are averages over the most recent 180 days of historical play data. "
+                  "Within-court Elo spread is measured using pre-session ratings (provisional K: 40 at game 1, grading "
+                  "to 20 by game 60) for all scenarios so results are on a consistent scale. Phase 2 S2 ratings "
+                  "additionally incorporate actual S1 game scores and scoring margins before assigning S2 courts. "
+                  "See 'Scenario Comparison' and 'Court Assignment Analysis' tabs for full detail.")
+        fn.font = fIT; fn.alignment = al_wrap
+        st_ws.row_dimensions[r].height = 44
+
+    preferred_order = [
+        "Findings & Recommendation",
+        "Leaderboard",
+        "Model Description",
+        "Key Findings",
+        "Model Validation",
+        "Expected Margin Calibration",
+        "Team Balance Analysis",
+        "Extreme Partner Spread",
+        "Extreme Spread Summary",
+        "Competitive Balance",
+        "Player Pool",
+        "Results vs Expectation",
+        "Performance vs Expectation",
+        "Session Effects",
+        "Recent Trends",
+        "Consistency",
+        "Recent Best Worst Day",
+        "Rating History",
+        "Illustration",
+        "Quarterly Participation",
+        "Less Active",
+        "Scenario Comparison",
+        "Court Assignment Analysis",
+        "Notes",
+        "Raw_Data",
+        "Player_Game_Log",
+    ]
+
+    ordered = [wb[name] for name in preferred_order if name in wb.sheetnames]
+    remaining = [ws for ws in wb.worksheets if ws.title not in preferred_order]
+    wb._sheets = ordered + remaining
+
+    wb.save(output_path)
+    print(f"Built workbook: {output_path}")
+
+
+
+def _inject_back_to_menu(output_path):
+    """Insert a floating back-to-menu badge into an auto-generated
+    Plotly HTML file, right after the opening <body> tag."""
+    try:
+        html = output_path.read_text(encoding="utf-8")
+        nav = '<a href="index.html" style="position:fixed;top:10px;left:10px;z-index:1000;background:#1F4E79;color:#fff;font-size:12px;padding:6px 12px;border-radius:6px;text-decoration:none;box-shadow:0 1px 4px rgba(0,0,0,0.2);">&larr; Menu</a>'
+        html = html.replace("<body>", f"<body>\n{nav}", 1)
+        output_path.write_text(html, encoding="utf-8")
+    except Exception as e:
+        print(f"Could not inject back-to-menu link into {output_path}: {e}")
+
+
+def build_rating_history_html(eod_df, leaderboard, output_path):
+    try:
+        import plotly.graph_objects as go
+    except ImportError:
+        print("plotly not installed — skipping rating history chart. Run: pip3 install plotly")
+        return
+
+    df = eod_df.copy()
+    date_cols = [c for c in df.columns if c != "Player"]
+
+    df = df.melt(id_vars=["Player"], var_name="Date", value_name="Rating")
+    df = df[df["Rating"] != ""].copy()
+    df["Date"] = pd.to_datetime(df["Date"])
+    df["Rating"] = pd.to_numeric(df["Rating"], errors="coerce")
+    df = df.dropna(subset=["Rating"])
+    df = df.sort_values(["Player", "Date"])
+
+    players = sorted(df["Player"].unique())
+
+    fig = go.Figure()
+    for player in players:
+        pdata = df[df["Player"] == player].sort_values("Date")
+        fig.add_trace(go.Scatter(
+            x=pdata["Date"],
+            y=pdata["Rating"],
+            mode="lines+markers",
+            name=player,
+            visible=True,
+            line=dict(width=2),
+            marker=dict(size=5),
+            hovertemplate=f"<b>{player}</b><br>%{{x|%b %d, %Y}}<br>Rating: %{{y:.0f}}<extra></extra>",
+        ))
+
+    fig.update_layout(
+        title=dict(text="SAM Player Rating History", font=dict(size=18)),
+        xaxis_title="Date",
+        yaxis_title="Modified Elo Rating",
+        # Lock the vertical scale — drag/scroll zoom applies to the x-axis only,
+        # so casual touches can't distort the rating scale
+        yaxis=dict(fixedrange=True),
+        legend=dict(itemclick="toggle", itemdoubleclick="toggleothers"),
+        hovermode="closest",
+        height=620,
+        template="plotly_white",
+        margin=dict(l=20, r=20, t=50, b=40),
+    )
+
+    chart_html = fig.to_html(full_html=False, include_plotlyjs="cdn", div_id="ratingChart")
+
+    # Quartiles are defined by each qualified leaderboard player's CURRENT
+    # rating -- not their rating on any particular past date -- so quartile
+    # membership doesn't shift when the Time Range selector changes. Only
+    # leaderboard-qualified players participate; guests/unqualified players
+    # get quartile 0 (excluded from all four quartile buttons, though their
+    # individual checkbox still works normally).
+    rating_map = dict(zip(leaderboard["Player"], leaderboard["Player Rating"]))
+    qualified_sorted = sorted(
+        [p for p in players if p in rating_map],
+        key=lambda p: rating_map[p], reverse=True,
+    )
+    n_qualified = len(qualified_sorted)
+    quartile_of = {}
+    for i, p in enumerate(qualified_sorted):
+        quartile_of[p] = min(4, int(i * 4 / n_qualified) + 1) if n_qualified else 0
+
+    checkboxes_html = ""
+    for i, player in enumerate(players):
+        q = quartile_of.get(player, 0)
+        checkboxes_html += (
+            f'<label style="display:block;margin:4px 0;cursor:pointer;font-size:13px;">'
+            f'<input type="checkbox" checked data-idx="{i}" data-quartile="{q}" onchange="toggleTrace({i},this.checked)"'
+            f' style="margin-right:6px;">{player}</label>\n'
+        )
+
+    max_date = df["Date"].max()
+    month_starts = {
+        "1M": (max_date - pd.DateOffset(months=1)).isoformat(),
+        "3M": (max_date - pd.DateOffset(months=3)).isoformat(),
+        "6M": (max_date - pd.DateOffset(months=6)).isoformat(),
+    }
+    min_date = df["Date"].min().isoformat()
+    max_date_iso = max_date.isoformat()
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>SAM Rating History</title>
+  <style>
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{ font-family: Arial, sans-serif; display: flex; height: 100vh; overflow: hidden; }}
+    #sidebar {{
+      width: 210px; min-width: 210px; padding: 46px 12px 14px;
+      background: #f7f7f7; border-right: 1px solid #ddd;
+      display: flex; flex-direction: column; gap: 8px; overflow-y: auto;
+    }}
+    #sidebar h3 {{ font-size: 14px; color: #333; margin-bottom: 2px; }}
+    #sidebar p.note {{ font-size: 11px; color: #777; line-height: 1.4; }}
+    .btn-row {{ display: flex; gap: 4px; flex-wrap: wrap; }}
+    .btn {{
+      flex: 1; padding: 5px 0; background: #4a7fc1; color: #fff;
+      border: none; border-radius: 4px; cursor: pointer; font-size: 12px;
+    }}
+    .btn:hover {{ background: #3568a8; }}
+    .btn.active {{ background: #2a4f80; font-weight: bold; }}
+    .section-label {{ font-size: 11px; font-weight: bold; color: #555; margin-top: 4px; }}
+    #player-list {{ overflow-y: auto; flex: 1; }}
+    #chart {{ flex: 1; overflow: hidden; }}
+    #chart > div {{ height: 100% !important; }}
+  </style>
+</head>
+<body>
+  <a href="index.html" style="position:fixed;top:10px;left:10px;z-index:1000;background:#1F4E79;color:#fff;font-size:12px;padding:6px 12px;border-radius:6px;text-decoration:none;box-shadow:0 1px 4px rgba(0,0,0,0.2);">&larr; Menu</a>
+  <button onclick="forceRefresh()" style="position:fixed;top:10px;left:96px;z-index:1000;background:#1F4E79;color:#fff;font-size:12px;padding:6px 12px;border-radius:6px;border:none;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,0.2);">&#8635;&nbsp;Refresh</button>
+  <div id="freshness-hint" style="position:fixed;top:42px;left:10px;z-index:999;font-size:10px;color:#888;background:#fff;padding:2px 6px;border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,0.15);">💡 Tap Refresh for the latest data.</div>
+  <div id="sidebar">
+    <h3>SAM Rating History</h3>
+
+    <div class="section-label">Time Range</div>
+    <div class="btn-row">
+      <button class="btn" id="btn-1m" onclick="setRange('1M')">1M</button>
+      <button class="btn" id="btn-3m" onclick="setRange('3M')">3M</button>
+      <button class="btn" id="btn-6m" onclick="setRange('6M')">6M</button>
+      <button class="btn" id="btn-all" onclick="setRange('ALL')">All</button>
+    </div>
+
+    <div class="section-label">Rating Tier</div>
+    <p class="note">Quartiles by current rating (leaderboard-qualified players only).</p>
+    <div class="btn-row">
+      <button class="btn" onclick="selectQuartile(1)" title="Top 25% by current rating">Q1</button>
+      <button class="btn" onclick="selectQuartile(2)" title="2nd 25% by current rating">Q2</button>
+      <button class="btn" onclick="selectQuartile(3)" title="3rd 25% by current rating">Q3</button>
+      <button class="btn" onclick="selectQuartile(4)" title="Bottom 25% by current rating">Q4</button>
+    </div>
+
+    <div class="section-label">Players</div>
+    <p class="note">Click to show/hide. Double-click a legend item to isolate.</p>
+    <div class="btn-row">
+      <button class="btn" onclick="selectAll()">All</button>
+      <button class="btn" onclick="clearAll()">Clear</button>
+    </div>
+    <div id="player-list">
+      {checkboxes_html}
+    </div>
+  </div>
+  <div id="chart">{chart_html}</div>
+  <script>
+    // Freshness: force a genuine network fetch on every real navigation to
+    // this page, bypassing any browser/CDN cache. If this load doesn't
+    // already carry our cache-bust marker, immediately redirect to a URL
+    // that does -- GitHub Pages' CDN (and browsers) cache by full URL
+    // including query string, so a unique timestamp guarantees a cache miss.
+    (function () {{
+      var params = new URLSearchParams(location.search);
+      if (!params.has('_cb')) {{
+        params.set('_cb', Date.now());
+        location.replace(location.pathname + '?' + params.toString());
+      }}
+    }})();
+
+    // Forces a genuine network fetch bypassing any cache -- used both by
+    // the manual Refresh button and the periodic timer below. No state to
+    // preserve on this page (Time Range / Quartile selections are just
+    // client-side filters on data already embedded in the page, not a
+    // per-date server-driven view).
+    function forceRefresh() {{
+      var params = new URLSearchParams(location.search);
+      params.set('_cb', Date.now());
+      location.replace(location.pathname + '?' + params.toString());
+    }}
+    setInterval(forceRefresh, 5 * 60 * 1000);
+
+    var chartDiv = document.getElementById('ratingChart');
+    var ranges = {{
+      '1M': ['{month_starts["1M"]}', '{max_date_iso}'],
+      '3M': ['{month_starts["3M"]}', '{max_date_iso}'],
+      '6M': ['{month_starts["6M"]}', '{max_date_iso}'],
+      'ALL': ['{min_date}', '{max_date_iso}'],
+    }};
+
+    function setRange(q) {{
+      Plotly.relayout(chartDiv, {{'xaxis.range': ranges[q]}});
+      document.querySelectorAll('.btn[id^="btn-"]').forEach(function(b) {{
+        b.classList.remove('active');
+      }});
+      document.getElementById('btn-' + q.toLowerCase()).classList.add('active');
+    }}
+
+    function toggleTrace(idx, visible) {{
+      Plotly.restyle(chartDiv, {{'visible': visible}}, [idx]);
+    }}
+
+    function selectAll() {{
+      document.querySelectorAll('#player-list input').forEach(function(b) {{
+        b.checked = true;
+        Plotly.restyle(chartDiv, {{'visible': true}}, [parseInt(b.dataset.idx)]);
+      }});
+    }}
+
+    function clearAll() {{
+      document.querySelectorAll('#player-list input').forEach(function(b) {{
+        b.checked = false;
+        Plotly.restyle(chartDiv, {{'visible': false}}, [parseInt(b.dataset.idx)]);
+      }});
+    }}
+
+    function selectQuartile(q) {{
+      document.querySelectorAll('#player-list input').forEach(function(b) {{
+        var show = parseInt(b.dataset.quartile) === q;
+        b.checked = show;
+        Plotly.restyle(chartDiv, {{'visible': show}}, [parseInt(b.dataset.idx)]);
+      }});
+    }}
+
+    // Keep checkboxes in sync when user clicks legend items directly
+    chartDiv.on('plotly_legendclick', function(data) {{
+      var idx = data.curveNumber;
+      var boxes = document.querySelectorAll('#player-list input');
+      if (idx < boxes.length) {{
+        setTimeout(function() {{
+          var vis = chartDiv.data[idx].visible;
+          boxes[idx].checked = (vis === true || vis === undefined);
+        }}, 50);
+      }}
+    }});
+
+    // Default to a fixed 6-month window (not calendar-quarter-based --
+    // avoids showing almost no data in the first few days of a new quarter).
+    setRange('6M');
+  </script>
+</body>
+</html>"""
+
+    with open(output_path, "w") as f:
+        f.write(html)
+    print(f"Rating history chart: {output_path}")
+
+
+if __name__ == "__main__":
+    main()

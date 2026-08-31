@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAM Pickleball — Format Change Tracker</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+<style>
+  :root {
+    --blue-dark: #1F4E79;
+    --blue-mid:  #2E75B6;
+    --blue-light:#D6E4F0;
+    --rust:      #b3543a;
+    --gold:      #C9A84C;
+    --text:      #333333;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Calibri, Arial, sans-serif;
+    color: var(--text);
+    background: #f7f9fc;
+    min-height: 100vh;
+  }
+  header {
+    background: var(--blue-dark);
+    color: #fff;
+    padding: 26px 24px;
+    text-align: center;
+  }
+  header h1 { font-size: 24px; letter-spacing: 0.3px; }
+  header p  { font-size: 14px; opacity: 0.85; margin-top: 6px; }
+
+  main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 24px 16px 48px;
+  }
+
+  .legend-note {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    font-size: 13px;
+    color: #555;
+    margin-bottom: 14px;
+  }
+  .legend-note span { display: flex; align-items: center; gap: 6px; }
+  .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; }
+
+  .chart-card {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    padding: 20px 16px 12px;
+  }
+
+  .status-row {
+    margin-top: 16px;
+    font-size: 13.5px;
+    color: #555;
+    line-height: 1.5;
+  }
+  .status-row b { color: var(--text); }
+
+  a.back {
+    display: inline-block;
+    margin-top: 22px;
+    font-size: 13.5px;
+    color: var(--blue-mid);
+    text-decoration: none;
+  }
+  a.back:hover { text-decoration: underline; }
+
+  #loadingMsg, #errorMsg { padding: 40px 0; text-align: center; color: #777; }
+  #errorMsg { color: var(--rust); display: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Format Change Tracker</h1>
+  <p>Average player rating, by day — before vs. after the 8/24 shuffle-format change</p>
+</header>
+
+<main>
+  <div class="legend-note">
+    <span><span class="swatch" style="background:var(--blue-mid);"></span> Before (Two-up / Two-down)</span>
+    <span><span class="swatch" style="background:var(--rust);"></span> After (One-up / One-down)</span>
+    <span><span class="swatch" style="background:var(--gold);"></span> 7-day rolling average</span>
+  </div>
+
+  <div class="chart-card">
+    <div id="loadingMsg">Loading…</div>
+    <div id="errorMsg">Couldn't load format_tracker_data.json — has compute_format_tracker_data.py been run yet?</div>
+    <canvas id="trackerChart" height="110" style="display:none;"></canvas>
+  </div>
+
+  <div class="status-row" id="statusRow"></div>
+
+  <a class="back" href="/">&larr; Back to Admin</a>
+</main>
+
+<script>
+async function init() {
+  const loadingMsg = document.getElementById('loadingMsg');
+  const errorMsg = document.getElementById('errorMsg');
+  const canvas = document.getElementById('trackerChart');
+  const statusRow = document.getElementById('statusRow');
+
+  let data;
+  try {
+    const res = await fetch('format_tracker_data.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error('fetch failed');
+    data = await res.json();
+  } catch (e) {
+    loadingMsg.style.display = 'none';
+    errorMsg.style.display = 'block';
+    return;
+  }
+
+  loadingMsg.style.display = 'none';
+  canvas.style.display = 'block';
+
+  const labels = data.days.map(d => d.date);
+  const barColors = data.days.map(d => d.period === 'before' ? '#2E75B6' : '#b3543a');
+  const barValues = data.days.map(d => d.avg_rating);
+  const rollingValues = data.days.map(d => d.rolling_avg);
+
+  // Full history is plotted (927+ days), but the chart defaults to a
+  // recent window so the actual before/after comparison at the 8/24
+  // cutover is visible rather than compressed into a sliver at the
+  // right edge. Scroll/zoom would need a plugin; instead we just set
+  // the initial x-axis range and note it below the chart.
+  const RECENT_WINDOW_DAYS = 60;
+  const windowStartIndex = Math.max(0, labels.length - RECENT_WINDOW_DAYS);
+  const xMinLabel = labels[windowStartIndex];
+  const xMaxLabel = labels[labels.length - 1];
+
+  const annotations = {};
+  if (data.last_pre_change_date && data.first_post_change_date) {
+    annotations.gapBand = {
+      type: 'box',
+      xMin: data.last_pre_change_date,
+      xMax: data.first_post_change_date,
+      backgroundColor: 'rgba(201, 168, 76, 0.18)',
+      borderColor: 'rgba(201, 168, 76, 0.5)',
+      borderWidth: 1,
+      label: {
+        display: true,
+        content: 'Format change',
+        position: 'start',
+        color: '#8a6d1f',
+        font: { size: 11 }
+      }
+    };
+  }
+
+  new Chart(canvas.getContext('2d'), {
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          type: 'bar',
+          label: 'Daily average rating',
+          data: barValues,
+          backgroundColor: barColors,
+          order: 2
+        },
+        {
+          type: 'line',
+          label: '7-day rolling average',
+          data: rollingValues,
+          borderColor: '#C9A84C',
+          backgroundColor: '#C9A84C',
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.25,
+          order: 1
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        annotation: { annotations: annotations },
+        tooltip: {
+          callbacks: {
+            afterBody: (items) => {
+              const d = data.days[items[0].dataIndex];
+              return `${d.count} player-appearances`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          min: xMinLabel,
+          max: xMaxLabel,
+          ticks: { maxRotation: 60, minRotation: 60, autoSkip: true, maxTicksLimit: 20 }
+        },
+        y: { title: { display: true, text: 'Average rating' } }
+      }
+    }
+  });
+
+  statusRow.innerHTML =
+    `<b>Cutover:</b> last pre-change day ${data.last_pre_change_date || '—'}, ` +
+    `first post-change day ${data.first_post_change_date || '—'}. ` +
+    `Showing the most recent ${RECENT_WINDOW_DAYS} play days (full history is in the data — ` +
+    `${data.days.length} days total). Data generated ${data.generated_at}.`;
+}
+
+init();
+</script>
+
+</body>
+</html>

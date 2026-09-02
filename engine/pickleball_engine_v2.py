@@ -3516,6 +3516,85 @@ def main():
         trends_ws[f"G{r}"].number_format = "0.0;(0.0);0.0"
 
 
+    bwd_ws = wb["Recent Best Worst Day"]
+
+    # Convert Best/Worst Day to a two-row grouped header.
+    bwd_ws.insert_rows(1)
+
+    bwd_ws["A1"] = "Player"
+    bwd_ws["B1"] = "Current Rating"
+    bwd_ws["C1"] = "Best Day"
+    bwd_ws["G1"] = "Worst Day"
+
+    bwd_ws.merge_cells("A1:A2")
+    bwd_ws.merge_cells("B1:B2")
+    bwd_ws.merge_cells("C1:F1")
+    bwd_ws.merge_cells("G1:J1")
+
+    bwd_ws["C2"] = "Date"
+    bwd_ws["D2"] = "Wins Over Expected"
+    bwd_ws["E2"] = "Record"
+    bwd_ws["F2"] = "Total Point Differential"
+    bwd_ws["G2"] = "Date"
+    bwd_ws["H2"] = "Wins Over Expected"
+    bwd_ws["I2"] = "Record"
+    bwd_ws["J2"] = "Total Point Differential"
+
+    header_fill = PatternFill("solid", fgColor="1F4E78")
+    header_font = Font(color="FFFFFF", bold=True)
+    thin = Side(style="thin", color="D9D9D9")
+    header_border = Border(bottom=thin)
+
+    for row in [1, 2]:
+        for c in range(1, bwd_ws.max_column + 1):
+            cell = bwd_ws.cell(row, c)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=False)
+            cell.border = header_border
+
+    bwd_ws.freeze_panes = "A3"
+    bwd_ws.auto_filter.ref = f"A2:{get_column_letter(bwd_ws.max_column)}{bwd_ws.max_row}"
+
+    widths = {
+        "A": 24,
+        "B": 16,
+        "C": 14,
+        "D": 20,
+        "E": 14,
+        "F": 24,
+        "G": 14,
+        "H": 20,
+        "I": 14,
+        "J": 24,
+    }
+    for col, width in widths.items():
+        bwd_ws.column_dimensions[col].width = width
+
+    total = sum(widths.values())
+    bwd_ws.sheet_view.zoomScale = (
+        120 if total <= 130 else
+        110 if total <= 200 else
+        100 if total <= 280 else
+        90  if total <= 380 else 80
+    )
+
+    for r in range(3, bwd_ws.max_row + 1):
+        bwd_ws[f"B{r}"].number_format = "#,##0"
+        bwd_ws[f"C{r}"].number_format = "m/d/yyyy"
+        bwd_ws[f"D{r}"].number_format = "0.0%;(0.0%);0.0%"
+        bwd_ws[f"F{r}"].number_format = "#,##0;(#,##0);0"
+        bwd_ws[f"G{r}"].number_format = "m/d/yyyy"
+        bwd_ws[f"H{r}"].number_format = "0.0%;(0.0%);0.0%"
+        bwd_ws[f"J{r}"].number_format = "#,##0;(#,##0);0"
+
+        for c in range(1, bwd_ws.max_column + 1):
+            bwd_ws.cell(r, c).alignment = Alignment(
+                horizontal="left" if c in [1, 5, 9] else "center",
+                vertical="center",
+                wrap_text=False,
+            )
+
     eod_ws = wb["Rating History"]
     style_sheet(eod_ws, {"A": 24, **{get_column_letter(c): 11 for c in range(2, eod_ws.max_column + 1)}})
     eod_ws.freeze_panes = "B2"

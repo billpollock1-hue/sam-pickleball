@@ -48,8 +48,6 @@ LOG_PATH = BASE_DIR / "launch_log.jsonl"
 HTML_PATH = BASE_DIR / "control_panel.html"
 ADMIN_INDEX_PATH = BASE_DIR / "admin_index.html"
 DATES_HTML_PATH = BASE_DIR / "dates.html"
-FORMAT_TRACKER_HTML_PATH = BASE_DIR / "format_tracker.html"
-FORMAT_TRACKER_DATA_PATH = BASE_DIR / "format_tracker_data.json"
 REPO_ROOT = BASE_DIR.parent
 NO_SHOOTOUT_CSV = REPO_ROOT / "data" / "no_shootout_dates.csv"
 PARTIAL_SHOOTOUT_CSV = REPO_ROOT / "data" / "partial_shootout_dates.csv"
@@ -154,18 +152,6 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"display": get_next_shootout_display()})
         elif self.path == "/dates" or self.path == "/dates.html":
             self._send_html(DATES_HTML_PATH)
-        elif self.path == "/format_tracker.html" or self.path == "/format_tracker":
-            self._send_html(FORMAT_TRACKER_HTML_PATH)
-        elif self.path == "/format_tracker_data.json":
-            if FORMAT_TRACKER_DATA_PATH.exists():
-                body = FORMAT_TRACKER_DATA_PATH.read_bytes()
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-            else:
-                self._send_json({"error": "not found"}, status=404)
         else:
             self._send_json({"error": "not found"}, status=404)
 

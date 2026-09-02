@@ -1,35 +1,6 @@
 #!/bin/bash
 set -e
 
-# --- Overlap guard -----------------------------------------------------
-# mkdir is atomic on POSIX filesystems, so this is safe against two cron
-# invocations racing each other -- unlike flock, which isn't reliably
-# available on macOS by default. Self-heals if a prior run crashed and
-# left a stale lock behind (checks whether the recorded PID is still
-# alive before deciding to steal the lock).
-LOCKDIR="/tmp/sam_pickleball_run_all.lockdir"
-LOCKPID="$LOCKDIR/pid"
-
-acquire_lock() {
-  mkdir "$LOCKDIR"
-  echo $$ > "$LOCKPID"
-  trap 'rm -rf "$LOCKDIR"' EXIT
-}
-
-if ! mkdir "$LOCKDIR" 2>/dev/null; then
-  if [ -f "$LOCKPID" ] && kill -0 "$(cat "$LOCKPID")" 2>/dev/null; then
-    echo "Another run_all.sh (PID $(cat "$LOCKPID")) is already running -- exiting."
-    exit 0
-  fi
-  echo "Stale lock found -- removing and continuing."
-  rm -rf "$LOCKDIR"
-  acquire_lock
-else
-  echo $$ > "$LOCKPID"
-  trap 'rm -rf "$LOCKDIR"' EXIT
-fi
-# -------------------------------------------------------------------------
-
 echo ""
 echo "=== Pickleball full update started ==="
 

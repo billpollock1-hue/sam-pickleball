@@ -411,7 +411,6 @@ def run_monitor():
         return
 
     current_sheets = extract_all_sheets(body_text)
-    print(f"[DEBUG] Scraped players for 2026-08-28: {current_sheets.get('2026-08-28', 'DATE NOT FOUND')}")
 
     if not current_sheets:
         print(f"[{timestamp_str}] No sheets found in search results.")

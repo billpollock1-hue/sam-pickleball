@@ -380,7 +380,7 @@ tr.wd td.name  { text-decoration: line-through; }
 <body>
 
 <div id="controls">
-  <a href="http://192.168.1.16:8765/" class="back-btn">&larr; Menu</a>
+  <a href="http://192.168.1.190:8765/" class="back-btn">&larr; Menu</a>
   <button class="back-btn" onclick="forceRefresh()">&#8635;&nbsp;Refresh</button>
   <label for="date-select">Session date</label>
   <select id="date-select">%%OPTIONS%%</select>

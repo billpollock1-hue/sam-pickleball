@@ -231,7 +231,9 @@ def automate_signup_search_today(page):
         # gives slow-loading mornings more room to succeed on the first
         # try instead of relying on the poller's 5-minute retry to paper
         # over it.
-        search_button = page.get_by_role("button", name="Search", exact=True)
+        search_button = page.get_by_role(
+            "button", name=re.compile(r"^Search$", re.IGNORECASE)
+        )
         search_button.wait_for(state="visible", timeout=90000)
         search_button.click()
         page.wait_for_timeout(2500)
@@ -896,11 +898,20 @@ def main():
         else:
             context = browser.new_context(viewport=VIEWPORT)
 
+        # Trace the whole run for real diagnostic evidence on failure --
+        # a post-failure screenshot only shows how the page looked AFTER
+        # the exception was already caught, which can look completely
+        # normal even when it wasn't at the actual moment of timeout.
+        # Only saved to disk on failure (see except block below);
+        # discarded on success to avoid clutter.
+        context.tracing.start(screenshots=True, snapshots=True, sources=True)
+
         page = context.new_page()
 
         excess_names = []
         court_assignments_log = []
         actual_shuffle_mode = None
+        trace_already_stopped = False
         try:
             print("Opening signup sheet...")
             page.goto(SIGNUP_URL, wait_until="domcontentloaded")
@@ -977,9 +988,24 @@ def main():
                                court_assignments=court_assignments_log,
                                shootout2_shuffle_mode=actual_shuffle_mode)
             _debug_screenshot(page, "fatal_failure")
+            try:
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                trace_path = DEBUG_DIR / f"fatal_failure_trace_{ts}.zip"
+                context.tracing.stop(path=str(trace_path))
+                trace_already_stopped = True
+                print(f"  (trace saved: {trace_path} -- view with "
+                      f"'npx playwright show-trace {trace_path}' "
+                      f"or by dragging it onto https://trace.playwright.dev)")
+            except Exception:
+                pass
             raise
 
         finally:
+            if not trace_already_stopped:
+                try:
+                    context.tracing.stop()  # no path = discard
+                except Exception:
+                    pass
             browser.close()
 
 

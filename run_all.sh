@@ -1,11 +1,41 @@
 #!/bin/bash
 set -e
 
+# --- Overlap guard -----------------------------------------------------
+# mkdir is atomic on POSIX filesystems, so this is safe against two cron
+# invocations racing each other -- unlike flock, which isn't reliably
+# available on macOS by default. Self-heals if a prior run crashed and
+# left a stale lock behind (checks whether the recorded PID is still
+# alive before deciding to steal the lock).
+LOCKDIR="/tmp/sam_pickleball_run_all.lockdir"
+LOCKPID="$LOCKDIR/pid"
+
+acquire_lock() {
+  mkdir "$LOCKDIR"
+  echo $$ > "$LOCKPID"
+  trap 'rm -rf "$LOCKDIR"' EXIT
+}
+
+if ! mkdir "$LOCKDIR" 2>/dev/null; then
+  if [ -f "$LOCKPID" ] && kill -0 "$(cat "$LOCKPID")" 2>/dev/null; then
+    echo "Another run_all.sh (PID $(cat "$LOCKPID")) is already running -- exiting."
+    exit 0
+  fi
+  echo "Stale lock found -- removing and continuing."
+  rm -rf "$LOCKDIR"
+  acquire_lock
+else
+  echo $$ > "$LOCKPID"
+  trap 'rm -rf "$LOCKDIR"' EXIT
+fi
+# -------------------------------------------------------------------------
+
 echo ""
 echo "=== Pickleball full update started ==="
 
 MASTER_FILE="data/master_history_raw.csv"
 LATEST_FILE="data/latest_scrape.csv"
+STATE_FILE="data/.last_successful_rebuild_hash"
 FINAL_OUTPUT="output/pickleball_model_latest.xlsx"
 TEMP_OUTPUT="output/pickleball_model_latest_tmp.xlsx"
 NO_SHOOTOUT_LOG="data/no_shootout_dates.csv"
@@ -187,7 +217,15 @@ fi
 
 HASH_AFTER=$(shasum -a 256 "$MASTER_FILE" | awk '{print $1}')
 
-if [ "$HASH_BEFORE" = "$HASH_AFTER" ]; then
+# Compare against the hash recorded the last time the rebuild block
+# below actually COMPLETED successfully -- not just this run's own
+# before/after snapshot (see STATE_FILE comment above for why).
+LAST_SUCCESSFUL_HASH=""
+if [ -f "$STATE_FILE" ]; then
+  LAST_SUCCESSFUL_HASH=$(cat "$STATE_FILE")
+fi
+
+if [ "$HASH_AFTER" = "$LAST_SUCCESSFUL_HASH" ]; then
   DATA_CHANGED="NO"
 else
   DATA_CHANGED="YES"
@@ -236,6 +274,16 @@ else
   echo ""
   echo "5c. Building slim leaderboard..."
   python3 engine/build_leaderboard_html.py
+
+  echo ""
+  echo "5c3. Updating Format Change Tracker data..."
+  python3 compute_format_tracker_data.py
+
+  # Only record success now that every rebuild step above has
+  # actually completed -- if any step above failed, the script
+  # would have already exited (set -e) before reaching this line,
+  # so STATE_FILE never gets the stale/incomplete hash.
+  echo "$HASH_AFTER" > "$STATE_FILE"
 fi
 
 echo ""

@@ -82,6 +82,21 @@ df = pd.read_csv(Path("data/master_history_raw.csv"))
 dates = pd.to_datetime(df["posted"], errors="coerce").dropna()
 latest_date = dates.max().date()
 
+partial_shootout_dates = set()
+partial_path = Path("data/partial_shootout_dates.csv")
+if partial_path.exists():
+    psd = pd.read_csv(partial_path)
+    partial_shootout_dates = set(pd.to_datetime(psd["date"], errors="coerce").dt.date.dropna())
+
+def required_date_is_complete(d):
+    """A date only counts as caught-up if both shootouts are present,
+    unless it's explicitly logged as a genuine single-shootout day."""
+    if d in partial_shootout_dates:
+        return True
+    day_mask = dates.dt.date == d
+    shootouts_present = {int(x) for x in df.loc[day_mask, "shootout"].dropna().unique()}
+    return {1, 2}.issubset(shootouts_present)
+
 no_shootout_dates = set()
 no_shootout_path = Path("data/no_shootout_dates.csv")
 if no_shootout_path.exists():
@@ -111,11 +126,16 @@ if today in no_shootout_dates:
     while required_date.weekday() >= 5 or required_date in no_shootout_dates:
         required_date -= timedelta(days=1)
 
-# Use >= rather than > so that master history being caught up EXACTLY
-# through the required date (not just ahead of it) also triggers a skip.
-# Without this, latest_date == required_date fell through to "NO", which
-# proceeded to scrape with an inverted START_DATE > END_DATE window.
-if latest_date >= required_date:
+# A date only counts as "caught up" if it's strictly past the required
+# date, or if it IS the required date AND that date's own data is
+# actually complete (both shootouts present, or explicitly logged as a
+# genuine single-shootout day). Fixes a real bug (2026-09-04): checking
+# date presence alone let a partial day (only 1 of 2 shootouts scraped)
+# permanently block every later cycle that day from re-checking, even
+# though the missing shootout was sitting on Den's site all along.
+if latest_date > required_date:
+    print("YES")
+elif latest_date == required_date and required_date_is_complete(required_date):
     print("YES")
 else:
     print("NO")

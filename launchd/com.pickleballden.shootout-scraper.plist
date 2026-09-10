@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.pickleballden.shootout-scraper</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>cd "/Users/billpollock/Documents/SAM Pickleball/sam-pickleball" &amp;&amp; exec /bin/bash run_all.sh</string>
+    </array>
+
+    <!-- Polls every 15 minutes, all day, same pattern as
+         com.pickleballden.launcher-poller.plist. run_all.sh's own
+         SHOULD_SKIP_SCRAPE logic (8:15 AM MST cutoff, no_shootout_dates.csv
+         awareness, and "already caught up through the required date" check)
+         does all the real gating; most of these 96 runs/day are cheap
+         no-ops. This replaces the old 3-fixed-time schedule
+         (10:42 AM / Noon / 5 PM), which couldn't retry if a run happened
+         to land before results were actually posted. -->
+    <key>StartInterval</key>
+    <integer>900</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/billpollock/Library/Application Support/PBMonitor/logs/shootout_scraper_stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/billpollock/Library/Application Support/PBMonitor/logs/shootout_scraper_stderr.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/Users/billpollock/Library/Application Support/PBMonitor/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>/Users/billpollock</string>
+        <key>SCRAPE_UNATTENDED</key>
+        <string>1</string>
+        <key>PLAYWRIGHT_BROWSERS_PATH</key>
+        <string>/Users/billpollock/Library/Caches/ms-playwright</string>
+        <key>TZ</key>
+        <string>America/Phoenix</string>
+    </dict>
+</dict>
+</plist>

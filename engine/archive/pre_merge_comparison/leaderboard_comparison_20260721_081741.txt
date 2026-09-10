@@ -1,0 +1,146 @@
+Loading and processing raw data for each engine (separately, using each engine's own loader)...
+Building legacy full_player_log (has the decay bug, old K, capped margin, 0.85 compression)...
+Running legacy's own no-history-drift windowed leaderboard construction...
+Running legacy's own model validation (against its own full_player_log, decay bug included)...
+Building final full_player_log (no decay bug, K=40/60, uncapped margin, 0.92 compression)...
+Running final's own current leaderboard construction...
+Running final's own model validation...
+
+======================================================================
+MODEL VALIDATION COMPARISON (Overall)
+======================================================================
+                          Brier    LogLoss
+LEGACY (original)        0.1885     0.5542
+FINAL (corrected)        0.1873     0.5502
+Difference              -0.0012    -0.0041
+
+======================================================================
+LEADERBOARD RATING COMPARISON (per player)
+======================================================================
+                  Player  Legacy Rating  Final Rating  Difference
+              Joe Wagner           1467          1786         319
+           Lucas Bentrud           1267          1544         277
+          Jonathan Ernst           1275          1516         241
+        Hunter Hutcheson           1557          1793         236
+               Rick Ford           1308          1541         233
+            Matt Juscius           1211          1414         203
+            Russ Brannon           1370          1560         190
+              Bob Gielau           1340          1507         167
+           Paul Willocks           1082          1229         147
+               Kara Rice           1787          1920         133
+          Russell Matros           1282          1412         130
+        Scott Cunningham           1239          1368         129
+            Paul Marlowe           1136          1255         119
+           Ric Ellsworth           1025          1126         101
+             Mark Morgan           1210          1310         100
+                Ted Root           1284          1383          99
+          Michael Curtis           1176          1264          88
+            Ryan Painter           1165          1242          77
+            Lynn Beasley           1096          1173          77
+             Eric Kramer           1510          1586          76
+           Peter Barnett           1367          1440          73
+           Brian Seganti           1102          1173          71
+             Joe McKamey           1391          1461          70
+              Brian Ross            968          1036          68
+           Pete Andersen           1138          1204          66
+             Leif Larsen           1074          1136          62
+                Toby Orr           1235          1286          51
+          Dan Cunningham           1097          1146          49
+        Michael McSharry           1091          1138          47
+            Robbyjohn Dg           1190          1235          45
+           Dennis Ayotte           1066          1110          44
+            Bill Pollock           1251          1294          43
+        Pete Langenhorst            967          1010          43
+              Dirk Olsen           1160          1203          43
+             Brad Caskey           1160          1203          43
+             Bruce Blair           1035          1071          36
+            Terri Ruhter           1032          1067          35
+           Jorge Barroso           1341          1374          33
+               Greg Egli           1025          1058          33
+           Frank DAngelo           1112          1137          25
+           Peter Rillero           1267          1290          23
+          Tron Brinkmann           1057          1079          22
+              Dave Grubb           1273          1291          18
+           Alena Nagyova           1189          1203          14
+               Ron Kelly           1226          1237          11
+Michael "Sully" Sullivan            959           969          10
+           Steve Chochon           1037          1044           7
+            Steve Ludick           1280          1283           3
+               Todd Park           1107          1109           2
+            Debbie Lacey           1036          1030          -6
+       Mike Christianson           1041          1031         -10
+         Jose L Valdez R           1121          1106         -15
+             Colin Smith            987           970         -17
+        Steve Fahrenkrog           1133          1113         -20
+      Dwight Christensen            949           928         -21
+          Frank Affinito           1146          1124         -22
+          Amber Tinstman           1042          1019         -23
+            Donna Hostak            962           938         -24
+           Andrew Tobias            942           916         -26
+        Thierry Simondet           1041          1012         -29
+         Christopher Lay            996           966         -30
+            Terry Truett            985           954         -31
+         Kindi Backstrom           1060          1023         -37
+             David Tanis           1039          1002         -37
+          Katie Knueppel           1073          1033         -40
+          Donna Cantrell            979           936         -43
+              Mike Lacey           1009           965         -44
+       Lidia Zolnierczyk           1008           961         -47
+          Marek Patyniak            951           900         -51
+             Jim Pearson            858           804         -54
+          Cary McCormick           1088          1032         -56
+            Mike LoPorto            862           806         -56
+              Dean Parks            985           927         -58
+         Edward Abellera            888           829         -59
+           Angie McKamey            975           913         -62
+          Helena Niblett           1013           946         -67
+         Marcos Figueroa            834           766         -68
+           Wayne Carroll            949           880         -69
+               Dave Hahn            982           909         -73
+               Tom Flynn            914           841         -73
+          Tracy Gutterud            953           877         -76
+           Kasia Misiura            748           670         -78
+             Rob Sherman           1096          1017         -79
+           Megan Perkins            904           823         -81
+          Barb Patterson            816           734         -82
+              Joe Rochel            851           765         -86
+               Jim Gross            837           743         -94
+           Heidi Carlson            925           829         -96
+          Lisa Ashbridge            801           702         -99
+          Jackie Maniaci            694           593        -101
+         Maggie Hanzmann            923           822        -101
+         Debbie Witulski            829           724        -105
+           Jill Peterson            748           640        -108
+             Bryan Oates            942           833        -109
+           Joan Simondet           1001           892        -109
+              Paul Batie            715           595        -120
+        Jeffrey Tompkins            894           772        -122
+           John Entreken            864           735        -129
+           Larry Padgett            739           608        -131
+               Pam Olson            743           602        -141
+           Tonya Carroll            503           361        -142
+      Christopher Uphoff            811           667        -144
+          Cheryl Barnett            820           672        -148
+            Stacy Kramer            440           287        -153
+              Heidi Berg            768           606        -162
+              Shawn Matz            855           691        -164
+          Steve Terpstra            798           631        -167
+         Richard Bartell            857           689        -168
+            Neal Whitson            864           691        -173
+            Karen Carter            758           564        -194
+           Janie Murnane            754           558        -196
+    Jennifer Hartenbower            851           643        -208
+                Ken Belt            826           612        -214
+            Lynnie McKee            518           288        -230
+           Dorene Greene            674           435        -239
+          Joseph Rosales            675           427        -248
+           Paula Pearson            347            96        -251
+        Areyna Hutcheson            679           421        -258
+             Camie Smith            678           366        -312
+           Cherie Ponder            761           428        -333
+         Elizabeth Flynn            467           111        -356
+
+Mean absolute difference: 99.2
+Median difference: -30.0
+Largest increase: 319.0 (Joe Wagner)
+Largest decrease: -356.0 (Elizabeth Flynn)

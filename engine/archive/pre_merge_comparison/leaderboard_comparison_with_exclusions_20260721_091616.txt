@@ -1,0 +1,88 @@
+Loading and processing raw data for each engine (separately, using each engine's own loader)...
+Building legacy full_player_log (has the decay bug, old K, capped margin, 0.85 compression)...
+Running legacy's own no-history-drift windowed leaderboard construction...
+Running legacy's own model validation (against its own full_player_log, decay bug included)...
+Building final full_player_log (no decay bug, K=40/60, uncapped margin, 0.92 compression)...
+Running final's own current leaderboard construction...
+Running final's own model validation...
+
+======================================================================
+MODEL VALIDATION COMPARISON (Overall)
+======================================================================
+                          Brier    LogLoss
+LEGACY (original)        0.1885     0.5542
+FINAL (corrected)        0.1873     0.5502
+Difference              -0.0012    -0.0041
+
+======================================================================
+LEADERBOARD RATING COMPARISON (per player)
+======================================================================
+            Player  Legacy Rating  Final Rating  Difference
+      Russ Brannon           1370        1560.0       190.0
+         Kara Rice           1787        1920.0       133.0
+    Russell Matros           1282        1412.0       130.0
+       Eric Kramer           1510        1586.0        76.0
+     Peter Barnett           1367        1440.0        73.0
+     Brian Seganti           1102        1173.0        71.0
+       Joe McKamey           1391        1461.0        70.0
+          Toby Orr           1235        1286.0        51.0
+  Michael McSharry           1091        1138.0        47.0
+       Brad Caskey           1160        1203.0        43.0
+      Bill Pollock           1251        1294.0        43.0
+        Dirk Olsen           1160        1203.0        43.0
+       Bruce Blair           1035        1071.0        36.0
+         Greg Egli           1025        1058.0        33.0
+     Jorge Barroso           1341        1374.0        33.0
+     Frank DAngelo           1112        1137.0        25.0
+     Peter Rillero           1267        1290.0        23.0
+    Tron Brinkmann           1057        1079.0        22.0
+        Dave Grubb           1273        1291.0        18.0
+     Alena Nagyova           1189        1203.0        14.0
+         Ron Kelly           1226        1237.0        11.0
+      Steve Ludick           1280        1283.0         3.0
+         Todd Park           1107        1109.0         2.0
+      Debbie Lacey           1036        1030.0        -6.0
+ Mike Christianson           1041        1031.0       -10.0
+   Jose L Valdez R           1121        1106.0       -15.0
+       Colin Smith            987         970.0       -17.0
+Dwight Christensen            949         928.0       -21.0
+    Amber Tinstman           1042        1019.0       -23.0
+      Terry Truett            985         954.0       -31.0
+   Kindi Backstrom           1060        1023.0       -37.0
+    Donna Cantrell            979         936.0       -43.0
+        Mike Lacey           1009         965.0       -44.0
+ Lidia Zolnierczyk           1008         961.0       -47.0
+       Jim Pearson            858         804.0       -54.0
+      Mike LoPorto            862         806.0       -56.0
+    Cary McCormick           1088        1032.0       -56.0
+     Angie McKamey            975         913.0       -62.0
+    Helena Niblett           1013         946.0       -67.0
+     Wayne Carroll            949         880.0       -69.0
+         Tom Flynn            914         841.0       -73.0
+     Kasia Misiura            748         670.0       -78.0
+   Maggie Hanzmann            923         822.0      -101.0
+    Jackie Maniaci            694         593.0      -101.0
+   Debbie Witulski            829         724.0      -105.0
+     Jill Peterson            748         640.0      -108.0
+        Paul Batie            715         595.0      -120.0
+     John Entreken            864         735.0      -129.0
+         Pam Olson            743         602.0      -141.0
+     Tonya Carroll            503         361.0      -142.0
+      Stacy Kramer            440         287.0      -153.0
+        Heidi Berg            768         606.0      -162.0
+    Steve Terpstra            798         631.0      -167.0
+      Neal Whitson            864         691.0      -173.0
+      Karen Carter            758         564.0      -194.0
+          Ken Belt            826         612.0      -214.0
+      Lynnie McKee            518         288.0      -230.0
+    Joseph Rosales            675         427.0      -248.0
+     Paula Pearson            347          96.0      -251.0
+       Camie Smith            678         366.0      -312.0
+   Elizabeth Flynn            467         111.0      -356.0
+
+On LEGACY leaderboard only (60): ['Andrew Tobias', 'Areyna Hutcheson', 'Barb Patterson', 'Bob Gielau', 'Brian Ross', 'Bryan Oates', 'Cherie Ponder', 'Cheryl Barnett', 'Christopher Lay', 'Christopher Uphoff', 'Dan Cunningham', 'Dave Hahn', 'David Tanis', 'Dean Parks', 'Dennis Ayotte', 'Donna Hostak', 'Dorene Greene', 'Edward Abellera', 'Frank Affinito', 'Heidi Carlson', 'Hunter Hutcheson', 'Janie Murnane', 'Jeffrey Tompkins', 'Jennifer Hartenbower', 'Jim Gross', 'Joan Simondet', 'Joe Rochel', 'Joe Wagner', 'Jonathan Ernst', 'Katie Knueppel', 'Larry Padgett', 'Leif Larsen', 'Lisa Ashbridge', 'Lucas Bentrud', 'Lynn Beasley', 'Marcos Figueroa', 'Marek Patyniak', 'Mark Morgan', 'Matt Juscius', 'Megan Perkins', 'Michael "Sully" Sullivan', 'Michael Curtis', 'Paul Marlowe', 'Paul Willocks', 'Pete Andersen', 'Pete Langenhorst', 'Ric Ellsworth', 'Richard Bartell', 'Rick Ford', 'Rob Sherman', 'Robbyjohn Dg', 'Ryan Painter', 'Scott Cunningham', 'Shawn Matz', 'Steve Chochon', 'Steve Fahrenkrog', 'Ted Root', 'Terri Ruhter', 'Thierry Simondet', 'Tracy Gutterud']
+
+Mean absolute difference: 88.6
+Median difference: -37.0
+Largest increase: 190.0 (Russ Brannon)
+Largest decrease: -356.0 (Elizabeth Flynn)

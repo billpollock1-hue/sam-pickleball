@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.pickleballden.signup-monitor</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/billpollock/Library/Application Support/PBMonitor/venv/bin/python3</string>
+        <string>/Users/billpollock/Library/Application Support/PBMonitor/monitor_signups.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/billpollock/Library/Application Support/PBMonitor</string>
+
+    <key>StartInterval</key>
+    <integer>900</integer>
+
+    <key>StandardOutPath</key>
+    <string>/Users/billpollock/Library/Application Support/PBMonitor/logs/monitor_stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/billpollock/Library/Application Support/PBMonitor/logs/monitor_stderr.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>/Users/billpollock</string>
+        <key>PLAYWRIGHT_BROWSERS_PATH</key>
+        <string>/Users/billpollock/Library/Caches/ms-playwright</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>

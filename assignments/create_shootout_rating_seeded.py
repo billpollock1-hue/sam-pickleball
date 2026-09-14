@@ -231,8 +231,16 @@ def automate_signup_search_today(page):
         # gives slow-loading mornings more room to succeed on the first
         # try instead of relying on the poller's 5-minute retry to paper
         # over it.
+        # NOT anchored (no ^$) -- a real trace from 2026-09-11 showed
+        # this button contains a <vaadin-icon icon="vaadin:search"> alongside
+        # the "Search" text, so its true computed accessible name likely
+        # includes extra icon-contributed content, not just the bare word
+        # "Search". An anchored exact match (this selector's original bug,
+        # inherited by the earlier case-insensitive "fix" too) can never
+        # match when there is ANY extra content, regardless of case. A plain
+        # substring match tolerates whatever the icon contributes.
         search_button = page.get_by_role(
-            "button", name=re.compile(r"^Search$", re.IGNORECASE)
+            "button", name=re.compile(r"Search", re.IGNORECASE)
         )
         search_button.wait_for(state="visible", timeout=90000)
         search_button.click()

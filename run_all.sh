@@ -65,8 +65,31 @@ dates = pd.to_datetime(df["posted"], errors="coerce").dropna()
 if dates.empty:
     raise SystemExit("Could not find any valid posted dates in master history.")
 
-next_day = dates.max().normalize() + pd.Timedelta(days=1)
-print(next_day.strftime("%m%d%y"))
+latest_date = dates.max().normalize()
+latest_date_d = latest_date.date()
+
+partial_shootout_dates = set()
+partial_path = Path("data/partial_shootout_dates.csv")
+if partial_path.exists():
+    psd = pd.read_csv(partial_path)
+    partial_shootout_dates = set(pd.to_datetime(psd["date"], errors="coerce").dt.date.dropna())
+
+# Only advance past the latest date if it's actually complete (both
+# shootouts present, or explicitly logged as a genuine single-shootout
+# day) -- otherwise re-scrape that same date to catch what's missing.
+# Fixes a real bug (2026-09-14): always advancing to latest+1 regardless
+# of completeness produced an inverted START_DATE > END_DATE window
+# whenever today's own data was already partially present, which the
+# scraper silently reported as "0 shootouts found" every single cycle.
+if latest_date_d in partial_shootout_dates:
+    latest_is_complete = True
+else:
+    day_mask = dates.dt.date == latest_date_d
+    shootouts_present = {int(x) for x in df.loc[day_mask, "shootout"].dropna().unique()}
+    latest_is_complete = {1, 2}.issubset(shootouts_present)
+
+start = (latest_date + pd.Timedelta(days=1)) if latest_is_complete else latest_date
+print(start.strftime("%m%d%y"))
 PY
 )
 
@@ -164,71 +187,25 @@ else
 
   SHOOTOUT_COUNT=$(echo "$SCRAPE_OUTPUT" | grep -o "Collected [0-9]* shootout" | grep -o "[0-9]*" || echo "0")
 
-  # Past-noon give-up check -- only meaningful for a single-day window
-  # checking today itself (not a multi-day catch-up scrape). Bill's own
-  # data: a day with at least one real shootout posts it by 7:15 AM
-  # 99.99% of the time; the second posts by 7:50 AM 95% of the time, by
-  # 8:15 AM 98.9% of the time, and a rare missed-score hunt "almost always"
-  # resolves by noon. So: keep retrying (the existing "will retry on next
-  # scheduled run" path below) until noon; at/after noon, stop waiting and
-  # finalize with whatever count actually exists -- 1 shootout means a
-  # genuine partial day (e.g. weather cut the second one short), 0 means
-  # a full cancellation after enough players had signed up (the same
-  # after-the-fact-weather-cancellation case handled manually for
-  # 2026-07-17, now automatic).
-  PAST_NOON="NO"
-  if [ "$START_DATE" = "$END_DATE" ]; then
-    NOW_HOUR_MST=$(TZ=America/Phoenix date +%H)
-    if [ "$NOW_HOUR_MST" -ge 12 ]; then
-      PAST_NOON="YES"
-    fi
-  fi
-
+  # No automatic "give up and accept a partial day" logic. Recording a
+  # date as no-shootout or single-shootout is always Bill's own manual
+  # call (weather, etc.), made via the admin panel's Record a Date
+  # feature -- never inferred automatically from a shootout count and
+  # time of day. Removed 2026-09-14 after that automatic inference
+  # never actually fired the day it mattered (see START_DATE fix above
+  # for why) -- simpler and safer to just keep retrying every cycle
+  # until either the data appears or Bill records the date manually.
   echo ""
-  if [ "${SHOOTOUT_COUNT:-0}" -eq 0 ] && [ "$PAST_NOON" = "NO" ]; then
+  if [ "${SHOOTOUT_COUNT:-0}" -eq 0 ]; then
     echo "2. Skipping merge — no shootouts found in $START_DATE through $END_DATE."
-    echo "   Nothing new to merge; master history stays as-is."
-  elif [ "$START_DATE" = "$END_DATE" ] && [ "${SHOOTOUT_COUNT:-0}" -lt 2 ] && [ "$PAST_NOON" = "NO" ]; then
+    echo "   Nothing new to merge; master history stays as-is. Will retry on next"
+    echo "   scheduled run. If today was cancelled or ran as a single shootout,"
+    echo "   record it via the admin panel's Record a Date feature."
+  elif [ "$START_DATE" = "$END_DATE" ] && [ "${SHOOTOUT_COUNT:-0}" -lt 2 ]; then
     echo "2. Skipping merge — only $SHOOTOUT_COUNT shootout(s) found for $START_DATE (need 2)."
     echo "   Results may not be fully posted yet. Will retry on next scheduled run."
-  elif [ "$START_DATE" = "$END_DATE" ] && [ "${SHOOTOUT_COUNT:-0}" -eq 0 ] && [ "$PAST_NOON" = "YES" ]; then
-    echo "2. Past noon with zero shootouts found for $START_DATE — treating as a full"
-    echo "   cancellation after signups (e.g. weather) rather than continuing to retry."
-    python3 - <<PY
-import pandas as pd
-from pathlib import Path
-import datetime as dt
-log = Path("data/no_shootout_dates.csv")
-# START_DATE is MMDDYY (scrape.js's own format) -- convert to the
-# YYYY-MM-DD format the rest of the pipeline actually uses.
-date_str = dt.datetime.strptime("$START_DATE", "%m%d%y").strftime("%Y-%m-%d")
-existing = pd.read_csv(log) if log.exists() else pd.DataFrame(columns=["date"])
-if date_str not in existing["date"].astype(str).values:
-    existing = pd.concat([existing, pd.DataFrame([{"date": date_str}])], ignore_index=True)
-    existing.to_csv(log, index=False)
-    print(f"  Recorded {date_str} in {log}.")
-else:
-    print(f"  {date_str} already recorded in {log}.")
-PY
-  elif [ "$START_DATE" = "$END_DATE" ] && [ "${SHOOTOUT_COUNT:-0}" -eq 1 ] && [ "$PAST_NOON" = "YES" ]; then
-    echo "2. Past noon with only 1 of 2 shootouts found for $START_DATE — accepting the"
-    echo "   partial day and merging what exists rather than continuing to retry."
-    python3 - <<PY
-import pandas as pd
-from pathlib import Path
-import datetime as dt
-log = Path("data/partial_shootout_dates.csv")
-date_str = dt.datetime.strptime("$START_DATE", "%m%d%y").strftime("%Y-%m-%d")
-existing = pd.read_csv(log) if log.exists() else pd.DataFrame(columns=["date"])
-if date_str not in existing["date"].astype(str).values:
-    existing = pd.concat([existing, pd.DataFrame([{"date": date_str}])], ignore_index=True)
-    existing.to_csv(log, index=False)
-    print(f"  Recorded {date_str} in {log}.")
-else:
-    print(f"  {date_str} already recorded in {log}.")
-PY
-    echo "2b. Cleaning/deduping master history..."
-    python3 scraper/merge_csv.py
+    echo "   If today ran as a genuine single-shootout day, record it via the"
+    echo "   admin panel's Record a Date feature."
   else
     echo "2. Cleaning/deduping master history..."
     python3 scraper/merge_csv.py

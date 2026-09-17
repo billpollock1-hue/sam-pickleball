@@ -110,6 +110,7 @@ MANUAL_NAME_FIXES = {
     ("2026-03-26", "DEN New Player Tryout"): "Logan Brannon",
     ("2026-07-29", "Den New Player Tryout"): "David Roming",
     ("2026-08-14", "Den New Player Tryout"): "Bella Tinstman",
+    ("2026-09-18", "Den New Player Tryout"): "Steve Fahrenkrog",
 }
 
 

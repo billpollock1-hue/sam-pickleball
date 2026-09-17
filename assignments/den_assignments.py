@@ -858,7 +858,7 @@ def load_tryout_name_fix(date_str):
     it to the pre-play court-assignment preview instead."""
     if not date_str:
         return None
-    csv_path = Path("data/tryout_name_fixes.csv")
+    csv_path = Path(__file__).resolve().parent.parent / "data" / "tryout_name_fixes.csv"
     if not csv_path.exists():
         return None
     tdf = pd.read_csv(csv_path)

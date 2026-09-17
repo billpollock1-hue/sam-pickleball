@@ -114,6 +114,27 @@ MANUAL_NAME_FIXES = {
 }
 
 
+def load_tryout_name_fixes():
+    """CSV-driven companion to MANUAL_NAME_FIXES, specifically for "Den New
+    Player Tryout" slots -- lets Bill record these via the admin panel
+    instead of editing this file by hand. Schema: date,real_name (the old
+    name is always the tryout placeholder itself, matched case-insensitively
+    by apply_manual_fix() below, so it never needs to be stored)."""
+    csv_path = Path("data/tryout_name_fixes.csv")
+    fixes = {}
+    if csv_path.exists():
+        tdf = pd.read_csv(csv_path)
+        for _, row in tdf.iterrows():
+            date_str = str(row.get("date", "")).strip()
+            real_name = str(row.get("real_name", "")).strip()
+            if date_str and real_name and real_name.lower() != "nan":
+                fixes[(date_str, "Den New Player Tryout")] = real_name
+    return fixes
+
+
+MANUAL_NAME_FIXES.update(load_tryout_name_fixes())
+
+
 def norm(s):
     if pd.isna(s):
         return ""

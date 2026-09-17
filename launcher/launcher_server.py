@@ -48,11 +48,13 @@ LOG_PATH = BASE_DIR / "launch_log.jsonl"
 HTML_PATH = BASE_DIR / "control_panel.html"
 ADMIN_INDEX_PATH = BASE_DIR / "admin_index.html"
 DATES_HTML_PATH = BASE_DIR / "dates.html"
+TRYOUT_NAME_HTML_PATH = BASE_DIR / "tryout_name.html"
 FORMAT_TRACKER_HTML_PATH = BASE_DIR / "format_tracker.html"
 FORMAT_TRACKER_DATA_PATH = BASE_DIR / "format_tracker_data.json"
 REPO_ROOT = BASE_DIR.parent
 NO_SHOOTOUT_CSV = REPO_ROOT / "data" / "no_shootout_dates.csv"
 PARTIAL_SHOOTOUT_CSV = REPO_ROOT / "data" / "partial_shootout_dates.csv"
+TRYOUT_NAME_FIXES_CSV = REPO_ROOT / "data" / "tryout_name_fixes.csv"
 PORT = 8765
 MST = ZoneInfo("America/Phoenix")  # Arizona, no DST — matches "MST" label used everywhere else
 
@@ -154,6 +156,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"display": get_next_shootout_display()})
         elif self.path == "/dates" or self.path == "/dates.html":
             self._send_html(DATES_HTML_PATH)
+        elif self.path == "/tryout-name" or self.path == "/tryout_name.html":
+            self._send_html(TRYOUT_NAME_HTML_PATH)
         elif self.path == "/format_tracker.html" or self.path == "/format_tracker":
             self._send_html(FORMAT_TRACKER_HTML_PATH)
         elif self.path == "/format_tracker_data.json":
@@ -189,6 +193,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(cfg)
         elif self.path == "/api/record-date":
             self._handle_record_date(payload)
+        elif self.path == "/api/record-tryout-name":
+            self._handle_record_tryout_name(payload)
         else:
             self._send_json({"error": "not found"}, status=404)
 
@@ -275,6 +281,66 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json({
             "date": date_str, "type": "single",
             "status": "scraped, merged, engine rebuilt, viewer refreshed",
+        })
+
+    def _handle_record_tryout_name(self, payload):
+        date_str = str(payload.get("date", "")).strip()
+        real_name = str(payload.get("real_name", "")).strip()
+        if not date_str or not real_name:
+            self._send_json({"error": "date and real_name required"}, status=400)
+            return
+
+        # Two-column CSV (date,real_name) -- distinct from _append_csv_date's
+        # single-column helper above. Companion to pickleball_engine_v2.py's
+        # MANUAL_NAME_FIXES (historical rating correction, applied once the
+        # date's games are scraped) and den_assignments.py's
+        # assign_courts_by_rating (pre-play court-seeding preview) -- both
+        # read this same file, so recording it here is the one action that
+        # keeps score history, the court-assignments page, and the shootout
+        # launcher's seeding all consistent.
+        existing_rows = []
+        if TRYOUT_NAME_FIXES_CSV.exists():
+            existing_rows = [
+                line.strip() for line in TRYOUT_NAME_FIXES_CSV.read_text().splitlines()[1:]
+                if line.strip()
+            ]
+        for row in existing_rows:
+            if row.split(",")[0].strip() == date_str:
+                self._send_json({"error": f"{date_str} is already recorded"}, status=409)
+                return
+        if not TRYOUT_NAME_FIXES_CSV.exists():
+            TRYOUT_NAME_FIXES_CSV.write_text("date,real_name\n")
+        with open(TRYOUT_NAME_FIXES_CSV, "a") as f:
+            f.write(f"{date_str},{real_name}\n")
+
+        try:
+            # Re-run the engine so MANUAL_NAME_FIXES picks up the new entry
+            # for any games already scraped under this date -- harmless
+            # no-op if the date has no games yet (a future signup sheet).
+            # /tmp-then-mv: writing large xlsx files directly into the
+            # Documents subtree has hit a real macOS write-timeout bug
+            # before -- always build there first.
+            subprocess.run(
+                ["python3", "engine/pickleball_engine_v2.py",
+                 "--input", "data/master_history_raw.csv",
+                 "--output", "/tmp/pickleball_model_latest.xlsx"],
+                cwd=REPO_ROOT, check=True, timeout=600,
+            )
+            subprocess.run(
+                ["mv", "/tmp/pickleball_model_latest.xlsx",
+                 str(REPO_ROOT / "output/pickleball_model_latest.xlsx")],
+                check=True,
+            )
+            self._refresh_court_assignments_viewer()
+        except subprocess.CalledProcessError as e:
+            self._send_json({"error": f"Recorded, but rebuild step failed (exit {e.returncode}): {e}"}, status=500)
+            return
+        except subprocess.TimeoutExpired as e:
+            self._send_json({"error": f"Recorded, but rebuild step timed out: {e}"}, status=500)
+            return
+        self._send_json({
+            "date": date_str, "real_name": real_name,
+            "status": "recorded, engine rebuilt, court assignments refreshed",
         })
 
     def log_message(self, format, *args):

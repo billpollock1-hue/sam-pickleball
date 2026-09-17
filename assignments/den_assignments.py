@@ -835,7 +835,28 @@ def load_player_ratings():
         return pd.DataFrame()
 
 
-def assign_courts_by_rating(signups, player_ratings):
+def load_tryout_name_fix(date_str):
+    """Look up a real player name recorded (via the admin panel) for a
+    "Den New Player Tryout" slot on this date, so court seeding can use
+    their actual rating instead of force-bottoming an unknown player.
+    Companion to pickleball_engine_v2.py's load_tryout_name_fixes(), which
+    applies the same data/tryout_name_fixes.csv to historical rating
+    calculations once the games are actually scraped -- this one applies
+    it to the pre-play court-assignment preview instead."""
+    if not date_str:
+        return None
+    csv_path = Path("data/tryout_name_fixes.csv")
+    if not csv_path.exists():
+        return None
+    tdf = pd.read_csv(csv_path)
+    match = tdf[tdf["date"].astype(str).str.strip() == str(date_str).strip()]
+    if match.empty:
+        return None
+    real_name = str(match.iloc[0]["real_name"]).strip()
+    return real_name if real_name and real_name.lower() != "nan" else None
+
+
+def assign_courts_by_rating(signups, player_ratings, date_str=None):
     total_signed_up = len(signups)
     eligible_count = (total_signed_up // PLAYERS_PER_COURT) * PLAYERS_PER_COURT
 
@@ -848,6 +869,15 @@ def assign_courts_by_rating(signups, player_ratings):
     eligible["Player"] = eligible["Player"].astype(str).str.replace(
         "(Wait List)", "", regex=False
     ).str.strip()
+
+    # If a real name has been recorded for this date's tryout slot, swap it
+    # in BEFORE the ratings merge -- this way the merge naturally finds
+    # their actual rating and the "_ForceBottom" check below (which only
+    # matches the literal placeholder string) no longer applies to them.
+    tryout_fix = load_tryout_name_fix(date_str)
+    if tryout_fix:
+        is_tryout = eligible["Player"].str.strip().str.lower().eq("den new player tryout")
+        eligible.loc[is_tryout, "Player"] = tryout_fix
 
     merged = eligible.merge(player_ratings, on="Player", how="left")
 

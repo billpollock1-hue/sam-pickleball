@@ -116,7 +116,7 @@ def refresh_date(date_str, den_ratings, player_ratings, ratings_through):
 
     rating_assignments = rating_waitlist = None
     if not player_ratings.empty:
-        rating_assignments, rating_waitlist = da.assign_courts_by_rating(signups, player_ratings)
+        rating_assignments, rating_waitlist = da.assign_courts_by_rating(signups, player_ratings, date_str=date_str)
 
     d = datetime.strptime(date_str, "%Y-%m-%d").date()
     da.save_assignments_snapshot(

@@ -112,7 +112,7 @@ def refresh_date(date_str, den_ratings, player_ratings, ratings_through):
         assignments = pd.DataFrame()
         waitlist = pd.DataFrame()
     else:
-        assignments, waitlist = da.assign_courts(signups, den_ratings)
+        assignments, waitlist = da.assign_courts(signups, den_ratings, date_str=date_str)
 
     rating_assignments = rating_waitlist = None
     if not player_ratings.empty:

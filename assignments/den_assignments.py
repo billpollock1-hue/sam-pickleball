@@ -304,7 +304,7 @@ def extract_ratings_from_text(text):
     return df
 
 
-def assign_courts(signups, ratings):
+def assign_courts(signups, ratings, date_str=None):
     total_signed_up = len(signups)
     eligible_count = (total_signed_up // PLAYERS_PER_COURT) * PLAYERS_PER_COURT
 
@@ -319,6 +319,15 @@ def assign_courts(signups, ratings):
     eligible["Player"] = eligible["Player"].astype(str).str.replace(
         "(Wait List)", "", regex=False
     ).str.strip()
+
+    # Same tryout-name substitution as assign_courts_by_rating() -- if a
+    # real name has been recorded for this date's tryout slot, swap it in
+    # BEFORE the ratings merge, so Step/% seeding uses DEN's own real
+    # rating for that player instead of the force-bottomed placeholder.
+    tryout_fix = load_tryout_name_fix(date_str)
+    if tryout_fix:
+        is_tryout = eligible["Player"].str.strip().str.lower().eq("den new player tryout")
+        eligible.loc[is_tryout, "Player"] = tryout_fix
 
     merged = eligible.merge(
         ratings[["Player", "Step", "Percent"]],
@@ -360,6 +369,10 @@ def assign_courts(signups, ratings):
         waitlist["PlayerDisplay"] = waitlist["Player"].astype(str).str.replace(
             "(Wait List)", "", regex=False
         ).str.strip()
+
+        if tryout_fix:
+            is_tryout_wl = waitlist["PlayerDisplay"].str.strip().str.lower().eq("den new player tryout")
+            waitlist.loc[is_tryout_wl, "PlayerDisplay"] = tryout_fix
 
         ratings_for_waitlist = ratings[["Player", "Step", "Percent"]].copy()
         ratings_for_waitlist["PlayerDisplay"] = ratings_for_waitlist["Player"].astype(str).str.strip()
@@ -904,6 +917,12 @@ def assign_courts_by_rating(signups, player_ratings, date_str=None):
         waitlist["PlayerDisplay"] = waitlist["Player"].astype(str).str.replace(
             "(Wait List)", "", regex=False
         ).str.strip()
+        # Same tryout-name substitution as the eligible/court path above --
+        # a waitlisted tryout slot should still show the real player's name
+        # once recorded, even though they didn't make an actual court.
+        if tryout_fix:
+            is_tryout_wl = waitlist["PlayerDisplay"].str.strip().str.lower().eq("den new player tryout")
+            waitlist.loc[is_tryout_wl, "PlayerDisplay"] = tryout_fix
         ratings_wl = player_ratings.copy()
         ratings_wl["PlayerDisplay"] = ratings_wl["Player"].str.strip()
         waitlist = waitlist.merge(

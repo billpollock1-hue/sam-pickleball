@@ -366,13 +366,13 @@ def assign_courts(signups, ratings, date_str=None):
         waitlist = waitlist.copy()
         waitlist["WaitlistPosition"] = range(1, len(waitlist) + 1)
 
-        waitlist["PlayerDisplay"] = waitlist["Player"].astype(str).str.replace(
+        waitlist["Player"] = waitlist["Player"].astype(str).str.replace(
             "(Wait List)", "", regex=False
         ).str.strip()
-
         if tryout_fix:
-            is_tryout_wl = waitlist["PlayerDisplay"].str.strip().str.lower().eq("den new player tryout")
-            waitlist.loc[is_tryout_wl, "PlayerDisplay"] = tryout_fix
+            is_tryout_wl = waitlist["Player"].str.strip().str.lower().eq("den new player tryout")
+            waitlist.loc[is_tryout_wl, "Player"] = tryout_fix
+        waitlist["PlayerDisplay"] = waitlist["Player"]
 
         ratings_for_waitlist = ratings[["Player", "Step", "Percent"]].copy()
         ratings_for_waitlist["PlayerDisplay"] = ratings_for_waitlist["Player"].astype(str).str.strip()
@@ -914,15 +914,20 @@ def assign_courts_by_rating(signups, player_ratings, date_str=None):
     if not waitlist.empty:
         waitlist = waitlist.copy()
         waitlist["WaitlistPosition"] = range(1, len(waitlist) + 1)
-        waitlist["PlayerDisplay"] = waitlist["Player"].astype(str).str.replace(
+        # Strip "(Wait List)" from Player FIRST -- a waitlisted tryout
+        # slot's raw signup name is literally "Den New Player Tryout
+        # (Wait List)", so checking for the placeholder before stripping
+        # this suffix would never match. _courts_to_json() reads "Player"
+        # directly for the final displayed name (not PlayerDisplay, which
+        # is only used internally for the ratings merge below), so the fix
+        # has to land on "Player" itself.
+        waitlist["Player"] = waitlist["Player"].astype(str).str.replace(
             "(Wait List)", "", regex=False
         ).str.strip()
-        # Same tryout-name substitution as the eligible/court path above --
-        # a waitlisted tryout slot should still show the real player's name
-        # once recorded, even though they didn't make an actual court.
         if tryout_fix:
-            is_tryout_wl = waitlist["PlayerDisplay"].str.strip().str.lower().eq("den new player tryout")
-            waitlist.loc[is_tryout_wl, "PlayerDisplay"] = tryout_fix
+            is_tryout_wl = waitlist["Player"].str.strip().str.lower().eq("den new player tryout")
+            waitlist.loc[is_tryout_wl, "Player"] = tryout_fix
+        waitlist["PlayerDisplay"] = waitlist["Player"]
         ratings_wl = player_ratings.copy()
         ratings_wl["PlayerDisplay"] = ratings_wl["Player"].str.strip()
         waitlist = waitlist.merge(

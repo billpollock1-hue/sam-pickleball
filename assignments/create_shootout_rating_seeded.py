@@ -951,7 +951,7 @@ def main():
                                     "than seeding with an empty rating table.")
 
             eligible_signups = signups.iloc[:eligible_count].copy()
-            rating_assignments, _ = assign_courts_by_rating(eligible_signups, player_ratings)
+            rating_assignments, _ = assign_courts_by_rating(eligible_signups, player_ratings, date_str=play_date_file)
 
             # rating_assignments already has a "Court" column from
             # assign_courts_by_rating (STARTING_COURT + index // PLAYERS_PER_COURT).

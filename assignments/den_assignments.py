@@ -326,7 +326,7 @@ def assign_courts(signups, ratings, date_str=None):
     # rating for that player instead of the force-bottomed placeholder.
     tryout_fix = load_tryout_name_fix(date_str)
     if tryout_fix:
-        is_tryout = eligible["Player"].str.strip().str.lower().eq("den new player tryout")
+        is_tryout = eligible["Player"].str.strip().str.lower().str.startswith("den new player tryout")
         eligible.loc[is_tryout, "Player"] = tryout_fix
 
     merged = eligible.merge(
@@ -370,7 +370,7 @@ def assign_courts(signups, ratings, date_str=None):
             "(Wait List)", "", regex=False
         ).str.strip()
         if tryout_fix:
-            is_tryout_wl = waitlist["Player"].str.strip().str.lower().eq("den new player tryout")
+            is_tryout_wl = waitlist["Player"].str.strip().str.lower().str.startswith("den new player tryout")
             waitlist.loc[is_tryout_wl, "Player"] = tryout_fix
         waitlist["PlayerDisplay"] = waitlist["Player"]
 
@@ -889,7 +889,7 @@ def assign_courts_by_rating(signups, player_ratings, date_str=None):
     # matches the literal placeholder string) no longer applies to them.
     tryout_fix = load_tryout_name_fix(date_str)
     if tryout_fix:
-        is_tryout = eligible["Player"].str.strip().str.lower().eq("den new player tryout")
+        is_tryout = eligible["Player"].str.strip().str.lower().str.startswith("den new player tryout")
         eligible.loc[is_tryout, "Player"] = tryout_fix
 
     merged = eligible.merge(player_ratings, on="Player", how="left")
@@ -925,7 +925,7 @@ def assign_courts_by_rating(signups, player_ratings, date_str=None):
             "(Wait List)", "", regex=False
         ).str.strip()
         if tryout_fix:
-            is_tryout_wl = waitlist["Player"].str.strip().str.lower().eq("den new player tryout")
+            is_tryout_wl = waitlist["Player"].str.strip().str.lower().str.startswith("den new player tryout")
             waitlist.loc[is_tryout_wl, "Player"] = tryout_fix
         waitlist["PlayerDisplay"] = waitlist["Player"]
         ratings_wl = player_ratings.copy()

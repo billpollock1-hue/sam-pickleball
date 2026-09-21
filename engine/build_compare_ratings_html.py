@@ -154,6 +154,31 @@ html = f"""<!DOCTYPE html>
 const RATING_DATES = {rating_dates_json};
 const RATING_GRID = {rating_grid_json};
 
+// -- Freshness: force a genuine network fetch on every real navigation to
+// this page, bypassing any browser/CDN cache. If this load doesn't already
+// carry our cache-bust marker, immediately redirect to a URL that does --
+// GitHub Pages' CDN (and browsers) cache by full URL including query
+// string, so a unique timestamp guarantees a cache miss. Same pattern as
+// the Leaderboard page: no per-date state to preserve on redirect, since
+// the From/To selects are populated fresh from RATING_DATES on load
+// rather than driven by the URL.
+(function () {{
+  const params = new URLSearchParams(location.search);
+  if (!params.has('_cb')) {{
+    params.set('_cb', Date.now());
+    location.replace(location.pathname + '?' + params.toString());
+  }}
+}})();
+
+function forceRefresh() {{
+  const params = new URLSearchParams(location.search);
+  params.set('_cb', Date.now());
+  location.replace(location.pathname + '?' + params.toString());
+}}
+
+// Periodic freshness re-check for tabs left open a while.
+setInterval(forceRefresh, 5 * 60 * 1000);
+
 function populateDateSelects() {{
   const fromSel = document.getElementById("fromDateSelect");
   const toSel = document.getElementById("toDateSelect");

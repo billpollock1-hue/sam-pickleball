@@ -166,6 +166,21 @@ def parse_log(date_str: str) -> Optional[dict]:
                     player_map[c] = p
                     players.append(p)
                 elif not is_wl(name):
+                    # NOTE (2026-09-23): a mid-day sheet capacity increase
+                    # (e.g. 16->20) can cause several waitlisted players to
+                    # be simultaneously reclassified from Wait List to
+                    # regular by DEN itself -- confirmed real, e.g. three
+                    # players all at timestamp 2026-09-21 09:54:52. This
+                    # diffing logic has no concept of "the sheet's capacity
+                    # changed" -- it only compares text snapshots -- so it
+                    # logs that as N separate withdrew(WL)+joined(regular)
+                    # pairs, all at one identical timestamp, which this
+                    # per-player rejoin branch below doesn't specifically
+                    # recognize as one bulk event. Deliberately not handled
+                    # specially: rare, the raw log data is never lost (just
+                    # needs reading the pattern), and nothing downstream
+                    # (court assignments, ratings) is affected -- a display-
+                    # clarity question only, not a functional bug.
                     # Withdrew and rejoined — add a second row. Reassign
                     # player_map[c] (not a separate suffixed key) so every
                     # later event for this name -- withdrawals, reorders --

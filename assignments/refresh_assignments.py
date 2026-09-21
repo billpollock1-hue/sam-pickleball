@@ -220,6 +220,21 @@ def sync_to_live_site():
         docs_target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(local_viewer, docs_target)
 
+        # Same self-healing check as run_all.sh's guard -- a crashed git
+        # process can leave .git/index.lock behind, silently blocking
+        # every future git operation here too (real incident 2026-09-21:
+        # blocked 5.5+ hours of publishing with no visible failure).
+        # Only removed if nothing currently has it open.
+        lock_path = repo_root / ".git" / "index.lock"
+        if lock_path.exists():
+            check = subprocess.run(["lsof", str(lock_path)], capture_output=True, timeout=10)
+            if check.returncode != 0:
+                print(f"  ⚠ Found stale {lock_path} with nothing holding it open -- removing.")
+                lock_path.unlink()
+            else:
+                print(f"  ⚠ Found {lock_path} and something has it open -- skipping this publish.")
+                return
+
         status = subprocess.run(
             ["git", "status", "--porcelain", "docs/court_assignments.html"],
             cwd=str(repo_root), capture_output=True, text=True, timeout=30,

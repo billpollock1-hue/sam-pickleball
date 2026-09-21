@@ -33,3 +33,4 @@ launcher/logs/
 data/den_current_members.csv
 launcher/format_tracker_data.json
 data/.last_successful_rebuild_hash
+__pycache__/

@@ -30,6 +30,27 @@ else
 fi
 # -------------------------------------------------------------------------
 
+# --- Stale git index.lock guard ------------------------------------------
+# A crashed git process (this repo's own commit steps below, or an
+# interrupted manual command) can leave .git/index.lock behind, which
+# silently blocks EVERY future git operation -- confirmed real incident
+# 2026-09-21: blocked 5.5+ hours of scheduled runs with no visible
+# failure until someone noticed the published site showing stale data.
+# Only removed if no other git process for this repo is actually running
+# right now (checked via lsof on the lock file itself, not just a
+# process-name match, since "git" alone is too broad a pgrep pattern).
+GIT_LOCK=".git/index.lock"
+if [ -f "$GIT_LOCK" ]; then
+  if ! lsof "$GIT_LOCK" >/dev/null 2>&1; then
+    echo "⚠ Found stale $GIT_LOCK with nothing holding it open -- removing."
+    rm -f "$GIT_LOCK"
+  else
+    echo "⚠ Found $GIT_LOCK and something has it open -- leaving it alone and exiting."
+    exit 1
+  fi
+fi
+# -------------------------------------------------------------------------
+
 echo ""
 echo "=== Pickleball full update started ==="
 

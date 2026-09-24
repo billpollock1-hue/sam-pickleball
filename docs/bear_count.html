@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAM Bear Count</title>
+<style>
+  :root {
+    --blue-dark: #1F4E79;
+    --blue-mid:  #2E75B6;
+    --blue-light:#D6E4F0;
+    --text:      #333333;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Calibri, Arial, sans-serif; color: var(--text); background: #f7f9fc; }
+
+  header {
+    background: var(--blue-dark); color: #fff;
+    padding: 20px 16px; text-align: center;
+  }
+  header h1 { font-size: 22px; }
+  header p { font-size: 13px; opacity: 0.85; margin-top: 4px; }
+
+  .page { max-width: 1040px; margin: 0 auto; padding: 14px 10px 40px;
+           display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+
+  .wrap { flex: 1 1 640px; min-width: 0; order: 2; }
+
+  .back-badge { position: fixed; top: 10px; left: 10px; z-index: 1000;
+                 background: #1F4E79; color: #fff; font-size: 12px;
+                 padding: 6px 12px; border-radius: 6px; text-decoration: none;
+                 box-shadow: 0 1px 4px rgba(0,0,0,0.2); border: none; cursor: pointer; }
+  .back-badge:hover { background: #163a5c; }
+  #freshness-hint { padding: 6px 16px; font-size: 11px; color: #888;
+                     background: #fafafa; border-bottom: 1px solid #e8edf3; text-align: center; }
+
+  /* ── Rules decoder (left panel) ── */
+  .decoder { flex: 1 1 240px; max-width: 260px; order: 1; }
+  .dc-card { background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(31,78,121,0.10);
+              padding: 14px 14px 16px; }
+  .dc-title { font-size: 14px; font-weight: 700; color: var(--blue-dark); margin-bottom: 10px; }
+  .dc-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 9px; font-size: 12px; line-height: 1.4; }
+  .dc-icon { flex-shrink: 0; width: 20px; text-align: center; }
+
+  table { width: 100%; border-collapse: collapse; background: #fff;
+           border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(31,78,121,0.10); }
+  th {
+    background: var(--blue-mid); color: #fff; padding: 9px 6px;
+    font-size: 11.5px; text-align: center; position: sticky; top: 0;
+  }
+  th.nm { text-align: left; }
+  td { padding: 8px 6px; text-align: center; font-size: 13.5px;
+        border-bottom: 1px solid #e8edf3; white-space: nowrap; }
+  td.rk { color: #8a97a8; font-size: 13px; width: 30px; }
+  td.nm { text-align: left; font-weight: 600; }
+  td.tot { font-weight: bold; color: var(--blue-dark); }
+  tr:nth-child(even) td { background: #f2f6fb; }
+  .lc { color: #c9a84c; font-weight: 700; cursor: help; }
+
+  .foot { margin-top: 12px; font-size: 12px; color: #8a97a8; text-align: center; line-height: 1.6; }
+  .foot a { color: var(--blue-mid); }
+
+  .player-link { color: inherit; text-decoration: none; cursor: pointer;
+                  border-bottom: 1px dotted var(--blue-mid); }
+  .player-link:hover { color: var(--blue-mid); }
+
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2000;
+                     display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .modal-box { background: #fff; border-radius: 10px; max-width: 560px; width: 100%;
+                max-height: 84vh; overflow-y: auto; box-shadow: 0 4px 24px rgba(0,0,0,0.25); }
+  .modal-header { display: flex; align-items: center; justify-content: space-between;
+                    padding: 14px 18px; border-bottom: 1px solid #e8edf3;
+                    position: sticky; top: 0; background: #fff; }
+  .modal-header h3 { font-size: 15px; color: var(--blue-dark); }
+  .modal-close { background: none; border: none; font-size: 22px; line-height: 1;
+                   color: #8a97a8; cursor: pointer; padding: 0 4px; }
+  .modal-close:hover { color: var(--blue-dark); }
+  .modal-body { padding: 12px 18px 18px; }
+  .modal-body .no-data { font-size: 13px; color: #8a97a8; text-align: center; padding: 20px 0; }
+
+  .hist-table { width: 100%; border-collapse: collapse; font-size: 12.5px; box-shadow: none; }
+  .hist-table th { background: var(--blue-light); color: var(--blue-dark); position: static;
+                     font-size: 11px; padding: 6px 5px; }
+  .hist-table td { padding: 6px 5px; font-size: 12.5px; white-space: nowrap; }
+
+  @media (max-width: 430px) {
+    td { font-size: 12.5px; padding: 7px 4px; }
+    th { font-size: 10.5px; }
+    .hist-table th, .hist-table td { font-size: 11px; padding: 5px 3px; }
+  }
+  @media (max-width: 900px) {
+    .decoder { max-width: none; flex-basis: 100%; order: 1; }
+    .wrap { order: 2; }
+  }
+</style>
+</head>
+<body>
+
+<a href="index.html" class="back-badge">&larr; Menu</a>
+<button class="back-badge" style="left:96px;" onclick="forceRefresh()">&#8635;&nbsp;Refresh</button>
+
+<header>
+  <h1>🐻 SAM Bear Count</h1>
+  <p>Bears earned since Aug 24, 2026 &middot; through September 23, 2026</p>
+</header>
+<div id="freshness-hint">💡 Tap Refresh anytime to make sure you're seeing the latest data.</div>
+
+<div class="page">
+  <div class="decoder">
+    <div class="dc-card">
+      <div class="dc-title">How to Earn a Bear</div>
+      <div class="dc-row"><span class="dc-icon">🍒</span><span><b>Pickle bear</b> — win a game 11-0. Every player on the winning team earns one.</span></div>
+      <div class="dc-row"><span class="dc-icon">👑</span><span><b>Shootout bear (women)</b> — finish on top of your 4-player pool (most game wins, ties broken by point differential). Any win count qualifies.</span></div>
+      <div class="dc-row"><span class="dc-icon">💯</span><span><b>Shootout bear (men)</b> — finish on top of your pool by winning all 3 games. Leading with only 2 wins does not earn a bear (though it's tracked below).</span></div>
+      <div class="dc-row"><span class="dc-icon">?</span><span>A gold <span class="lc">?</span> next to a name means gender was inferred from the player's first name and hasn't been confirmed yet.</span></div>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th class="nm">Player</th><th>Play<br>Dates</th><th>Pickles<br>Won</th><th>Pickles<br>Lost</th>
+          <th>Leader<br>(2W)</th><th>Leader<br>(3W)</th><th>Pickle<br>Bears</th><th>Shootout<br>Bears</th><th>Total<br>Bears</th>
+        </tr>
+      </thead>
+      <tbody id="body">
+      <tr>
+        <td class="rk">1</td>
+        <td class="nm"><a class="player-link" data-player="Alena Nagyova">Alena Nagyova</a></td>
+        <td>16</td>
+        <td>48</td>
+        <td>48</td>
+        <td>6</td>
+        <td>3</td>
+        <td>4</td>
+        <td>9</td>
+        <td class="tot">13 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">2</td>
+        <td class="nm"><a class="player-link" data-player="Eric Kramer">Eric Kramer</a></td>
+        <td>18</td>
+        <td>74</td>
+        <td>34</td>
+        <td>9</td>
+        <td>11</td>
+        <td>1</td>
+        <td>11</td>
+        <td class="tot">12 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">3</td>
+        <td class="nm"><a class="player-link" data-player="Jorge Barroso">Jorge Barroso</a></td>
+        <td>22</td>
+        <td>72</td>
+        <td>60</td>
+        <td>5</td>
+        <td>8</td>
+        <td>4</td>
+        <td>8</td>
+        <td class="tot">12 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">4</td>
+        <td class="nm"><a class="player-link" data-player="Wayne Carroll">Wayne Carroll</a></td>
+        <td>16</td>
+        <td>49</td>
+        <td>47</td>
+        <td>3</td>
+        <td>6</td>
+        <td>3</td>
+        <td>6</td>
+        <td class="tot">9 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">5</td>
+        <td class="nm"><a class="player-link" data-player="Jill Peterson">Jill Peterson</a></td>
+        <td>9</td>
+        <td>27</td>
+        <td>27</td>
+        <td>6</td>
+        <td>1</td>
+        <td>0</td>
+        <td>7</td>
+        <td class="tot">7 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">6</td>
+        <td class="nm"><a class="player-link" data-player="Dave Grubb">Dave Grubb</a></td>
+        <td>10</td>
+        <td>38</td>
+        <td>22</td>
+        <td>4</td>
+        <td>6</td>
+        <td>1</td>
+        <td>6</td>
+        <td class="tot">7 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">7</td>
+        <td class="nm"><a class="player-link" data-player="Amber Tinstman">Amber Tinstman</a></td>
+        <td>6</td>
+        <td>18</td>
+        <td>18</td>
+        <td>4</td>
+        <td>1</td>
+        <td>1</td>
+        <td>5</td>
+        <td class="tot">6 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">8</td>
+        <td class="nm"><a class="player-link" data-player="Neal Whitson">Neal Whitson</a></td>
+        <td>14</td>
+        <td>42</td>
+        <td>42</td>
+        <td>7</td>
+        <td>4</td>
+        <td>2</td>
+        <td>4</td>
+        <td class="tot">6 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">9</td>
+        <td class="nm"><a class="player-link" data-player="Lidia Zolnierczyk">Lidia Zolnierczyk</a></td>
+        <td>10</td>
+        <td>29</td>
+        <td>31</td>
+        <td>3</td>
+        <td>1</td>
+        <td>1</td>
+        <td>4</td>
+        <td class="tot">5 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">10</td>
+        <td class="nm"><a class="player-link" data-player="Peter Barnett">Peter Barnett</a></td>
+        <td>17</td>
+        <td>48</td>
+        <td>54</td>
+        <td>3</td>
+        <td>3</td>
+        <td>2</td>
+        <td>3</td>
+        <td class="tot">5 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">11</td>
+        <td class="nm"><a class="player-link" data-player="Dwight Christensen">Dwight Christensen</a></td>
+        <td>8</td>
+        <td>29</td>
+        <td>19</td>
+        <td>3</td>
+        <td>3</td>
+        <td>1</td>
+        <td>3</td>
+        <td class="tot">4 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">12</td>
+        <td class="nm"><a class="player-link" data-player="Jackie Maniaci">Jackie Maniaci</a></td>
+        <td>9</td>
+        <td>26</td>
+        <td>28</td>
+        <td>3</td>
+        <td>0</td>
+        <td>1</td>
+        <td>3</td>
+        <td class="tot">4 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">13</td>
+        <td class="nm"><a class="player-link" data-player="Steve Ludick">Steve Ludick</a></td>
+        <td>11</td>
+        <td>35</td>
+        <td>31</td>
+        <td>2</td>
+        <td>3</td>
+        <td>1</td>
+        <td>3</td>
+        <td class="tot">4 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">14</td>
+        <td class="nm"><a class="player-link" data-player="Bill Pollock">Bill Pollock</a></td>
+        <td>10</td>
+        <td>25</td>
+        <td>35</td>
+        <td>1</td>
+        <td>2</td>
+        <td>2</td>
+        <td>2</td>
+        <td class="tot">4 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">15</td>
+        <td class="nm"><a class="player-link" data-player="Cary McCormick">Cary McCormick</a> <span class="lc" title="Gender inferred from name -- needs review">?</span></td>
+        <td>9</td>
+        <td>25</td>
+        <td>29</td>
+        <td>3</td>
+        <td>2</td>
+        <td>2</td>
+        <td>2</td>
+        <td class="tot">4 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">16</td>
+        <td class="nm"><a class="player-link" data-player="Brad Caskey">Brad Caskey</a></td>
+        <td>7</td>
+        <td>21</td>
+        <td>21</td>
+        <td>3</td>
+        <td>3</td>
+        <td>0</td>
+        <td>3</td>
+        <td class="tot">3 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">17</td>
+        <td class="nm"><a class="player-link" data-player="Donna Cantrell">Donna Cantrell</a></td>
+        <td>5</td>
+        <td>16</td>
+        <td>14</td>
+        <td>3</td>
+        <td>0</td>
+        <td>0</td>
+        <td>3</td>
+        <td class="tot">3 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">18</td>
+        <td class="nm"><a class="player-link" data-player="Tonya Carroll">Tonya Carroll</a></td>
+        <td>8</td>
+        <td>20</td>
+        <td>28</td>
+        <td>3</td>
+        <td>0</td>
+        <td>0</td>
+        <td>3</td>
+        <td class="tot">3 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">19</td>
+        <td class="nm"><a class="player-link" data-player="Steve Terpstra">Steve Terpstra</a></td>
+        <td>6</td>
+        <td>20</td>
+        <td>16</td>
+        <td>3</td>
+        <td>2</td>
+        <td>1</td>
+        <td>2</td>
+        <td class="tot">3 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">20</td>
+        <td class="nm"><a class="player-link" data-player="David Roming">David Roming</a></td>
+        <td>2</td>
+        <td>9</td>
+        <td>3</td>
+        <td>1</td>
+        <td>2</td>
+        <td>0</td>
+        <td>2</td>
+        <td class="tot">2 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">21</td>
+        <td class="nm"><a class="player-link" data-player="Stacy Kramer">Stacy Kramer</a></td>
+        <td>13</td>
+        <td>21</td>
+        <td>57</td>
+        <td>2</td>
+        <td>0</td>
+        <td>0</td>
+        <td>2</td>
+        <td class="tot">2 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">22</td>
+        <td class="nm"><a class="player-link" data-player="Steve Fahrenkrog">Steve Fahrenkrog</a></td>
+        <td>2</td>
+        <td>10</td>
+        <td>2</td>
+        <td>0</td>
+        <td>2</td>
+        <td>0</td>
+        <td>2</td>
+        <td class="tot">2 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">23</td>
+        <td class="nm"><a class="player-link" data-player="Bruce Blair">Bruce Blair</a></td>
+        <td>6</td>
+        <td>18</td>
+        <td>18</td>
+        <td>3</td>
+        <td>1</td>
+        <td>1</td>
+        <td>1</td>
+        <td class="tot">2 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">24</td>
+        <td class="nm"><a class="player-link" data-player="Kara Rice">Kara Rice</a></td>
+        <td>1</td>
+        <td>5</td>
+        <td>1</td>
+        <td>0</td>
+        <td>1</td>
+        <td>1</td>
+        <td>1</td>
+        <td class="tot">2 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">25</td>
+        <td class="nm"><a class="player-link" data-player="Angie McKamey">Angie McKamey</a></td>
+        <td>3</td>
+        <td>11</td>
+        <td>7</td>
+        <td>0</td>
+        <td>1</td>
+        <td>0</td>
+        <td>1</td>
+        <td class="tot">1 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">26</td>
+        <td class="nm"><a class="player-link" data-player="Greg Egli">Greg Egli</a></td>
+        <td>5</td>
+        <td>17</td>
+        <td>13</td>
+        <td>2</td>
+        <td>1</td>
+        <td>0</td>
+        <td>1</td>
+        <td class="tot">1 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">27</td>
+        <td class="nm"><a class="player-link" data-player="Joe McKamey">Joe McKamey</a></td>
+        <td>5</td>
+        <td>16</td>
+        <td>14</td>
+        <td>2</td>
+        <td>1</td>
+        <td>0</td>
+        <td>1</td>
+        <td class="tot">1 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">28</td>
+        <td class="nm"><a class="player-link" data-player="Paula Pearson">Paula Pearson</a></td>
+        <td>1</td>
+        <td>2</td>
+        <td>4</td>
+        <td>1</td>
+        <td>0</td>
+        <td>0</td>
+        <td>1</td>
+        <td class="tot">1 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">29</td>
+        <td class="nm"><a class="player-link" data-player="Lynnie McKee">Lynnie McKee</a></td>
+        <td>5</td>
+        <td>10</td>
+        <td>20</td>
+        <td>0</td>
+        <td>0</td>
+        <td>1</td>
+        <td>0</td>
+        <td class="tot">1 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">30</td>
+        <td class="nm"><a class="player-link" data-player="Mike Lacey">Mike Lacey</a></td>
+        <td>4</td>
+        <td>11</td>
+        <td>13</td>
+        <td>1</td>
+        <td>0</td>
+        <td>1</td>
+        <td>0</td>
+        <td class="tot">1 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">31</td>
+        <td class="nm"><a class="player-link" data-player="Tron Brinkmann">Tron Brinkmann</a></td>
+        <td>4</td>
+        <td>11</td>
+        <td>13</td>
+        <td>2</td>
+        <td>0</td>
+        <td>1</td>
+        <td>0</td>
+        <td class="tot">1 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">32</td>
+        <td class="nm"><a class="player-link" data-player="Cheryl Barnett">Cheryl Barnett</a></td>
+        <td>1</td>
+        <td>1</td>
+        <td>5</td>
+        <td>0</td>
+        <td>0</td>
+        <td>0</td>
+        <td>0</td>
+        <td class="tot">0 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">33</td>
+        <td class="nm"><a class="player-link" data-player="Debbie Lacey">Debbie Lacey</a></td>
+        <td>1</td>
+        <td>3</td>
+        <td>3</td>
+        <td>0</td>
+        <td>0</td>
+        <td>0</td>
+        <td>0</td>
+        <td class="tot">0 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">34</td>
+        <td class="nm"><a class="player-link" data-player="Jennifer Hartenbower">Jennifer Hartenbower</a></td>
+        <td>1</td>
+        <td>2</td>
+        <td>4</td>
+        <td>0</td>
+        <td>0</td>
+        <td>0</td>
+        <td>0</td>
+        <td class="tot">0 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">35</td>
+        <td class="nm"><a class="player-link" data-player="Jim Pearson">Jim Pearson</a></td>
+        <td>2</td>
+        <td>5</td>
+        <td>7</td>
+        <td>0</td>
+        <td>0</td>
+        <td>0</td>
+        <td>0</td>
+        <td class="tot">0 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">36</td>
+        <td class="nm"><a class="player-link" data-player="John Entreken">John Entreken</a></td>
+        <td>1</td>
+        <td>4</td>
+        <td>2</td>
+        <td>0</td>
+        <td>0</td>
+        <td>0</td>
+        <td>0</td>
+        <td class="tot">0 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">37</td>
+        <td class="nm"><a class="player-link" data-player="Jose L Valdez R">Jose L Valdez R</a></td>
+        <td>1</td>
+        <td>3</td>
+        <td>3</td>
+        <td>1</td>
+        <td>0</td>
+        <td>0</td>
+        <td>0</td>
+        <td class="tot">0 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">38</td>
+        <td class="nm"><a class="player-link" data-player="Joseph Rosales">Joseph Rosales</a></td>
+        <td>2</td>
+        <td>0</td>
+        <td>12</td>
+        <td>0</td>
+        <td>0</td>
+        <td>0</td>
+        <td>0</td>
+        <td class="tot">0 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">39</td>
+        <td class="nm"><a class="player-link" data-player="Kindi Backstrom">Kindi Backstrom</a></td>
+        <td>1</td>
+        <td>2</td>
+        <td>4</td>
+        <td>0</td>
+        <td>0</td>
+        <td>0</td>
+        <td>0</td>
+        <td class="tot">0 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">40</td>
+        <td class="nm"><a class="player-link" data-player="Marcos Figueroa">Marcos Figueroa</a></td>
+        <td>1</td>
+        <td>2</td>
+        <td>4</td>
+        <td>0</td>
+        <td>0</td>
+        <td>0</td>
+        <td>0</td>
+        <td class="tot">0 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">41</td>
+        <td class="nm"><a class="player-link" data-player="Paul Batie">Paul Batie</a></td>
+        <td>1</td>
+        <td>0</td>
+        <td>6</td>
+        <td>0</td>
+        <td>0</td>
+        <td>0</td>
+        <td>0</td>
+        <td class="tot">0 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">42</td>
+        <td class="nm"><a class="player-link" data-player="Peter Rillero">Peter Rillero</a></td>
+        <td>11</td>
+        <td>33</td>
+        <td>33</td>
+        <td>3</td>
+        <td>0</td>
+        <td>0</td>
+        <td>0</td>
+        <td class="tot">0 🐻</td>
+      </tr>
+      <tr>
+        <td class="rk">43</td>
+        <td class="nm"><a class="player-link" data-player="Todd Park">Todd Park</a></td>
+        <td>3</td>
+        <td>6</td>
+        <td>12</td>
+        <td>1</td>
+        <td>0</td>
+        <td>0</td>
+        <td>0</td>
+        <td class="tot">0 🐻</td>
+      </tr>
+      </tbody>
+    </table>
+    <p class="foot">
+      Bears counted since Aug 24, 2026, from rated games only.<br>
+      Pickles Won/Lost = individual games won/lost. Leader (2W)/(3W) = number of pools where this player finished on top with 2 or 3 wins (informational -- not every "Leader" earns a bear; see rules).<br>
+      Tap a player's name for their pool-by-pool bear log.<br>
+      <a href="index.html">All charts &amp; tools</a> &middot; updated after every play date
+    </p>
+  </div>
+</div>
+
+<div id="historyModal" class="modal-overlay" style="display:none;">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="historyModalTitle">Player Bear Log</h3>
+      <button class="modal-close" onclick="closeHistory()">&times;</button>
+    </div>
+    <div id="historyModalBody" class="modal-body"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const params = new URLSearchParams(location.search);
+  if (!params.has('_cb')) {
+    params.set('_cb', Date.now());
+    location.replace(location.pathname + '?' + params.toString());
+  }
+})();
+
+function forceRefresh() {
+  const params = new URLSearchParams(location.search);
+  params.set('_cb', Date.now());
+  location.replace(location.pathname + '?' + params.toString());
+}
+
+setInterval(forceRefresh, 5 * 60 * 1000);
+
+// PLAYER_DETAIL: { playerName: [ {date, shootout, pool, wins, pickle_bears,
+// leader, shootout_bear}, ... ] } -- one entry per pool the player
+// appeared in since Aug 24, 2026, most recent last as built.
+const PLAYER_DETAIL = {"Alena Nagyova":[{"date":"2026-08-25","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-08-25","shootout":2,"pool":"Pool 1","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-28","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-08-28","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":1,"leader":true,"shootout_bear":true},{"date":"2026-08-31","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-08-31","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":1,"leader":true,"shootout_bear":true},{"date":"2026-09-07","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-07","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-08","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-08","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-09","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-09","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-10","shootout":1,"pool":"Pool 1","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-10","shootout":2,"pool":"Pool 2","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-11","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-11","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-14","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-14","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-15","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":1,"leader":false,"shootout_bear":false},{"date":"2026-09-15","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-16","shootout":1,"pool":"Pool 2","wins":3,"pickle_bears":1,"leader":true,"shootout_bear":true},{"date":"2026-09-16","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-17","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-17","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-18","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-18","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-21","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-21","shootout":2,"pool":"Pool 3","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-22","shootout":1,"pool":"Pool 2","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-23","shootout":1,"pool":"Pool 2","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-23","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Eric Kramer":[{"date":"2026-08-24","shootout":1,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-08-24","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-25","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-25","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-26","shootout":1,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-08-26","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-08-27","shootout":1,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-08-27","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-31","shootout":1,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-08-31","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-01","shootout":1,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-01","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-03","shootout":1,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-03","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-04","shootout":1,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-04","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-07","shootout":1,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-07","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-08","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-08","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-09","shootout":1,"pool":"Pool 1","wins":3,"pickle_bears":1,"leader":true,"shootout_bear":true},{"date":"2026-09-09","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-10","shootout":1,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-10","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-11","shootout":1,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-11","shootout":2,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-14","shootout":1,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-14","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-15","shootout":1,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-15","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-21","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-21","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-22","shootout":1,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-22","shootout":2,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-23","shootout":1,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-23","shootout":2,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true}],"Jorge Barroso":[{"date":"2026-08-24","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-24","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":1,"leader":false,"shootout_bear":false},{"date":"2026-08-25","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-25","shootout":2,"pool":"Pool 2","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-08-26","shootout":1,"pool":"Pool 2","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-08-26","shootout":2,"pool":"Pool 1","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-27","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-27","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-28","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-28","shootout":2,"pool":"Pool 1","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-31","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-31","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":1,"leader":false,"shootout_bear":false},{"date":"2026-09-01","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-01","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-02","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":1,"leader":false,"shootout_bear":false},{"date":"2026-09-02","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-03","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-03","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-04","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-04","shootout":2,"pool":"Pool 2","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-07","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-07","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-09","shootout":1,"pool":"Pool 2","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-09","shootout":2,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-10","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-10","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-11","shootout":1,"pool":"Pool 2","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-11","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-14","shootout":1,"pool":"Pool 2","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-14","shootout":2,"pool":"Pool 1","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-15","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-15","shootout":2,"pool":"Pool 2","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-16","shootout":1,"pool":"Pool 1","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-16","shootout":2,"pool":"Pool 2","wins":3,"pickle_bears":1,"leader":true,"shootout_bear":true},{"date":"2026-09-17","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-17","shootout":2,"pool":"Pool 2","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-18","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-18","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-21","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-21","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-23","shootout":1,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-23","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Wayne Carroll":[{"date":"2026-08-25","shootout":1,"pool":"Pool 3","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-25","shootout":2,"pool":"Pool 4","wins":3,"pickle_bears":1,"leader":true,"shootout_bear":true},{"date":"2026-08-26","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-08-26","shootout":2,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-27","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-27","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-28","shootout":1,"pool":"Pool 2","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-28","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-01","shootout":1,"pool":"Pool 3","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-01","shootout":2,"pool":"Pool 2","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-02","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-02","shootout":2,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-08","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":1,"leader":false,"shootout_bear":false},{"date":"2026-09-08","shootout":2,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-09","shootout":1,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-09","shootout":2,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-10","shootout":1,"pool":"Pool 4","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-10","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-14","shootout":1,"pool":"Pool 3","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-14","shootout":2,"pool":"Pool 2","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-15","shootout":1,"pool":"Pool 3","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-15","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-16","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-16","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":1,"leader":false,"shootout_bear":false},{"date":"2026-09-17","shootout":1,"pool":"Pool 2","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-17","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-18","shootout":1,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-18","shootout":2,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-22","shootout":1,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":2,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-23","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-23","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Jill Peterson":[{"date":"2026-09-02","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-02","shootout":2,"pool":"Pool 2","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-07","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-07","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-10","shootout":1,"pool":"Pool 4","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-10","shootout":2,"pool":"Pool 4","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-11","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-11","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-14","shootout":1,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-14","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-16","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-16","shootout":2,"pool":"Pool 3","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-17","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-17","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-18","shootout":1,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-18","shootout":2,"pool":"Pool 3","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":1,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-22","shootout":2,"pool":"Pool 3","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Dave Grubb":[{"date":"2026-08-26","shootout":1,"pool":"Pool 1","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-26","shootout":2,"pool":"Pool 2","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-08-27","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-27","shootout":2,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-01","shootout":1,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-01","shootout":2,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-03","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-03","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-07","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-07","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-10","shootout":1,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-10","shootout":2,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-14","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-14","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-16","shootout":1,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-16","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-17","shootout":1,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-17","shootout":2,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-18","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-18","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":1,"leader":true,"shootout_bear":false}],"Amber Tinstman":[{"date":"2026-08-25","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-08-25","shootout":2,"pool":"Pool 3","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-01","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-01","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-08","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-08","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-11","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-11","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-15","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":1,"leader":true,"shootout_bear":true},{"date":"2026-09-15","shootout":2,"pool":"Pool 1","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-21","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-21","shootout":2,"pool":"Pool 2","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Neal Whitson":[{"date":"2026-08-25","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-08-25","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-26","shootout":1,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-08-26","shootout":2,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-01","shootout":1,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-01","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":2,"leader":true,"shootout_bear":false},{"date":"2026-09-02","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-02","shootout":2,"pool":"Pool 3","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-07","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-07","shootout":2,"pool":"Pool 2","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-08","shootout":1,"pool":"Pool 2","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-08","shootout":2,"pool":"Pool 3","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-09","shootout":1,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-09","shootout":2,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-10","shootout":1,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-10","shootout":2,"pool":"Pool 4","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-14","shootout":1,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-14","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-15","shootout":1,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-15","shootout":2,"pool":"Pool 3","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-16","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-16","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-17","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-17","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-21","shootout":1,"pool":"Pool 3","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-21","shootout":2,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-23","shootout":1,"pool":"Pool 3","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-23","shootout":2,"pool":"Pool 2","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Lidia Zolnierczyk":[{"date":"2026-08-28","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-28","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-01","shootout":1,"pool":"Pool 2","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-01","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":1,"leader":false,"shootout_bear":false},{"date":"2026-09-03","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-03","shootout":2,"pool":"Pool 2","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-04","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-04","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-07","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-07","shootout":2,"pool":"Pool 1","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-09","shootout":1,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-09","shootout":2,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-17","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-17","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-18","shootout":1,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-18","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-21","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-21","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":1,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true}],"Peter Barnett":[{"date":"2026-08-24","shootout":1,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-08-24","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-08-25","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-25","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-26","shootout":1,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-26","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-27","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-27","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-28","shootout":1,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-08-28","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":1,"leader":false,"shootout_bear":false},{"date":"2026-08-31","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-31","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-02","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-02","shootout":2,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-03","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-03","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-04","shootout":1,"pool":"Pool 1","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-04","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-07","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-07","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-11","shootout":1,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-11","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-15","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-15","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-17","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-17","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-18","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-18","shootout":2,"pool":"Pool 1","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-21","shootout":1,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-21","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":1,"leader":false,"shootout_bear":false},{"date":"2026-09-23","shootout":1,"pool":"Pool 1","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-23","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Dwight Christensen":[{"date":"2026-08-25","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-25","shootout":2,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-28","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-08-28","shootout":2,"pool":"Pool 2","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-04","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-04","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-08","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-08","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-11","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-11","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-15","shootout":1,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-15","shootout":2,"pool":"Pool 4","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-18","shootout":1,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-18","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":1,"pool":"Pool 3","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-22","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":1,"leader":true,"shootout_bear":false}],"Jackie Maniaci":[{"date":"2026-08-25","shootout":1,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-08-25","shootout":2,"pool":"Pool 4","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-26","shootout":1,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-26","shootout":2,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-01","shootout":1,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-01","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":1,"leader":false,"shootout_bear":false},{"date":"2026-09-04","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-04","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-15","shootout":1,"pool":"Pool 4","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-15","shootout":2,"pool":"Pool 4","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-16","shootout":1,"pool":"Pool 3","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-16","shootout":2,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-18","shootout":1,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-18","shootout":2,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":1,"pool":"Pool 4","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":2,"pool":"Pool 5","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-23","shootout":1,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-23","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true}],"Steve Ludick":[{"date":"2026-08-24","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":1,"leader":true,"shootout_bear":false},{"date":"2026-08-24","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-25","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-25","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-26","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-26","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-27","shootout":1,"pool":"Pool 2","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-08-27","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-31","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-31","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-01","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-01","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-02","shootout":1,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-02","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-03","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-03","shootout":2,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-04","shootout":1,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-04","shootout":2,"pool":"Pool 1","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-07","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-07","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-08","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-08","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Bill Pollock":[{"date":"2026-09-09","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":1,"leader":false,"shootout_bear":false},{"date":"2026-09-09","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-10","shootout":1,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-10","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-11","shootout":1,"pool":"Pool 1","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-11","shootout":2,"pool":"Pool 2","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-14","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-14","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-15","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-15","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-16","shootout":1,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-16","shootout":2,"pool":"Pool 1","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-17","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-17","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-21","shootout":1,"pool":"Pool 2","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-21","shootout":2,"pool":"Pool 1","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":2,"pool":"Pool 2","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-23","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-23","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":1,"leader":true,"shootout_bear":false}],"Cary McCormick":[{"date":"2026-08-24","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":1,"leader":false,"shootout_bear":false},{"date":"2026-08-24","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":1,"leader":true,"shootout_bear":false},{"date":"2026-08-25","shootout":1,"pool":"Pool 2","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-25","shootout":2,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-04","shootout":1,"pool":"Pool 2","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-04","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-07","shootout":1,"pool":"Pool 2","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-07","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-09","shootout":1,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-09","shootout":2,"pool":"Pool 3","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-10","shootout":1,"pool":"Pool 3","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-10","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-15","shootout":1,"pool":"Pool 2","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-15","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-18","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-18","shootout":2,"pool":"Pool 2","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-21","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-21","shootout":2,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Brad Caskey":[{"date":"2026-08-25","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-25","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-08-31","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-31","shootout":2,"pool":"Pool 1","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-01","shootout":1,"pool":"Pool 1","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-01","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-08","shootout":1,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-08","shootout":2,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-09","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-09","shootout":2,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-15","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-15","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-22","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Donna Cantrell":[{"date":"2026-08-26","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-08-26","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-04","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-04","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-07","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-07","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-14","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-14","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-22","shootout":1,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Tonya Carroll":[{"date":"2026-08-26","shootout":1,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-26","shootout":2,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-02","shootout":1,"pool":"Pool 3","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-02","shootout":2,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-08","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-08","shootout":2,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-09","shootout":1,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-09","shootout":2,"pool":"Pool 4","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-15","shootout":1,"pool":"Pool 4","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-15","shootout":2,"pool":"Pool 4","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-16","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-16","shootout":2,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-17","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-17","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-18","shootout":1,"pool":"Pool 4","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-18","shootout":2,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Steve Terpstra":[{"date":"2026-08-25","shootout":1,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-08-25","shootout":2,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-27","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-27","shootout":2,"pool":"Pool 2","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-08","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":1,"leader":true,"shootout_bear":false},{"date":"2026-09-08","shootout":2,"pool":"Pool 2","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-10","shootout":1,"pool":"Pool 4","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-10","shootout":2,"pool":"Pool 4","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-15","shootout":1,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-15","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-22","shootout":1,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":2,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false}],"David Roming":[{"date":"2026-09-09","shootout":1,"pool":"Pool 3","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-09","shootout":2,"pool":"Pool 2","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-21","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-21","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false}],"Stacy Kramer":[{"date":"2026-08-24","shootout":1,"pool":"Pool 2","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-24","shootout":2,"pool":"Pool 2","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-25","shootout":1,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-08-25","shootout":2,"pool":"Pool 4","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-26","shootout":1,"pool":"Pool 4","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-26","shootout":2,"pool":"Pool 4","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-31","shootout":1,"pool":"Pool 2","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-31","shootout":2,"pool":"Pool 2","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-01","shootout":1,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-01","shootout":2,"pool":"Pool 3","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-07","shootout":1,"pool":"Pool 3","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-07","shootout":2,"pool":"Pool 3","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-08","shootout":1,"pool":"Pool 3","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-08","shootout":2,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-09","shootout":1,"pool":"Pool 4","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-09","shootout":2,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-10","shootout":1,"pool":"Pool 4","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-10","shootout":2,"pool":"Pool 4","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-11","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-11","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-14","shootout":1,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-14","shootout":2,"pool":"Pool 3","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":1,"pool":"Pool 5","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":2,"pool":"Pool 5","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-23","shootout":1,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-23","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Steve Fahrenkrog":[{"date":"2026-09-15","shootout":1,"pool":"Pool 4","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-15","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-18","shootout":1,"pool":"Pool 3","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-18","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Bruce Blair":[{"date":"2026-09-02","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":1,"leader":true,"shootout_bear":false},{"date":"2026-09-02","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-03","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-03","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-08","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-08","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-09","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-09","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-10","shootout":1,"pool":"Pool 2","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-10","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-14","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-14","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false}],"Kara Rice":[{"date":"2026-09-18","shootout":1,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-18","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":1,"leader":false,"shootout_bear":false}],"Angie McKamey":[{"date":"2026-08-26","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-26","shootout":2,"pool":"Pool 3","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-02","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-02","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-16","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-16","shootout":2,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Greg Egli":[{"date":"2026-08-28","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-28","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-03","shootout":1,"pool":"Pool 2","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-03","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-04","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-04","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-18","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-18","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-22","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Joe McKamey":[{"date":"2026-08-24","shootout":1,"pool":"Pool 1","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-24","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-25","shootout":1,"pool":"Pool 1","wins":3,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-08-25","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-26","shootout":1,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-08-26","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-01","shootout":1,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-01","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-02","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-02","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Paula Pearson":[{"date":"2026-09-22","shootout":1,"pool":"Pool 5","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":true},{"date":"2026-09-22","shootout":2,"pool":"Pool 4","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Lynnie McKee":[{"date":"2026-08-25","shootout":1,"pool":"Pool 4","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-25","shootout":2,"pool":"Pool 4","wins":1,"pickle_bears":1,"leader":false,"shootout_bear":false},{"date":"2026-09-15","shootout":1,"pool":"Pool 4","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-15","shootout":2,"pool":"Pool 4","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-18","shootout":1,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-18","shootout":2,"pool":"Pool 4","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":1,"pool":"Pool 5","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":2,"pool":"Pool 5","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-23","shootout":1,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-23","shootout":2,"pool":"Pool 3","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Mike Lacey":[{"date":"2026-09-09","shootout":1,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-09","shootout":2,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-14","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-14","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-16","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":1,"leader":false,"shootout_bear":false},{"date":"2026-09-16","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-21","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-21","shootout":2,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Tron Brinkmann":[{"date":"2026-09-09","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-09","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-10","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-10","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-18","shootout":1,"pool":"Pool 2","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-18","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-23","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-23","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":1,"leader":false,"shootout_bear":false}],"Cheryl Barnett":[{"date":"2026-09-10","shootout":1,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-10","shootout":2,"pool":"Pool 3","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Debbie Lacey":[{"date":"2026-09-10","shootout":1,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-10","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Jennifer Hartenbower":[{"date":"2026-09-11","shootout":1,"pool":"Pool 3","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-11","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Jim Pearson":[{"date":"2026-08-27","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-27","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-17","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-17","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false}],"John Entreken":[{"date":"2026-09-22","shootout":1,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":2,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Jose L Valdez R":[{"date":"2026-09-22","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-22","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Joseph Rosales":[{"date":"2026-09-17","shootout":1,"pool":"Pool 3","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-17","shootout":2,"pool":"Pool 3","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":1,"pool":"Pool 5","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-22","shootout":2,"pool":"Pool 5","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Kindi Backstrom":[{"date":"2026-08-26","shootout":1,"pool":"Pool 3","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-26","shootout":2,"pool":"Pool 4","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Marcos Figueroa":[{"date":"2026-09-11","shootout":1,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-11","shootout":2,"pool":"Pool 3","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Paul Batie":[{"date":"2026-09-04","shootout":1,"pool":"Pool 3","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-04","shootout":2,"pool":"Pool 3","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Peter Rillero":[{"date":"2026-08-24","shootout":1,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-24","shootout":2,"pool":"Pool 1","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-26","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-26","shootout":2,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-28","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-28","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-31","shootout":1,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-08-31","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-02","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-02","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-04","shootout":1,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-04","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-09","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-09","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-11","shootout":1,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false},{"date":"2026-09-11","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-16","shootout":1,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-16","shootout":2,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-21","shootout":1,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-21","shootout":2,"pool":"Pool 2","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-23","shootout":1,"pool":"Pool 1","wins":2,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-23","shootout":2,"pool":"Pool 1","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false}],"Todd Park":[{"date":"2026-08-26","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-08-26","shootout":2,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-02","shootout":1,"pool":"Pool 2","wins":0,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-02","shootout":2,"pool":"Pool 3","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-10","shootout":1,"pool":"Pool 2","wins":1,"pickle_bears":0,"leader":false,"shootout_bear":false},{"date":"2026-09-10","shootout":2,"pool":"Pool 3","wins":2,"pickle_bears":0,"leader":true,"shootout_bear":false}]};
+
+function showHistory(name) {
+  const rows = (PLAYER_DETAIL[name] || []).slice().reverse();
+  document.getElementById('historyModalTitle').textContent = name + ' — Bear Log';
+
+  const body = document.getElementById('historyModalBody');
+  if (rows.length === 0) {
+    body.innerHTML = '<p class="no-data">No pool data available yet.</p>';
+  } else {
+    let h = `<table class="hist-table"><thead><tr>
+      <th>Date</th><th>Sht</th><th>Pool</th><th>Wins</th><th>Pool Leader</th><th>Bears</th>
+    </tr></thead><tbody>`;
+    rows.forEach(r => {
+      let bears = '';
+      if (r.pickle_bears > 0) bears += '🍒'.repeat(r.pickle_bears);
+      if (r.shootout_bear) bears += '🐻';
+      if (!bears) bears = '—';
+      h += `<tr>
+        <td>${r.date}</td>
+        <td>${r.shootout}</td>
+        <td>${r.pool}</td>
+        <td>${r.wins}/3</td>
+        <td>${r.leader ? 'Yes' : '—'}</td>
+        <td>${bears}</td>
+      </tr>`;
+    });
+    h += '</tbody></table>';
+    body.innerHTML = h;
+  }
+  document.getElementById('historyModal').style.display = 'flex';
+}
+
+function closeHistory() {
+  document.getElementById('historyModal').style.display = 'none';
+}
+
+document.getElementById('body').addEventListener('click', (e) => {
+  const link = e.target.closest('.player-link');
+  if (link) showHistory(link.dataset.player);
+});
+
+document.getElementById('historyModal').addEventListener('click', (e) => {
+  if (e.target.id === 'historyModal') closeHistory();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeHistory();
+});
+</script>
+</body>
+</html>

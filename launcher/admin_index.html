@@ -61,6 +61,12 @@
 
   a.card.group-c { border-left-color: var(--rust); background: rgba(179, 84, 58, 0.16); }
 
+  .pending-badge {
+    display: inline-block; margin-left: 8px; padding: 1px 8px;
+    background: var(--gold); color: #fff; border-radius: 10px;
+    font-size: 12px; font-weight: bold; vertical-align: middle;
+  }
+
   footer {
     text-align: center;
     font-size: 12px;
@@ -97,6 +103,11 @@
     <p>Attribute a "Den New Player Tryout" slot to a real, known player — corrects their rating history and lets court assignments seed them by their actual rating instead of treating them as unrated.</p>
   </a>
 
+  <a class="card group-c" href="/shootout-ties">
+    <h2>Shootout Ties<span id="tieBadge" class="pending-badge" style="display:none;"></span></h2>
+    <p>Pools where two or more players tied on both wins and point differential — pick the player Den actually declared the winner so their Bear Count shootout bear is awarded correctly.</p>
+  </a>
+
   <a class="card group-c" href="/format_tracker.html">
     <h2>Format Change Tracker</h2>
     <p>Average player rating by day, before vs. after the 8/24 shuffle-format change, with a 7-day rolling trend line.</p>
@@ -107,5 +118,17 @@
   Reachable on your home network only — not published to GitHub Pages.
 </footer>
 
+<script>
+fetch('/api/unresolved-ties')
+  .then(r => r.json())
+  .then(ties => {
+    if (ties.length > 0) {
+      const badge = document.getElementById('tieBadge');
+      badge.textContent = ties.length;
+      badge.style.display = 'inline-block';
+    }
+  })
+  .catch(() => {});
+</script>
 </body>
 </html>

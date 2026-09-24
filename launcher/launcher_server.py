@@ -55,6 +55,8 @@ REPO_ROOT = BASE_DIR.parent
 NO_SHOOTOUT_CSV = REPO_ROOT / "data" / "no_shootout_dates.csv"
 PARTIAL_SHOOTOUT_CSV = REPO_ROOT / "data" / "partial_shootout_dates.csv"
 TRYOUT_NAME_FIXES_CSV = REPO_ROOT / "data" / "tryout_name_fixes.csv"
+SHOOTOUT_TIES_CSV = REPO_ROOT / "data" / "shootout_leader_overrides.csv"
+SHOOTOUT_TIES_HTML_PATH = BASE_DIR / "shootout_ties.html"
 PORT = 8765
 MST = ZoneInfo("America/Phoenix")  # Arizona, no DST — matches "MST" label used everywhere else
 
@@ -82,6 +84,29 @@ def get_recorded_dates():
                 entries.append({"date": date_str, "type": date_type})
     entries.sort(key=lambda e: e["date"], reverse=True)
     return entries
+
+
+def get_unresolved_ties():
+    """Rows in the shootout-leader-overrides CSV with a blank winner --
+    pools where the wins+margin tiebreak couldn't pick a single leader,
+    so no shootout bear was awarded pending manual resolution here.
+    build_bear_count.py appends new ones automatically as it finds them."""
+    if not SHOOTOUT_TIES_CSV.exists():
+        return []
+    import csv
+    with open(SHOOTOUT_TIES_CSV, newline="") as f:
+        rows = list(csv.DictReader(f))
+    pending = []
+    for r in rows:
+        if not r.get("winner", "").strip():
+            pending.append({
+                "play_date": r["play_date"],
+                "shootout": r["shootout"],
+                "pool": r["pool"],
+                "tied_candidates": [n.strip() for n in r["tied_candidates"].split("/")],
+            })
+    pending.sort(key=lambda t: t["play_date"])
+    return pending
 
 
 def load_config():
@@ -181,6 +206,10 @@ class Handler(BaseHTTPRequestHandler):
             self._send_html(TRYOUT_NAME_HTML_PATH)
         elif self.path == "/format_tracker.html" or self.path == "/format_tracker":
             self._send_html(FORMAT_TRACKER_HTML_PATH)
+        elif self.path == "/api/unresolved-ties":
+            self._send_json(get_unresolved_ties())
+        elif self.path == "/shootout-ties" or self.path == "/shootout_ties.html":
+            self._send_html(SHOOTOUT_TIES_HTML_PATH)
         elif self.path == "/format_tracker_data.json":
             if FORMAT_TRACKER_DATA_PATH.exists():
                 body = FORMAT_TRACKER_DATA_PATH.read_bytes()
@@ -216,6 +245,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_record_date(payload)
         elif self.path == "/api/record-tryout-name":
             self._handle_record_tryout_name(payload)
+        elif self.path == "/api/resolve-shootout-tie":
+            self._handle_resolve_shootout_tie(payload)
         else:
             self._send_json({"error": "not found"}, status=404)
 
@@ -362,6 +393,64 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json({
             "date": date_str, "real_name": real_name,
             "status": "recorded, engine rebuilt, court assignments refreshed",
+        })
+
+    def _handle_resolve_shootout_tie(self, payload):
+        play_date = str(payload.get("play_date", "")).strip()
+        shootout = str(payload.get("shootout", "")).strip()
+        pool = str(payload.get("pool", "")).strip()
+        winner = str(payload.get("winner", "")).strip()
+        if not (play_date and shootout and pool and winner):
+            self._send_json({"error": "play_date, shootout, pool, and winner are required"}, status=400)
+            return
+
+        import csv
+        if not SHOOTOUT_TIES_CSV.exists():
+            self._send_json({"error": "no overrides file found"}, status=404)
+            return
+        with open(SHOOTOUT_TIES_CSV, newline="") as f:
+            rows = list(csv.DictReader(f))
+
+        matched = False
+        for r in rows:
+            if (r["play_date"], str(r["shootout"]), r["pool"]) == (play_date, shootout, pool):
+                candidates = [n.strip() for n in r["tied_candidates"].split("/")]
+                if winner not in candidates:
+                    self._send_json(
+                        {"error": f'"{winner}" wasn\'t one of the tied candidates for this pool'},
+                        status=400)
+                    return
+                r["winner"] = winner
+                matched = True
+                break
+        if not matched:
+            self._send_json({"error": "no matching tie found for that date/shootout/pool"}, status=404)
+            return
+
+        with open(SHOOTOUT_TIES_CSV, "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=["play_date", "shootout", "pool", "tied_candidates", "winner"])
+            w.writeheader()
+            w.writerows(rows)
+
+        try:
+            subprocess.run(
+                ["python3", "engine/build_bear_count.py"],
+                cwd=REPO_ROOT, check=True, timeout=120,
+            )
+            subprocess.run(
+                ["cp", str(REPO_ROOT / "output/bear_count.html"), str(REPO_ROOT / "docs/bear_count.html")],
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            self._send_json({"error": f"Recorded, but Bear Count rebuild failed (exit {e.returncode}): {e}"}, status=500)
+            return
+        except subprocess.TimeoutExpired as e:
+            self._send_json({"error": f"Recorded, but Bear Count rebuild timed out: {e}"}, status=500)
+            return
+
+        self._send_json({
+            "play_date": play_date, "shootout": shootout, "pool": pool, "winner": winner,
+            "status": "Bear Count rebuilt",
         })
 
     def log_message(self, format, *args):

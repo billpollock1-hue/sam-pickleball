@@ -294,6 +294,10 @@ else
   python3 engine/build_leaderboard_html.py
 
   echo ""
+  echo "5c1. Building Bear Count..."
+  python3 engine/build_bear_count.py
+
+  echo ""
   echo "5c3. Updating Format Change Tracker data..."
   python3 compute_format_tracker_data.py
 
@@ -323,6 +327,7 @@ cp output/session_viewer.html docs/
 cp output/player_history.html docs/
 cp output/leaderboard.html docs/
 cp output/compare_ratings.html docs/
+cp output/bear_count.html docs/
 cp assignments/output/court_assignments_viewer.html docs/court_assignments.html
 # storybook.html intentionally excluded from docs/ sync while still in development
 

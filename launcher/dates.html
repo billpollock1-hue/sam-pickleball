@@ -67,6 +67,29 @@
   #status.ok { display: block; background: #e6f4ea; color: #276221; border: 1px solid #b6dfc0; }
   #status.err { display: block; background: #fbe9e7; color: #9C3B1B; border: 1px solid #f2b8ad; }
   #status.pending { display: block; background: #fff8e1; color: #8a6d1a; border: 1px solid #f0dfa0; }
+
+  .log-card {
+    background: #fff;
+    border: 1px solid #dbe4ee;
+    border-radius: 8px;
+    padding: 20px;
+    margin-top: 20px;
+  }
+  .log-card h2 { font-size: 16px; color: var(--blue-dark); margin-bottom: 12px; }
+  table.log-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  table.log-table th {
+    text-align: left; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.03em; color: #888; border-bottom: 2px solid #eee;
+    padding: 5px 6px;
+  }
+  table.log-table td { padding: 6px; border-bottom: 1px solid #f0f0f0; }
+  .type-badge {
+    display: inline-block; font-size: 11px; font-weight: 600;
+    padding: 2px 7px; border-radius: 10px;
+  }
+  .type-badge.none   { background: rgba(179, 84, 58, 0.16); color: var(--rust); }
+  .type-badge.single { background: rgba(46, 117, 182, 0.16); color: var(--blue-mid); }
+  #logEmpty { font-size: 13.5px; color: #777; }
 </style>
 </head>
 <body>
@@ -96,6 +119,17 @@
     <button id="submitBtn" onclick="submitDate()">Record Date</button>
     <div id="status"></div>
   </div>
+
+  <div class="log-card">
+    <h2>Previously Recorded Dates</h2>
+    <div id="logEmpty" style="display:none;">No dates recorded yet.</div>
+    <table class="log-table" id="logTable" style="display:none;">
+      <thead>
+        <tr><th>Date</th><th>Type</th></tr>
+      </thead>
+      <tbody id="logBody"></tbody>
+    </table>
+  </div>
 </main>
 
 <script>
@@ -107,6 +141,42 @@ document.querySelectorAll('input[name="dateType"]').forEach(r => {
     document.getElementById('typeHint').textContent = r.value === 'none' ? NONE_HINT : SINGLE_HINT;
   });
 });
+
+function formatDateDisplay(dateStr) {
+  // dateStr is "YYYY-MM-DD" -- parse as local, not UTC, to avoid an
+  // off-by-one-day display shift.
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  return dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+async function loadRecordedDates() {
+  try {
+    const resp = await fetch('/api/recorded-dates');
+    const entries = await resp.json();
+    const tbody = document.getElementById('logBody');
+    const table = document.getElementById('logTable');
+    const empty = document.getElementById('logEmpty');
+
+    if (!entries.length) {
+      empty.style.display = 'block';
+      table.style.display = 'none';
+      return;
+    }
+
+    tbody.innerHTML = entries.map(e => `
+      <tr>
+        <td>${formatDateDisplay(e.date)}</td>
+        <td><span class="type-badge ${e.type}">${e.type === 'none' ? 'No shootout' : 'Single shootout'}</span></td>
+      </tr>
+    `).join('');
+    table.style.display = 'table';
+    empty.style.display = 'none';
+  } catch (e) {
+    document.getElementById('logEmpty').textContent = 'Could not load recorded dates.';
+    document.getElementById('logEmpty').style.display = 'block';
+  }
+}
 
 async function submitDate() {
   const date = document.getElementById('dateInput').value;
@@ -136,6 +206,7 @@ async function submitDate() {
     if (resp.ok) {
       statusEl.className = 'ok';
       statusEl.textContent = `Done: ${date} recorded as "${type === 'none' ? 'no shootout' : 'single shootout'}" — ${data.status}.`;
+      loadRecordedDates();
     } else {
       statusEl.className = 'err';
       statusEl.textContent = `Error: ${data.error || 'unknown error'}`;
@@ -147,6 +218,8 @@ async function submitDate() {
     btn.disabled = false;
   }
 }
+
+loadRecordedDates();
 </script>
 </body>
 </html>

@@ -65,6 +65,25 @@ PB_RUNTIME = os.environ.get("PB_RUNTIME", str(Path.home() / "Library/Application
 STATE_PATH = Path(PB_RUNTIME) / "signup_monitor_state.json"
 
 
+def get_recorded_dates():
+    """Read both no-shootout and partial-shootout CSVs, tag each
+    entry with its type, and return combined, sorted newest-first."""
+    entries = []
+    for csv_path, date_type in (
+        (NO_SHOOTOUT_CSV, "none"),
+        (PARTIAL_SHOOTOUT_CSV, "single"),
+    ):
+        if not csv_path.exists():
+            continue
+        lines = csv_path.read_text().splitlines()[1:]  # skip header
+        for line in lines:
+            date_str = line.strip()
+            if date_str:
+                entries.append({"date": date_str, "type": date_type})
+    entries.sort(key=lambda e: e["date"], reverse=True)
+    return entries
+
+
 def load_config():
     if not CONFIG_PATH.exists():
         return {"mode": "none", "autolaunch_time_mst": "05:45",
@@ -154,6 +173,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(read_log(limit))
         elif self.path == "/api/next-shootout":
             self._send_json({"display": get_next_shootout_display()})
+        elif self.path == "/api/recorded-dates":
+            self._send_json(get_recorded_dates())
         elif self.path == "/dates" or self.path == "/dates.html":
             self._send_html(DATES_HTML_PATH)
         elif self.path == "/tryout-name" or self.path == "/tryout_name.html":

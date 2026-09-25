@@ -319,8 +319,54 @@ const readline = require('readline');
       if (!bodyText.includes('Player Scores')) {
         throw new Error('Player Scores page not detected.');
       }
-      const scoreCells = await page.locator('vaadin-grid-cell-content').allTextContents();
-      return parseScoreCells(scoreCells);
+
+      // Den's score grid is a virtualized Vaadin grid -- only the visible
+      // rows actually exist in the DOM, and reading allTextContents() mid
+      // re-render can pull some cells from a row that just scrolled into
+      // place while other cells still show the previous row's stale
+      // content. Confirmed real incident (2026-09-25): one game's winner
+      // and loser came back swapped, and its score was actually borrowed
+      // from a *different* game in the same pool -- the corrupted row
+      // shared an exact posted timestamp AND score with a real row, which
+      // should never happen (Den logs each game's completion to the
+      // minute). Guard against this by reading the grid twice, a beat
+      // apart, and only trusting the read if both passes come back
+      // byte-identical; retry with a longer settle if they don't, and
+      // refuse to return anything rather than hand back a possibly
+      // cross-contaminated row.
+      const MAX_ATTEMPTS = 4;
+      let lastMismatch = null;
+
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        const firstCells = await page.locator('vaadin-grid-cell-content').allTextContents();
+        const firstRows = parseScoreCells(firstCells);
+
+        await sleep(1200 * attempt);
+
+        const secondCells = await page.locator('vaadin-grid-cell-content').allTextContents();
+        const secondRows = parseScoreCells(secondCells);
+
+        const stable =
+          firstRows.length === secondRows.length &&
+          firstRows.every((r, i) => JSON.stringify(r) === JSON.stringify(secondRows[i]));
+
+        if (stable) {
+          return firstRows;
+        }
+
+        lastMismatch = { firstRows, secondRows };
+        console.log(
+          `  \u26a0 Score grid read #${attempt} was unstable (two reads ` +
+          `${1200 * attempt}ms apart did not match) -- retrying...`
+        );
+        await sleep(1500);
+      }
+
+      throw new Error(
+        `Score grid never settled to a stable read after ${MAX_ATTEMPTS} attempts -- ` +
+        `refusing to trust possibly cross-contaminated rows. Last mismatch: ` +
+        `${JSON.stringify(lastMismatch)}`
+      );
     }
 
     function getArg(name) {

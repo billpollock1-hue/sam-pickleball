@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>First Choice Leaderboard — SAM Pickleball</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root {
+    --court: #123324;
+    --court-deep: #0c2419;
+    --line: #F4F0E4;
+    --ball: #CFDD2E;
+    --ball-dim: #a9b622;
+    --ink: #14201A;
+    --ink-soft: #4B5A50;
+    --navy: #1D3A4A;
+    --card: #FBFAF4;
+    --shadow: rgba(12, 36, 25, 0.18);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: 'IBM Plex Sans', sans-serif;
+    background: var(--court);
+    background-image:
+      repeating-linear-gradient(0deg, rgba(244,240,228,0.035) 0px, rgba(244,240,228,0.035) 1px, transparent 1px, transparent 64px),
+      repeating-linear-gradient(90deg, rgba(244,240,228,0.035) 0px, rgba(244,240,228,0.035) 1px, transparent 1px, transparent 64px);
+    color: var(--line);
+    min-height: 100vh;
+    padding: 0 0 64px 0;
+  }
+
+  header {
+    padding: 48px 24px 28px 24px;
+    max-width: 980px;
+    margin: 0 auto;
+    border-bottom: 3px solid var(--ball);
+  }
+
+  .eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ball);
+    margin: 0 0 10px 0;
+  }
+
+  h1 {
+    font-family: 'Anton', sans-serif;
+    font-weight: 400;
+    font-size: clamp(34px, 6vw, 56px);
+    letter-spacing: 0.01em;
+    margin: 0 0 8px 0;
+    line-height: 0.98;
+    color: var(--line);
+  }
+
+  .subhead {
+    font-size: 15px;
+    color: rgba(244,240,228,0.72);
+    max-width: 560px;
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  main {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  .panel {
+    background: var(--card);
+    color: var(--ink);
+    border-radius: 4px;
+    box-shadow: 0 18px 40px var(--shadow);
+    margin-top: -1px;
+  }
+
+  .upload-zone {
+    padding: 40px 32px;
+    text-align: center;
+    border: 2px dashed rgba(20,32,26,0.22);
+    margin: 32px;
+    border-radius: 4px;
+  }
+
+  .upload-zone.dragging {
+    border-color: var(--ball-dim);
+    background: rgba(207,221,46,0.08);
+  }
+
+  .upload-zone p {
+    margin: 0 0 16px 0;
+    color: var(--ink-soft);
+    font-size: 14px;
+  }
+
+  .upload-zone .filename {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--navy);
+    margin-top: 12px;
+  }
+
+  button, .file-btn {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    background: var(--ink);
+    color: var(--line);
+    border: none;
+    padding: 11px 22px;
+    border-radius: 3px;
+    cursor: pointer;
+    letter-spacing: 0.01em;
+  }
+
+  button:hover, .file-btn:hover { background: var(--navy); }
+
+  input[type="file"] { display: none; }
+
+  .filters {
+    display: none;
+    padding: 24px 32px;
+    gap: 20px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid rgba(20,32,26,0.12);
+  }
+
+  .filters.active { display: flex; }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 150px;
+  }
+
+  .field label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-soft);
+  }
+
+  .field input, .field select {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 14px;
+    padding: 8px 10px;
+    border: 1.5px solid rgba(20,32,26,0.2);
+    border-radius: 3px;
+    background: white;
+    color: var(--ink);
+  }
+
+  .field input:focus, .field select:focus {
+    outline: 2px solid var(--ball-dim);
+    outline-offset: 1px;
+  }
+
+  .results {
+    display: none;
+    padding: 8px 32px 32px 32px;
+  }
+
+  .results.active { display: block; }
+
+  .results-meta {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--ink-soft);
+    padding: 18px 0 6px 0;
+    letter-spacing: 0.02em;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 6px;
+  }
+
+  thead th {
+    text-align: left;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-soft);
+    padding: 10px 12px;
+    border-bottom: 2px solid var(--ink);
+  }
+
+  thead th.num { text-align: right; }
+
+  tbody td {
+    padding: 14px 12px;
+    border-bottom: 1px solid rgba(20,32,26,0.1);
+    font-size: 15px;
+  }
+
+  tbody tr:hover { background: rgba(207,221,46,0.10); }
+
+  td.rank {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--ink-soft);
+    font-size: 13px;
+    width: 36px;
+  }
+
+  td.player { font-weight: 600; }
+
+  td.num {
+    text-align: right;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    color: var(--ink-soft);
+  }
+
+  td.pct {
+    text-align: right;
+    font-family: 'Anton', sans-serif;
+    font-size: 22px;
+    color: var(--ink);
+  }
+
+  td.pct .chip {
+    display: inline-block;
+    background: var(--ball);
+    padding: 3px 10px 5px 10px;
+    border-radius: 3px;
+    min-width: 64px;
+  }
+
+  .view-toggle {
+    display: none;
+    gap: 0;
+    margin: 0 32px;
+    padding-top: 24px;
+  }
+
+  .view-toggle button {
+    background: transparent;
+    color: var(--ink-soft);
+    border: 1.5px solid rgba(20,32,26,0.2);
+    padding: 9px 18px;
+    font-size: 13px;
+  }
+
+  .view-toggle button:first-child { border-radius: 3px 0 0 3px; border-right: none; }
+  .view-toggle button:not(:first-child):not(:last-child) { border-right: none; }
+  .view-toggle button:last-child { border-radius: 0 3px 3px 0; }
+
+  .winrate-summary {
+    display: flex;
+    gap: 24px;
+    padding: 28px 32px 8px 32px;
+    flex-wrap: wrap;
+  }
+
+  .winrate-summary-item {
+    flex: 1;
+    min-width: 180px;
+    background: rgba(20,32,26,0.03);
+    border: 1.5px solid rgba(20,32,26,0.12);
+    border-radius: 4px;
+    padding: 18px 20px;
+  }
+
+  .winrate-summary-item.fc-side { border-color: var(--ball-dim); background: rgba(207,221,46,0.10); }
+
+  .winrate-summary-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-soft);
+    margin-bottom: 8px;
+  }
+
+  .winrate-summary-value {
+    font-family: 'Anton', sans-serif;
+    font-size: 40px;
+    color: var(--ink);
+    line-height: 1;
+  }
+
+  .winrate-summary-sub {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin-top: 6px;
+  }
+
+  td.diff-pos { color: #2E7D32; font-weight: 600; }
+  td.diff-neg { color: #B03A2E; font-weight: 600; }
+  td.diff-na { color: var(--ink-soft); }
+
+  .view-toggle button.active {
+    background: var(--ink);
+    color: var(--line);
+  }
+
+  .view-toggle button:hover:not(.active) { background: rgba(20,32,26,0.06); }
+
+  td.shootout-tag {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--navy);
+    white-space: nowrap;
+  }
+
+  td.matchup {
+    font-size: 14px;
+  }
+
+  td.matchup .fc-side {
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  td.matchup .vs {
+    color: var(--ink-soft);
+    font-size: 12px;
+    margin: 0 6px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  td.matchup .other-side {
+    color: var(--ink-soft);
+  }
+
+  .empty-state {
+    padding: 40px 0;
+    text-align: center;
+    color: var(--ink-soft);
+    font-size: 14px;
+  }
+
+  footer {
+    max-width: 980px;
+    margin: 20px auto 0 auto;
+    padding: 0 24px;
+    font-size: 12px;
+    color: rgba(244,240,228,0.5);
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  @media (max-width: 600px) {
+    .filters { padding: 20px; gap: 14px; }
+    .field { min-width: 130px; flex: 1; }
+    .results { padding: 8px 16px 24px 16px; }
+    thead th, tbody td { padding: 10px 8px; font-size: 13px; }
+    td.pct { font-size: 17px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <p class="eyebrow">SAM Pickleball · Court Data</p>
+  <h1>First Choice<br>Leaderboard</h1>
+  <p class="subhead">Who gets first choice to start a game, and how often. Loads your resolved FC data automatically to explore by date range or player.</p>
+</header>
+
+<main>
+  <div class="panel">
+
+    <div class="upload-zone" id="uploadZone">
+      <p id="autoLoadStatus">Checking for fc_tracking_resolved.csv and fc_win_rate_results_resolved.csv in this folder...</p>
+      <div id="autoLoadFailed" style="display:none;">
+        <p>Couldn't auto-load the CSVs. This works when the page is served locally rather than opened directly. In Terminal, from the <strong>assignments</strong> folder (not this html folder):</p>
+        <p style="font-family:'IBM Plex Mono',monospace; font-size:13px; background:rgba(20,32,26,0.06); padding:10px; border-radius:3px; display:inline-block;">python3 -m http.server 8000</p>
+        <p>Then open <strong>http://localhost:8000/html/fc_leaderboard.html</strong> in your browser. Or choose the files manually below.</p>
+        <label class="file-btn" for="fileInput">Choose CSV file(s)</label>
+        <input type="file" id="fileInput" accept=".csv" multiple>
+      </div>
+      <div class="filename" id="filename"></div>
+      <button type="button" id="refreshDataBtn" style="display:none; margin-top:12px;">Refresh data</button>
+    </div>
+
+    <div class="filters" id="filters">
+      <div class="field">
+        <label for="dateStart">From date</label>
+        <input type="date" id="dateStart">
+      </div>
+      <div class="field">
+        <label for="dateEnd">To date</label>
+        <input type="date" id="dateEnd">
+      </div>
+      <div class="field">
+        <label for="playerSelect">Player</label>
+        <select id="playerSelect">
+          <option value="">All players</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="shootoutSelect">Shootout</label>
+        <select id="shootoutSelect">
+          <option value="">All shootouts</option>
+        </select>
+      </div>
+      <div class="field" id="minGamesField">
+        <label for="minGames">Min. games played</label>
+        <input type="number" id="minGames" min="1" value="1">
+      </div>
+    </div>
+
+    <div class="view-toggle" id="viewToggle">
+      <button type="button" id="viewLeaderboardBtn" class="active">Player Leaderboard</button>
+      <button type="button" id="viewGameLogBtn">Game Log</button>
+      <button type="button" id="viewWinRateBtn" style="display:none;">FC vs Non-FC Win Rate</button>
+    </div>
+
+    <div class="winrate-summary" id="winrateSummary" style="display:none;"></div>
+
+    <div class="results" id="results">
+      <div class="results-meta" id="resultsMeta"></div>
+      <table id="resultsTable">
+        <thead id="resultsHead"></thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+      <div class="empty-state" id="emptyState" style="display:none;"></div>
+    </div>
+
+  </div>
+</main>
+
+<footer>Your FC data is read entirely in your browser — nothing is uploaded anywhere.</footer>
+
+<script>
+let allGames = []; // { date, cycleLabel, court, gameNumber, fc: [p1,p2], other: [p1,p2], shootoutOrdinal }
+let allResults = []; // { date, cycleLabel, gameNumber, fcTeam: [p1,p2], otherTeam: [p1,p2], fcWon, fcScore, otherScore, shootoutOrdinal }
+let nameMap = {}; // abbreviated ("E Kramer") -> full name ("Eric Kramer"), when unambiguous
+
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+const filenameEl = document.getElementById('filename');
+const autoLoadStatusEl = document.getElementById('autoLoadStatus');
+const autoLoadFailedEl = document.getElementById('autoLoadFailed');
+const refreshDataBtn = document.getElementById('refreshDataBtn');
+const filtersEl = document.getElementById('filters');
+const viewToggleEl = document.getElementById('viewToggle');
+const viewLeaderboardBtn = document.getElementById('viewLeaderboardBtn');
+const viewGameLogBtn = document.getElementById('viewGameLogBtn');
+const viewWinRateBtn = document.getElementById('viewWinRateBtn');
+const minGamesFieldEl = document.getElementById('minGamesField');
+const winrateSummaryEl = document.getElementById('winrateSummary');
+const resultsEl = document.getElementById('results');
+const resultsMetaEl = document.getElementById('resultsMeta');
+const resultsHeadEl = document.getElementById('resultsHead');
+const resultsBodyEl = document.getElementById('resultsBody');
+const emptyStateEl = document.getElementById('emptyState');
+const resultsTableEl = document.getElementById('resultsTable');
+const playerSelectEl = document.getElementById('playerSelect');
+const shootoutSelectEl = document.getElementById('shootoutSelect');
+const dateStartEl = document.getElementById('dateStart');
+const dateEndEl = document.getElementById('dateEnd');
+const minGamesEl = document.getElementById('minGames');
+
+let currentView = 'leaderboard'; // 'leaderboard' | 'gamelog' | 'winrate'
+
+fileInput.addEventListener('change', (e) => {
+  if (e.target.files.length) handleFiles(e.target.files);
+});
+
+['dragenter', 'dragover'].forEach(evt => {
+  uploadZone.addEventListener(evt, (e) => {
+    e.preventDefault();
+    uploadZone.classList.add('dragging');
+  });
+});
+['dragleave', 'drop'].forEach(evt => {
+  uploadZone.addEventListener(evt, (e) => {
+    e.preventDefault();
+    uploadZone.classList.remove('dragging');
+  });
+});
+uploadZone.addEventListener('drop', (e) => {
+  if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+});
+
+viewLeaderboardBtn.addEventListener('click', () => setView('leaderboard'));
+viewGameLogBtn.addEventListener('click', () => setView('gamelog'));
+viewWinRateBtn.addEventListener('click', () => setView('winrate'));
+
+function setView(view) {
+  currentView = view;
+  viewLeaderboardBtn.classList.toggle('active', view === 'leaderboard');
+  viewGameLogBtn.classList.toggle('active', view === 'gamelog');
+  viewWinRateBtn.classList.toggle('active', view === 'winrate');
+  minGamesFieldEl.style.display = (view === 'leaderboard' || view === 'winrate') ? '' : 'none';
+  winrateSummaryEl.style.display = view === 'winrate' ? 'flex' : 'none';
+  render();
+}
+
+function handleFiles(fileList) {
+  const files = Array.from(fileList);
+  const loadedNames = [];
+  let remaining = files.length;
+
+  files.forEach(file => {
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        loadedNames.push(routeParsedData(file.name, results));
+        remaining -= 1;
+        if (remaining === 0) finishLoading(loadedNames);
+      },
+      error: (err) => {
+        loadedNames.push(file.name + ' (error: ' + err.message + ')');
+        remaining -= 1;
+        if (remaining === 0) finishLoading(loadedNames);
+      }
+    });
+  });
+}
+
+function displayName(abbrev) {
+  return nameMap[abbrev] || abbrev;
+}
+
+function routeParsedData(name, results) {
+  const fields = results.meta.fields || [];
+  if (fields.includes('fc_won')) {
+    parseResults(results.data);
+    return name + ' (win-rate data)';
+  } else if (fields.includes('pool_url')) {
+    parseGames(results.data);
+    return name + ' (FC tracking data)';
+  }
+  return name + ' (unrecognized columns, skipped)';
+}
+
+// Auto-load both CSVs from ../output relative to this page (output/fc_tracking.csv
+// and output/fc_win_rate_results.csv), so the file picker isn't needed on repeat
+// visits. Only works when this page is served over http:// (not double-clicked
+// as a file://), since browsers block that kind of local file access otherwise --
+// see the "Refresh data" instructions in the upload zone for how to serve it.
+function tryAutoLoad() {
+  autoLoadStatusEl.style.display = 'block';
+  autoLoadStatusEl.textContent = 'Checking for fc_tracking_resolved.csv and fc_win_rate_results_resolved.csv...';
+  autoLoadFailedEl.style.display = 'none';
+
+  const targets = [
+    { path: '../output/fc_tracking_resolved.csv', label: 'fc_tracking_resolved.csv' },
+    { path: '../output/fc_win_rate_results_resolved.csv', label: 'fc_win_rate_results_resolved.csv' },
+  ];
+
+  Promise.allSettled(targets.map(t => fetch(t.path).then(r => {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.text();
+  }))).then(outcomes => {
+    const loadedNames = [];
+    let anyLoaded = false;
+
+    outcomes.forEach((outcome, i) => {
+      if (outcome.status !== 'fulfilled') return;
+      const parsed = Papa.parse(outcome.value, { header: true, skipEmptyLines: true });
+      loadedNames.push(routeParsedData(targets[i].label, parsed));
+      anyLoaded = true;
+    });
+
+    if (anyLoaded) {
+      finishLoading(loadedNames);
+    } else {
+      autoLoadStatusEl.style.display = 'none';
+      autoLoadFailedEl.style.display = 'block';
+    }
+  });
+}
+
+function finishLoading(loadedNames) {
+  filenameEl.textContent = 'Loaded: ' + loadedNames.join(', ');
+  autoLoadStatusEl.style.display = 'none';
+  autoLoadFailedEl.style.display = 'none';
+  refreshDataBtn.style.display = 'inline-block';
+  assignShootoutOrdinals(allGames);
+  assignShootoutOrdinals(allResults);
+  populatePlayerDropdown();
+  populateShootoutDropdown();
+  filtersEl.classList.add('active');
+  viewToggleEl.style.display = 'flex';
+  viewWinRateBtn.style.display = allResults.length ? '' : 'none';
+  resultsEl.classList.add('active');
+  setView(allResults.length ? 'winrate' : 'leaderboard');
+}
+
+refreshDataBtn.addEventListener('click', () => {
+  allGames = [];
+  allResults = [];
+  filenameEl.textContent = 'Refreshing...';
+  tryAutoLoad();
+});
+
+// 'Shootout July 3, 2026, 6:42 AM' -> a sortable timestamp (ms), or null if unparseable
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+function parseCycleLabelTimestamp(cycleLabel) {
+  const m = (cycleLabel || '').match(/([A-Za-z]+) (\d{1,2}), (\d{4}), (\d{1,2}):(\d{2}) (AM|PM)/);
+  if (!m) return null;
+  const [, monthName, day, year, hourStr, minute, ampm] = m;
+  const monthIdx = MONTHS.findIndex(mo => mo.toLowerCase() === monthName.toLowerCase());
+  if (monthIdx === -1) return null;
+  let hour = parseInt(hourStr, 10);
+  if (ampm === 'PM' && hour !== 12) hour += 12;
+  if (ampm === 'AM' && hour === 12) hour = 0;
+  return new Date(parseInt(year, 10), monthIdx, parseInt(day, 10), hour, parseInt(minute, 10)).getTime();
+}
+
+function parseGames(rows) {
+  const parsed = rows
+    .filter(r => r.date && r.fc_player_1)
+    .map(r => ({
+      date: r.date.trim(),
+      cycleLabel: (r.cycle_label || '').trim(),
+      court: (r.court || '').trim(),
+      gameNumber: (r.game_number || '').trim(),
+      fc: [r.fc_player_1, r.fc_player_2].map(s => (s || '').trim()).filter(Boolean),
+      other: [r.other_player_1, r.other_player_2].map(s => (s || '').trim()).filter(Boolean),
+      shootoutOrdinal: null, // filled in by assignShootoutOrdinals()
+    }));
+  allGames = allGames.concat(parsed);
+
+  if (allGames.length) {
+    const dates = allGames.map(g => g.date).concat(allResults.map(r => r.date)).sort();
+    if (dates.length) {
+      dateStartEl.value = dates[0];
+      dateEndEl.value = dates[dates.length - 1];
+    }
+  }
+}
+
+function parseResults(rows) {
+  const parsed = rows
+    .filter(r => r.date && r.fc_player_1)
+    .map(r => ({
+      date: r.date.trim(),
+      cycleLabel: (r.cycle_label || '').trim(),
+      gameNumber: (r.game_number || '').trim(),
+      fcTeam: [r.fc_player_1, r.fc_player_2].map(s => (s || '').trim()).filter(Boolean),
+      otherTeam: [r.other_player_1, r.other_player_2].map(s => (s || '').trim()).filter(Boolean),
+      fcWon: (r.fc_won || '').trim().toLowerCase() === 'true',
+      fcScore: (r.fc_score || '').trim(),
+      otherScore: (r.other_score || '').trim(),
+      shootoutOrdinal: null,
+    }));
+  allResults = allResults.concat(parsed);
+
+  if (allResults.length) {
+    const dates = allResults.map(r => r.date).concat(allGames.map(g => g.date)).sort();
+    if (dates.length) {
+      dateStartEl.value = dates[0];
+      dateEndEl.value = dates[dates.length - 1];
+    }
+  }
+}
+
+// Within each date, the earliest-starting shootout is "Shootout 1", the next is
+// "Shootout 2", etc. -- matches how sessions are actually run (e.g. games 1-3
+// vs games 4-6 as separate shootouts on the same morning). Works on either
+// allGames or allResults since both have {date, cycleLabel, shootoutOrdinal}.
+function assignShootoutOrdinals(items) {
+  if (!items || !items.length) return;
+
+  const byDate = {};
+  items.forEach(g => {
+    if (!byDate[g.date]) byDate[g.date] = new Set();
+    byDate[g.date].add(g.cycleLabel);
+  });
+
+  const ordinalByLabel = {};
+  Object.entries(byDate).forEach(([date, labelSet]) => {
+    const labels = Array.from(labelSet).sort((a, b) => {
+      const ta = parseCycleLabelTimestamp(a) ?? 0;
+      const tb = parseCycleLabelTimestamp(b) ?? 0;
+      return ta - tb;
+    });
+    labels.forEach((label, i) => { ordinalByLabel[date + '||' + label] = i + 1; });
+  });
+
+  items.forEach(g => {
+    g.shootoutOrdinal = ordinalByLabel[g.date + '||' + g.cycleLabel] || 1;
+  });
+}
+
+function populatePlayerDropdown() {
+  const players = new Set();
+  allGames.forEach(g => {
+    g.fc.forEach(p => players.add(p));
+    g.other.forEach(p => players.add(p));
+  });
+  allResults.forEach(r => {
+    r.fcTeam.forEach(p => players.add(p));
+    r.otherTeam.forEach(p => players.add(p));
+  });
+  const sorted = Array.from(players).sort((a, b) => displayName(a).localeCompare(displayName(b)));
+  playerSelectEl.innerHTML = '<option value="">All players</option>' +
+    sorted.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(displayName(p))}</option>`).join('');
+}
+
+function populateShootoutDropdown() {
+  const maxOrdinal = Math.max(
+    allGames.reduce((max, g) => Math.max(max, g.shootoutOrdinal || 1), 1),
+    allResults.reduce((max, r) => Math.max(max, r.shootoutOrdinal || 1), 1)
+  );
+  let options = '<option value="">All shootouts</option>';
+  for (let i = 1; i <= maxOrdinal; i++) {
+    options += `<option value="${i}">${i}</option>`;
+  }
+  shootoutSelectEl.innerHTML = options;
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function getFilteredGames() {
+  const start = dateStartEl.value;
+  const end = dateEndEl.value;
+  const selectedPlayer = playerSelectEl.value;
+  const selectedShootout = shootoutSelectEl.value;
+
+  return allGames.filter(g => {
+    if (start && g.date < start) return false;
+    if (end && g.date > end) return false;
+    if (selectedShootout && String(g.shootoutOrdinal) !== selectedShootout) return false;
+    if (selectedPlayer && !g.fc.includes(selectedPlayer) && !g.other.includes(selectedPlayer)) return false;
+    return true;
+  });
+}
+
+function getFilteredResults() {
+  const start = dateStartEl.value;
+  const end = dateEndEl.value;
+  const selectedPlayer = playerSelectEl.value;
+  const selectedShootout = shootoutSelectEl.value;
+
+  return allResults.filter(r => {
+    if (start && r.date < start) return false;
+    if (end && r.date > end) return false;
+    if (selectedShootout && String(r.shootoutOrdinal) !== selectedShootout) return false;
+    if (selectedPlayer && !r.fcTeam.includes(selectedPlayer) && !r.otherTeam.includes(selectedPlayer)) return false;
+    return true;
+  });
+}
+
+// For each player: the longest run of consecutive games (in chronological
+// order) where they got FC, and the longest run where they didn't.
+function computeStreaks(games) {
+  const perPlayer = {}; // player -> [{sortKey, gotFC}]
+
+  games.forEach(g => {
+    const ts = parseCycleLabelTimestamp(g.cycleLabel) ?? 0;
+    const gn = parseInt(g.gameNumber, 10) || 0;
+    const sortKey = g.date + '|' + String(ts).padStart(15, '0') + '|' + String(gn).padStart(3, '0');
+
+    g.fc.forEach(p => {
+      if (!perPlayer[p]) perPlayer[p] = [];
+      perPlayer[p].push({ sortKey, gotFC: true });
+    });
+    g.other.forEach(p => {
+      if (!perPlayer[p]) perPlayer[p] = [];
+      perPlayer[p].push({ sortKey, gotFC: false });
+    });
+  });
+
+  const result = {};
+  Object.entries(perPlayer).forEach(([player, entries]) => {
+    entries.sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0));
+
+    let longestFC = 0, longestNonFC = 0, curFC = 0, curNonFC = 0;
+    entries.forEach(e => {
+      if (e.gotFC) {
+        curFC += 1;
+        curNonFC = 0;
+        if (curFC > longestFC) longestFC = curFC;
+      } else {
+        curNonFC += 1;
+        curFC = 0;
+        if (curNonFC > longestNonFC) longestNonFC = curNonFC;
+      }
+    });
+
+    result[player] = { longestFCStreak: longestFC, longestNonFCStreak: longestNonFC };
+  });
+
+  return result;
+}
+
+function computeLeaderboard(filtered) {
+  const minGames = parseInt(minGamesEl.value, 10) || 1;
+  const selectedPlayer = playerSelectEl.value;
+
+  const stats = {}; // player -> { games, fc }
+  filtered.forEach(g => {
+    const everyone = [...g.fc, ...g.other];
+    everyone.forEach(p => {
+      if (!stats[p]) stats[p] = { games: 0, fc: 0 };
+      stats[p].games += 1;
+    });
+    g.fc.forEach(p => { stats[p].fc += 1; });
+  });
+
+  const streaks = computeStreaks(filtered);
+
+  let rows = Object.entries(stats).map(([player, s]) => ({
+    player,
+    games: s.games,
+    fc: s.fc,
+    pct: s.games > 0 ? (s.fc / s.games) * 100 : 0,
+    longestFCStreak: streaks[player] ? streaks[player].longestFCStreak : 0,
+    longestNonFCStreak: streaks[player] ? streaks[player].longestNonFCStreak : 0,
+  }));
+
+  rows = rows.filter(r => r.games >= minGames);
+
+  if (selectedPlayer) {
+    rows = rows.filter(r => r.player === selectedPlayer);
+  }
+
+  rows.sort((a, b) => b.pct - a.pct || b.games - a.games || a.player.localeCompare(b.player));
+
+  return rows;
+}
+
+function renderLeaderboard(filtered) {
+  const rows = computeLeaderboard(filtered);
+
+  resultsMetaEl.textContent = `${filtered.length} game${filtered.length === 1 ? '' : 's'} in range · ${rows.length} player${rows.length === 1 ? '' : 's'} shown`;
+
+  resultsHeadEl.innerHTML = `
+    <tr>
+      <th>#</th>
+      <th>Player</th>
+      <th class="num">Games</th>
+      <th class="num">FC Count</th>
+      <th class="num">FC %</th>
+      <th class="num">Longest FC Streak</th>
+      <th class="num">Longest No-FC Streak</th>
+    </tr>`;
+
+  if (!rows.length) {
+    resultsTableEl.style.display = 'none';
+    emptyStateEl.style.display = 'block';
+    emptyStateEl.textContent = 'No players match these filters. Try lowering the minimum games, or widening the date range.';
+    return;
+  }
+
+  resultsTableEl.style.display = '';
+  emptyStateEl.style.display = 'none';
+
+  resultsBodyEl.innerHTML = rows.map((r, i) => `
+    <tr>
+      <td class="rank">${i + 1}</td>
+      <td class="player">${escapeHtml(displayName(r.player))}</td>
+      <td class="num">${r.games}</td>
+      <td class="num">${r.fc}</td>
+      <td class="pct"><span class="chip">${r.pct.toFixed(1)}%</span></td>
+      <td class="num">${r.longestFCStreak}</td>
+      <td class="num">${r.longestNonFCStreak}</td>
+    </tr>
+  `).join('');
+}
+
+function renderGameLog(filtered) {
+  const rows = filtered.slice().sort((a, b) => {
+    if (a.date !== b.date) return b.date < a.date ? -1 : 1; // most recent date first
+    const ta = parseCycleLabelTimestamp(a.cycleLabel) ?? 0;
+    const tb = parseCycleLabelTimestamp(b.cycleLabel) ?? 0;
+    if (ta !== tb) return tb - ta;
+    return (parseInt(a.gameNumber, 10) || 0) - (parseInt(b.gameNumber, 10) || 0);
+  });
+
+  resultsMetaEl.textContent = `${rows.length} game${rows.length === 1 ? '' : 's'} shown`;
+
+  resultsHeadEl.innerHTML = `
+    <tr>
+      <th>Date</th>
+      <th>Shootout</th>
+      <th>Court</th>
+      <th class="num">Game</th>
+      <th>Matchup (FC team first)</th>
+    </tr>`;
+
+  if (!rows.length) {
+    resultsTableEl.style.display = 'none';
+    emptyStateEl.style.display = 'block';
+    emptyStateEl.textContent = 'No games match these filters. Try widening the date range or clearing the player filter.';
+    return;
+  }
+
+  resultsTableEl.style.display = '';
+  emptyStateEl.style.display = 'none';
+
+  resultsBodyEl.innerHTML = rows.map(g => `
+    <tr>
+      <td>${escapeHtml(g.date)}</td>
+      <td class="shootout-tag">#${g.shootoutOrdinal}</td>
+      <td>${escapeHtml(g.court || '—')}</td>
+      <td class="num">${escapeHtml(g.gameNumber || '')}</td>
+      <td class="matchup">
+        <span class="fc-side">${escapeHtml(g.fc.map(displayName).join(' / '))}</span>
+        <span class="vs">vs</span>
+        <span class="other-side">${escapeHtml(g.other.map(displayName).join(' / '))}</span>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function computeWinRateSummary(filtered) {
+  const total = filtered.length;
+  const fcWins = filtered.filter(r => r.fcWon).length;
+  return {
+    total,
+    fcWins,
+    fcWinPct: total > 0 ? (fcWins / total) * 100 : null,
+    otherWins: total - fcWins,
+    otherWinPct: total > 0 ? ((total - fcWins) / total) * 100 : null,
+  };
+}
+
+// For each player: how often do they win when THEY have FC, vs when they don't.
+function computePerPlayerWinRateDiff(filtered) {
+  const stats = {}; // player -> { withFC: {games, wins}, withoutFC: {games, wins} }
+
+  filtered.forEach(r => {
+    r.fcTeam.forEach(p => {
+      if (!stats[p]) stats[p] = { withFC: { games: 0, wins: 0 }, withoutFC: { games: 0, wins: 0 } };
+      stats[p].withFC.games += 1;
+      if (r.fcWon) stats[p].withFC.wins += 1;
+    });
+    r.otherTeam.forEach(p => {
+      if (!stats[p]) stats[p] = { withFC: { games: 0, wins: 0 }, withoutFC: { games: 0, wins: 0 } };
+      stats[p].withoutFC.games += 1;
+      if (!r.fcWon) stats[p].withoutFC.wins += 1;
+    });
+  });
+
+  return Object.entries(stats).map(([player, s]) => {
+    const withFCPct = s.withFC.games > 0 ? (s.withFC.wins / s.withFC.games) * 100 : null;
+    const withoutFCPct = s.withoutFC.games > 0 ? (s.withoutFC.wins / s.withoutFC.games) * 100 : null;
+    const diff = (withFCPct !== null && withoutFCPct !== null) ? withFCPct - withoutFCPct : null;
+    return {
+      player,
+      totalGames: s.withFC.games + s.withoutFC.games,
+      withFCGames: s.withFC.games,
+      withFCPct,
+      withoutFCGames: s.withoutFC.games,
+      withoutFCPct,
+      diff,
+    };
+  });
+}
+
+function renderWinRate(filtered) {
+  const minGames = parseInt(minGamesEl.value, 10) || 1;
+  const selectedPlayer = playerSelectEl.value;
+  const summary = computeWinRateSummary(filtered);
+
+  resultsMetaEl.textContent = `${filtered.length} matched game${filtered.length === 1 ? '' : 's'} in range`;
+
+  if (!filtered.length) {
+    winrateSummaryEl.innerHTML = '';
+    resultsTableEl.style.display = 'none';
+    emptyStateEl.style.display = 'block';
+    emptyStateEl.textContent = 'No matched games in this range. Run fc_win_rate.py then resolve_names.py to generate fc_win_rate_results_resolved.csv, or widen the date range.';
+    return;
+  }
+
+  winrateSummaryEl.innerHTML = `
+    <div class="winrate-summary-item fc-side">
+      <div class="winrate-summary-label">FC Team Win Rate</div>
+      <div class="winrate-summary-value">${summary.fcWinPct.toFixed(1)}%</div>
+      <div class="winrate-summary-sub">${summary.fcWins} of ${summary.total} games</div>
+    </div>
+    <div class="winrate-summary-item">
+      <div class="winrate-summary-label">Non-FC Team Win Rate</div>
+      <div class="winrate-summary-value">${summary.otherWinPct.toFixed(1)}%</div>
+      <div class="winrate-summary-sub">${summary.otherWins} of ${summary.total} games</div>
+    </div>
+  `;
+
+  let rows = computePerPlayerWinRateDiff(filtered);
+  rows = rows.filter(r => r.totalGames >= minGames);
+  if (selectedPlayer) {
+    rows = rows.filter(r => r.player === selectedPlayer);
+  }
+  rows.sort((a, b) => {
+    const ad = a.diff === null ? -Infinity : a.diff;
+    const bd = b.diff === null ? -Infinity : b.diff;
+    return bd - ad || b.totalGames - a.totalGames || a.player.localeCompare(b.player);
+  });
+
+  resultsHeadEl.innerHTML = `
+    <tr>
+      <th>Player</th>
+      <th class="num">Games w/ FC</th>
+      <th class="num">Win % w/ FC</th>
+      <th class="num">Games w/o FC</th>
+      <th class="num">Win % w/o FC</th>
+      <th class="num">Diff</th>
+    </tr>`;
+
+  if (!rows.length) {
+    resultsTableEl.style.display = 'none';
+    emptyStateEl.style.display = 'block';
+    emptyStateEl.textContent = 'No players match these filters. Try lowering the minimum games.';
+    return;
+  }
+
+  resultsTableEl.style.display = '';
+  emptyStateEl.style.display = 'none';
+
+  resultsBodyEl.innerHTML = rows.map(r => {
+    const diffClass = r.diff === null ? 'diff-na' : (r.diff >= 0 ? 'diff-pos' : 'diff-neg');
+    const diffText = r.diff === null ? '—' : `${r.diff >= 0 ? '+' : ''}${r.diff.toFixed(1)} pp`;
+    return `
+      <tr>
+        <td class="player">${escapeHtml(displayName(r.player))}</td>
+        <td class="num">${r.withFCGames}</td>
+        <td class="num">${r.withFCPct !== null ? r.withFCPct.toFixed(1) + '%' : '—'}</td>
+        <td class="num">${r.withoutFCGames}</td>
+        <td class="num">${r.withoutFCPct !== null ? r.withoutFCPct.toFixed(1) + '%' : '—'}</td>
+        <td class="num ${diffClass}">${diffText}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function render() {
+  if (currentView === 'leaderboard') {
+    renderLeaderboard(getFilteredGames());
+  } else if (currentView === 'gamelog') {
+    renderGameLog(getFilteredGames());
+  } else if (currentView === 'winrate') {
+    renderWinRate(getFilteredResults());
+  }
+}
+
+[dateStartEl, dateEndEl, playerSelectEl, shootoutSelectEl, minGamesEl].forEach(el => {
+  el.addEventListener('input', render);
+  el.addEventListener('change', render);
+});
+
+tryAutoLoad();
+</script>
+
+</body>
+</html>

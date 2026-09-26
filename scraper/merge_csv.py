@@ -6,6 +6,9 @@ from pathlib import Path
 MASTER_FILE = Path("data/master_history_raw.csv")
 UPDATE_FILE = Path("data/latest_scrape.csv")
 
+LATEST_STANDINGS_FILE = Path("data/latest_scrape_standings.csv")
+POOL_STANDINGS_FILE = Path("data/pool_standings.csv")
+
 
 def _norm_shootout(x):
     """'1', '1.0', 1, 1.0 all -> '1' so master- and update-file dtypes compare cleanly."""
@@ -115,6 +118,67 @@ def validate_pools(df, touched_pools):
     return problems
 
 
+def merge_pool_standings():
+    """
+    Merge this run's scraped Round Robin Stats (data/latest_scrape_standings.csv,
+    written by scrape.js's View Event pass) into the durable
+    data/pool_standings.csv. Best-effort and independent of the main master
+    history merge above -- a missing/empty standings file just means no new
+    standings to merge (e.g. the View Event pass failed or found nothing),
+    never an error.
+
+    A pool's standings only replace what's already on file for that
+    (play_date, shootout, pool) once the new data passes a light sanity
+    check: exactly one row per rank 1..N with no gaps or repeats (Den's
+    grid should always come back complete or not at all). A pool that
+    fails this check is skipped -- keeping whatever was already on file
+    (if anything) -- rather than writing a partial/garbled standings.
+    """
+    if not LATEST_STANDINGS_FILE.exists():
+        return
+    new_standings = pd.read_csv(LATEST_STANDINGS_FILE)
+    if new_standings.empty:
+        return
+
+    new_standings["shootout"] = new_standings["shootout"].map(_norm_shootout)
+
+    if POOL_STANDINGS_FILE.exists():
+        existing = pd.read_csv(POOL_STANDINGS_FILE)
+        existing["shootout"] = existing["shootout"].map(_norm_shootout)
+    else:
+        existing = pd.DataFrame(columns=["play_date", "shootout", "pool", "rank", "player", "wins", "losses", "diff"])
+
+    group_cols = ["play_date", "shootout", "pool"]
+    valid_groups = []
+    for key, grp in new_standings.groupby(group_cols):
+        ranks = sorted(grp["rank"].tolist())
+        if ranks == list(range(1, len(ranks) + 1)):
+            valid_groups.append(key)
+        else:
+            print(f"  ⚠ Skipping standings for {key[0]} shootout {key[1]} {key[2]}: "
+                  f"ranks {ranks} are not a clean 1..N sequence -- keeping prior data, if any.")
+
+    if not valid_groups:
+        return
+
+    valid_mask = new_standings.set_index(group_cols).index.isin(valid_groups)
+    new_standings = new_standings[valid_mask]
+
+    # Replace: drop any existing rows for the (play_date, shootout, pool)
+    # keys this run just re-supplied valid data for, then append the new
+    # rows -- so a rescrape always overwrites rather than accumulating
+    # duplicates.
+    touched = set(new_standings[group_cols].itertuples(index=False, name=None))
+    if not existing.empty:
+        keep_mask = ~existing[group_cols].apply(tuple, axis=1).isin(touched)
+        existing = existing[keep_mask]
+
+    combined = pd.concat([existing, new_standings], ignore_index=True)
+    combined = combined.sort_values(["play_date", "shootout", "pool", "rank"]).reset_index(drop=True)
+    combined.to_csv(POOL_STANDINGS_FILE, index=False)
+    print(f"Pool standings updated: {len(new_standings)} row(s) merged across {len(valid_groups)} pool(s).")
+
+
 print("Loading files...")
 
 master = pd.read_csv(MASTER_FILE)
@@ -172,6 +236,13 @@ df["exclude_match"] = (
     .fillna(False)
 )
 
+# Normalize first_choice: older rows (scraped before this column existed)
+# simply don't have it -- blank means "not captured," never "no first
+# choice," and is always treated that way downstream.
+if "first_choice" not in df.columns:
+    df["first_choice"] = ""
+df["first_choice"] = df["first_choice"].fillna("")
+
 # Parse dates and sort chronologically
 df["posted_dt"] = pd.to_datetime(df["posted"], errors="coerce")
 
@@ -194,7 +265,7 @@ touched_pools = find_touched_pools(update)
 problems = validate_pools(df, touched_pools)
 if problems:
     print("")
-    print("\u26a0 VALIDATION FAILED -- refusing to write master_history_raw.csv:")
+    print("⚠ VALIDATION FAILED -- refusing to write master_history_raw.csv:")
     for p in problems:
         print(f"  - {p}")
     print("")
@@ -208,3 +279,5 @@ print("")
 print("Master history rebuilt successfully.")
 print(f"Final row count: {len(df)}")
 print(f"Newest date: {latest_date}")
+
+merge_pool_standings()

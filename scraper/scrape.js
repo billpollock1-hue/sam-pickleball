@@ -1,6 +1,7 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
 const readline = require('readline');
+const viewEventLib = require('./view_event_lib');
 
 (async () => {
   let browser;
@@ -636,6 +637,7 @@ const startInput = getArg('--start') || await ask('Enter start date (MMDDYY), e.
     }
 
     const results = [];
+    const standingsResults = [];
 
     for (let i = 0; i < allShootouts.length; i++) {
       const s = allShootouts[i];
@@ -658,7 +660,63 @@ const startInput = getArg('--start') || await ask('Enter start date (MMDDYY), e.
         const rows = await extractCurrentScorePage();
         // Override whatever (unreliable) shootout label the page scrape
         // produced with the correct chronologically-derived session number.
-        rows.forEach(r => { r.shootout = s.sessionNumber; });
+        rows.forEach(r => { r.shootout = s.sessionNumber; r.first_choice = ''; });
+
+        // Second pass: visit each pool's "View Event" -> "View Matches" page
+        // for First Choice badges and Den's own official Round Robin Stats
+        // standings (see view_event_lib.js for DOM details/caveats). This is
+        // best-effort layered on top of the View Scores rows above -- if
+        // anything here fails, those rows are already good and are kept
+        // as-is with first_choice left blank.
+        try {
+          await reopenClubPlayList();
+          let reopened = await findAndOpenShootout(s.started, s.seenScrollTop);
+          if (reopened && await viewEventLib.openViewEventForOpenShootout(page)) {
+            const pools = await viewEventLib.listPoolsInBracket(page);
+            const playDate = new Date(s.started).toISOString().slice(0, 10);
+
+            for (const poolName of pools) {
+              const opened = await viewEventLib.openPoolMatches(page, poolName);
+              if (!opened) {
+                console.log(`  ⚠ Could not open View Matches for ${poolName} -- skipping FC/standings for this pool.`);
+              } else {
+                const { matches, standings } = await viewEventLib.extractMatchesAndStandings(page);
+                const poolRows = rows.filter(r => r.pool === poolName);
+                viewEventLib.correlateFirstChoice(poolRows, matches);
+                standings.forEach(row => {
+                  standingsResults.push({
+                    play_date: playDate,
+                    shootout: s.sessionNumber,
+                    pool: poolName,
+                    rank: row.rank,
+                    player: row.player,
+                    wins: row.wins,
+                    losses: row.losses,
+                    diff: row.diff,
+                  });
+                });
+                const leader = standings.find(x => x.rank === 1);
+                console.log(`  ✅ ${poolName}: ${matches.length} match(es), ${standings.length} standings row(s)` +
+                  (leader ? ` (leader: ${leader.player})` : ''));
+              }
+
+              // Re-anchor from the Bracket List for the next pool, same
+              // "always reopen from Club Play List" approach used elsewhere
+              // in this file for reliability over speed.
+              await reopenClubPlayList();
+              reopened = await findAndOpenShootout(s.started, s.seenScrollTop);
+              if (!reopened || !await viewEventLib.openViewEventForOpenShootout(page)) {
+                console.log('  ⚠ Could not re-open View Event for the next pool -- stopping FC/standings pass for this shootout.');
+                break;
+              }
+            }
+          } else {
+            console.log(`  ⚠ Could not open View Event for ${s.started} -- first_choice/standings left blank for this shootout.`);
+          }
+        } catch (viewEventErr) {
+          console.log(`  ⚠ View Event pass failed for ${s.started}: ${viewEventErr.message} -- first_choice/standings left blank for this shootout.`);
+        }
+
         console.log(`✅ Extracted ${rows.length} rows from ${s.started} (Session ${s.sessionNumber})`);
         results.push(...rows);
 
@@ -677,7 +735,8 @@ const startInput = getArg('--start') || await ask('Enter start date (MMDDYY), e.
       'losing_team',
       'losing_score',
       'game_type',
-      'pool'
+      'pool',
+      'first_choice'
     ];
 
     const csvLines = [
@@ -691,15 +750,27 @@ const startInput = getArg('--start') || await ask('Enter start date (MMDDYY), e.
           r.losing_team,
           r.losing_score,
           r.game_type,
-          r.pool
+          r.pool,
+          r.first_choice || ''
         ].map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')
       )
     ];
 
     const outputFile = outputArg || `shootout_scores_${startInput}_${endInput}.csv`;
     fs.writeFileSync(outputFile, csvLines.join('\n'), 'utf8');
-
     console.log(`\n🎉 Done. Wrote ${deduped.length} rows to ${outputFile}`);
+
+    const standingsHeader = ['play_date', 'shootout', 'pool', 'rank', 'player', 'wins', 'losses', 'diff'];
+    const standingsLines = [
+      standingsHeader.join(','),
+      ...standingsResults.map(r =>
+        [r.play_date, r.shootout, r.pool, r.rank, r.player, r.wins, r.losses, r.diff]
+          .map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')
+      )
+    ];
+    const standingsFile = outputFile.replace(/\.csv$/, '') + '_standings.csv';
+    fs.writeFileSync(standingsFile, standingsLines.join('\n'), 'utf8');
+    console.log(`🎉 Wrote ${standingsResults.length} standings rows to ${standingsFile}`);
 
   } catch (err) {
     console.error('\n❌ Script failed:', err.message);

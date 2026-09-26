@@ -35,6 +35,7 @@ REPO_ROOT = ENGINE_DIR.parent
 XLSX_PATH = REPO_ROOT / "output" / "pickleball_model_latest.xlsx"
 GENDER_PATH = REPO_ROOT / "data" / "player_gender.csv"
 OVERRIDES_PATH = REPO_ROOT / "data" / "shootout_leader_overrides.csv"
+POOL_STANDINGS_PATH = REPO_ROOT / "data" / "pool_standings.csv"
 OUT_PATH = REPO_ROOT / "output" / "bear_count.html"
 
 BEAR_START_DATE = pd.Timestamp("2026-08-24")
@@ -69,6 +70,22 @@ if OVERRIDES_PATH.exists():
         if winner:
             overrides_map[_pool_key(r["play_date"], r["shootout"], r["pool"])] = winner
 
+# ── Official pool leader, straight from Den ─────────────────────────────
+# Since the First Choice / auto-winner-detection feature, scrape.js also
+# captures Den's own official Round Robin Stats standings per pool (its
+# real basis for picking a winner isn't fully known to us, and has been
+# observed to disagree with our own win/margin recomputation even on
+# pools that aren't literal wins+margin ties -- e.g. 2026-09-25 Pool 1).
+# Wherever we have Den's own rank-1 finisher for a pool, that's used
+# directly as the pool leader instead of re-deriving one -- the win/margin
+# calculation and shootout_leader_overrides.csv above remain only as a
+# fallback for pools scraped before this feature existed.
+official_leader_map = {}
+if POOL_STANDINGS_PATH.exists():
+    standings_df = pd.read_csv(POOL_STANDINGS_PATH, dtype=str).fillna("")
+    for _, r in standings_df[standings_df["rank"] == "1"].iterrows():
+        official_leader_map[_pool_key(r["play_date"], r["shootout"], r["pool"])] = r["player"].strip()
+
 if gl.empty:
     print(f"No rated games on/after {BEAR_START_DATE.date()} -- nothing to build.")
     raise SystemExit(0)
@@ -89,19 +106,27 @@ pool_player_stats = (
 leader_rows = []
 unresolved_ties = []
 for key, grp in pool_player_stats.groupby(pool_keys):
-    max_wins = grp["wins"].max()
-    top = grp[grp["wins"] == max_wins]
-    max_margin = top["margin_sum"].max()
-    tied = top[top["margin_sum"] == max_margin]
-    if len(tied) == 1:
-        leaders = tied
+    official_leader = official_leader_map.get(_pool_key(*key))
+    if official_leader is not None and official_leader in grp["player"].values:
+        leaders = grp[grp["player"] == official_leader]
     else:
-        winner = overrides_map.get(_pool_key(*key))
-        if winner is not None and winner in tied["player"].values:
-            leaders = tied[tied["player"] == winner]
+        # No official standings for this pool yet (not backfilled, or the
+        # View Event scrape failed for it) -- fall back to our own
+        # win/margin derivation plus the manual overrides file, exactly as
+        # before this feature existed.
+        max_wins = grp["wins"].max()
+        top = grp[grp["wins"] == max_wins]
+        max_margin = top["margin_sum"].max()
+        tied = top[top["margin_sum"] == max_margin]
+        if len(tied) == 1:
+            leaders = tied
         else:
-            unresolved_ties.append((key, list(tied["player"])))
-            leaders = tied.iloc[0:0]
+            winner = overrides_map.get(_pool_key(*key))
+            if winner is not None and winner in tied["player"].values:
+                leaders = tied[tied["player"] == winner]
+            else:
+                unresolved_ties.append((key, list(tied["player"])))
+                leaders = tied.iloc[0:0]
     for _, lr in leaders.iterrows():
         leader_rows.append({
             "play_date": key[0], "shootout": key[1], "pool": key[2],

@@ -11,6 +11,8 @@ output/
 # Live data files
 data/master_history_raw.csv
 data/latest_scrape.csv
+data/latest_scrape_standings.csv
+data/pool_standings.csv
 
 # Virtual environment
 .venv/

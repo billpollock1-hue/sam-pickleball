@@ -13,6 +13,9 @@ data/master_history_raw.csv
 data/latest_scrape.csv
 data/latest_scrape_standings.csv
 data/pool_standings.csv
+data/backfill_standings.csv
+data/backfill_matches.csv
+data/master_history_raw.csv.pre-backfill-*.bak
 
 # Virtual environment
 .venv/

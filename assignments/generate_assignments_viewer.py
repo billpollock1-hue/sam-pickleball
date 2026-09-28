@@ -68,6 +68,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 .pg-title { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
 .pg-sub { font-size: 12px; color: #666; }
 .pg-warn { font-size: 12px; font-weight: bold; color: #c00000; margin-top: 3px; }
+.pg-info { font-size: 12px; color: #666; margin-top: 3px; }
 .pg-preliminary { font-size: 12px; font-weight: bold; color: #7030a0; margin-top: 3px; }
 
 h2.court-title { font-size: 13px; font-weight: 700; color: #333;
@@ -198,7 +199,7 @@ function pageHeader(d, extra, dateStr) {
     h += `<div class="pg-preliminary">📋 PRELIMINARY — Court assignments and ratings will update as more sessions are played before this date.</div>`;
   } else {
     if (d.den_current === false) {
-      h += `<div class="pg-warn">⚠ DEN ASSIGNMENTS STALE — Step/% data will refresh automatically at the next scheduled update.</div>`;
+      h += `<div class="pg-info">Den's Step/% ratings weren't available this cycle (login session needs a manual refresh) — SAM's own ratings below are unaffected.</div>`;
     }
     if (d.ratings_through) {
       const ratingsDate = new Date(d.ratings_through.replace(/(\d+)\/(\d+)\/(\d+)/, '20$3-$1-$2'));

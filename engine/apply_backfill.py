@@ -40,6 +40,32 @@ def norm_shootout(x):
         return str(x).strip()
 
 
+def abbrev(full_name):
+    parts = str(full_name).strip().split()
+    if len(parts) < 2:
+        return str(full_name).strip()
+    return parts[0][0] + " " + " ".join(parts[1:])
+
+
+def team_set(names_str, sep):
+    return frozenset(x.strip() for x in str(names_str).split(sep) if x.strip())
+
+
+# Den labels a drop-in/guest player generically instead of by name; the
+# history file has since recorded who it actually was. Confirmed by Bill.
+NAME_ALIASES = {
+    "D Tryout": "C McKee",
+}
+
+
+def resolve_alias(abbrev_name):
+    return NAME_ALIASES.get(abbrev_name, abbrev_name)
+
+
+def team_set_aliased(names_str, sep):
+    return frozenset(resolve_alias(x.strip()) for x in str(names_str).split(sep) if x.strip())
+
+
 def merge_standings():
     if not BACKFILL_STANDINGS_FILE.exists():
         print("No data/backfill_standings.csv found -- nothing to merge into pool_standings.csv.")
@@ -107,10 +133,23 @@ def fill_first_choice():
     no_master_rows = 0
     score_mismatches = 0
 
-    for (play_date, shootout, pool), grp in matches.groupby(["play_date", "shootout", "pool"]):
+    # Group by (play_date, pool) rather than (play_date, shootout, pool):
+    # Den's session-1/session-2 split for a given day doesn't always match
+    # how master_history_raw.csv originally recorded it (a day scraped live
+    # years ago may have been split into two sessions where Den's retrospective
+    # view now shows one, or vice versa). The *total* game count for a pool on
+    # a given day is far more reliable than session numbering, so pairing is
+    # done chronologically across the whole day -- master rows sorted by their
+    # real timestamp, backfill rows sorted by (session order, match_index),
+    # which is equivalent to chronological order since sessions are already
+    # discovered time-ordered. This is a strict generalization of matching by
+    # exact session number (a single-session day behaves identically), and the
+    # score-pair check below still guards against a bad pairing either way.
+    matches["shootout_sort"] = matches["shootout"].map(lambda x: int(x) if str(x).lstrip("-").isdigit() else 0)
+
+    for (play_date, pool), grp in matches.groupby(["play_date", "pool"]):
         mask = (
             (master["play_date"] == play_date)
-            & (master["shootout_norm"] == shootout)
             & (master["pool"] == pool)
         )
         master_idx = master[mask].sort_values("posted_dt").index.tolist()
@@ -118,9 +157,10 @@ def fill_first_choice():
             no_master_rows += len(grp)
             continue
 
-        backfill_rows = grp.sort_values("match_index").to_dict("records")
+        backfill_rows = grp.sort_values(["shootout_sort", "match_index"]).to_dict("records")
         n = min(len(master_idx), len(backfill_rows))
 
+        # --- Pass 1: positional (chronological order on both sides) ---
         for i in range(n):
             idx = master_idx[i]
             b = backfill_rows[i]
@@ -132,17 +172,64 @@ def fill_first_choice():
                 lose_score = int(float(master.at[idx, "losing_score"]))
                 b_scores = sorted([int(b["team1_score"]), int(b["team2_score"])], reverse=True)
             except (TypeError, ValueError):
-                score_mismatches += 1
-                continue
+                continue  # left for the roster-fallback pass below
 
             if b_scores != [win_score, lose_score]:
-                score_mismatches += 1
-                continue
+                continue  # left for the roster-fallback pass below
 
             fc_team = str(b.get("first_choice_team", "") or "").strip()
             if not fc_team:
                 continue  # no FC badge visible on either row for this game -- leave blank
 
+            fc_is_winner = int(b["team1_score"]) == win_score and fc_team == str(b["team1"]).strip() or \
+                           int(b["team2_score"]) == win_score and fc_team == str(b["team2"]).strip()
+            master.at[idx, "first_choice"] = master.at[idx, "winning_team"] if fc_is_winner else master.at[idx, "losing_team"]
+            updated += 1
+
+        # --- Pass 2: roster fallback for whatever's still blank. Master's
+        # timestamps are minute-precision, so two games posted in the same
+        # minute can tie and land in the wrong relative order, which makes
+        # pass 1 compare a row against its neighbor's backfill row instead
+        # of its own and fail the score check for both. This searches every
+        # backfill row in the pool for one whose two teams (by abbreviated
+        # name, aliases applied) and score match exactly, independent of
+        # position -- and only commits when that match is unique.
+        for idx in master_idx:
+            if str(master.at[idx, "first_choice"]).strip():
+                continue
+            try:
+                win_score = int(float(master.at[idx, "winning_score"]))
+                lose_score = int(float(master.at[idx, "losing_score"]))
+            except (TypeError, ValueError):
+                score_mismatches += 1
+                continue
+
+            w_abbrev = frozenset(abbrev(n) for n in team_set(master.at[idx, "winning_team"], " / "))
+            l_abbrev = frozenset(abbrev(n) for n in team_set(master.at[idx, "losing_team"], " / "))
+
+            candidates = []
+            for b in backfill_rows:
+                bt1 = team_set_aliased(b["team1"], "/")
+                bt2 = team_set_aliased(b["team2"], "/")
+                if {bt1, bt2} != {w_abbrev, l_abbrev}:
+                    continue
+                try:
+                    b1s, b2s = int(b["team1_score"]), int(b["team2_score"])
+                except (TypeError, ValueError):
+                    continue
+                if {b1s, b2s} != {win_score, lose_score}:
+                    continue
+                if (bt1 == w_abbrev and b1s == win_score) or (bt1 == l_abbrev and b1s == lose_score):
+                    candidates.append(b)
+
+            if len(candidates) != 1:
+                score_mismatches += 1
+                continue
+
+            b = candidates[0]
+            fc_team = str(b.get("first_choice_team", "") or "").strip()
+            if not fc_team:
+                continue  # no FC badge visible on either row for this game -- leave blank
             fc_is_winner = int(b["team1_score"]) == win_score and fc_team == str(b["team1"]).strip() or \
                            int(b["team2_score"]) == win_score and fc_team == str(b["team2"]).strip()
             master.at[idx, "first_choice"] = master.at[idx, "winning_team"] if fc_is_winner else master.at[idx, "losing_team"]
@@ -165,5 +252,11 @@ def fill_first_choice():
 
 
 if __name__ == "__main__":
+    # first_choice backfilling is deliberately deferred for now -- only
+    # the standings/winner merge runs by default. Pass --first-choice to
+    # also run fill_first_choice() when that thread is picked back up.
     merge_standings()
-    fill_first_choice()
+    if "--first-choice" in sys.argv:
+        fill_first_choice()
+    else:
+        print("Skipping first_choice backfill (deferred) -- pass --first-choice to include it.")

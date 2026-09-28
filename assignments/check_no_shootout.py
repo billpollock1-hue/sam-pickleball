@@ -110,17 +110,22 @@ def record_no_shootout(date_obj):
     NO_SHOOTOUT_LOG.parent.mkdir(parents=True, exist_ok=True)
 
     if NO_SHOOTOUT_LOG.exists():
-        existing = pd.read_csv(NO_SHOOTOUT_LOG)
+        existing = pd.read_csv(NO_SHOOTOUT_LOG, dtype=str)
     else:
-        existing = pd.DataFrame(columns=["date"])
+        existing = pd.DataFrame(columns=["date", "source"])
+    if "source" not in existing.columns:
+        existing["source"] = ""
 
     date_str = date_obj.strftime("%Y-%m-%d")
     if date_str in existing["date"].astype(str).values:
         print(f"{date_str} already recorded as a no-shootout date -- nothing to do.")
         return
 
+    # Tagged "auto" (distinct from the admin panel's "manual" entries)
+    # so remove_stale_no_shootout_entry() below only ever removes its
+    # own kind of entry, never a deliberate manual cancellation.
     existing = pd.concat(
-        [existing, pd.DataFrame([{"date": date_str}])], ignore_index=True
+        [existing, pd.DataFrame([{"date": date_str, "source": "auto"}])], ignore_index=True
     )
     existing.to_csv(NO_SHOOTOUT_LOG, index=False)
     print(f"✓ Recorded {date_str} in {NO_SHOOTOUT_LOG} (fewer than "
@@ -137,9 +142,16 @@ def remove_stale_no_shootout_entry(date_obj):
     """
     if not NO_SHOOTOUT_LOG.exists():
         return
-    existing = pd.read_csv(NO_SHOOTOUT_LOG)
+    existing = pd.read_csv(NO_SHOOTOUT_LOG, dtype=str)
+    if "source" not in existing.columns:
+        existing["source"] = ""
     date_str = date_obj.strftime("%Y-%m-%d")
-    if date_str not in existing["date"].astype(str).values:
+    row = existing[existing["date"].astype(str) == date_str]
+    if row.empty:
+        return
+    if (row["source"] == "manual").any():
+        print(f"{date_str} is a manually-recorded no-shootout date -- "
+              f"leaving it alone (not auto-removing).")
         return
     existing = existing[existing["date"].astype(str) != date_str]
     existing.to_csv(NO_SHOOTOUT_LOG, index=False)

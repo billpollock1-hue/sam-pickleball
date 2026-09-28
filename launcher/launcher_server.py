@@ -137,7 +137,7 @@ def get_recorded_dates():
             continue
         lines = csv_path.read_text().splitlines()[1:]  # skip header
         for line in lines:
-            date_str = line.strip()
+            date_str = line.split(",")[0].strip()  # tolerant of an optional source column
             if date_str:
                 entries.append({"date": date_str, "type": date_type})
     entries.sort(key=lambda e: e["date"], reverse=True)
@@ -341,9 +341,25 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if date_type == "none":
-            if not self._append_csv_date(NO_SHOOTOUT_CSV, date_str):
+            # Tagged "manual" (distinct from check_no_shootout.py's own
+            # "auto" entries) so its self-correction logic never silently
+            # reverts a deliberate admin-panel cancellation -- real
+            # incident 2026-09-28: an auto-removal erased one within
+            # the same run_all.sh cycle.
+            existing_dates = set()
+            if NO_SHOOTOUT_CSV.exists():
+                existing_dates = {
+                    line.split(",")[0].strip()
+                    for line in NO_SHOOTOUT_CSV.read_text().splitlines()[1:]
+                    if line.strip()
+                }
+            if date_str in existing_dates:
                 self._send_json({"error": f"{date_str} is already recorded"}, status=409)
                 return
+            if not NO_SHOOTOUT_CSV.exists():
+                NO_SHOOTOUT_CSV.write_text("date,source\n")
+            with open(NO_SHOOTOUT_CSV, "a") as f:
+                f.write(f"{date_str},manual\n")
             try:
                 self._refresh_court_assignments_viewer()
             except Exception as e:

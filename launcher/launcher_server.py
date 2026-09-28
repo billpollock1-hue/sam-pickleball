@@ -36,6 +36,7 @@ import json
 import os
 import socket
 import subprocess
+import threading
 import sys
 from datetime import datetime, timedelta, time as dtime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -55,6 +56,63 @@ REPO_ROOT = BASE_DIR.parent
 NO_SHOOTOUT_CSV = REPO_ROOT / "data" / "no_shootout_dates.csv"
 PARTIAL_SHOOTOUT_CSV = REPO_ROOT / "data" / "partial_shootout_dates.csv"
 TRYOUT_NAME_FIXES_CSV = REPO_ROOT / "data" / "tryout_name_fixes.csv"
+
+# --- Background rebuild after recording a tryout name --------------------
+# The rebuild takes minutes, so the request handler replies as soon as the
+# name is saved and this worker does the rest. _REBUILD_LOCK serializes
+# rebuilds (they all write /tmp/pickleball_model_latest.xlsx), so a queued
+# rebuild always sees every row saved before it starts. "pending" counts
+# queued + running rebuilds; the status endpoint reports "running" while it
+# is above zero, then the result of the last one to finish.
+_REBUILD_LOCK = threading.Lock()
+_REBUILD_STATE_LOCK = threading.Lock()
+_REBUILD_STATE = {"pending": 0, "state": "idle", "detail": ""}
+
+
+def get_tryout_rebuild_status():
+    with _REBUILD_STATE_LOCK:
+        if _REBUILD_STATE["pending"] > 0:
+            return {"state": "running", "detail": ""}
+        return {"state": _REBUILD_STATE["state"], "detail": _REBUILD_STATE["detail"]}
+
+
+def _run_tryout_rebuild(refresh_fn):
+    """Background thread body. The name is already saved when this runs."""
+    result = ("failed", "rebuild did not run")
+    try:
+        with _REBUILD_LOCK:
+            try:
+                # Re-run the engine so MANUAL_NAME_FIXES picks up the new entry
+                # for any games already scraped under this date -- a harmless
+                # no-op if the date has no games yet (a future signup sheet).
+                # /tmp-then-mv: writing large xlsx files directly into the
+                # Documents subtree has hit a real macOS write-timeout bug
+                # before -- always build there first.
+                subprocess.run(
+                    ["python3", "engine/pickleball_engine_v2.py",
+                     "--input", "data/master_history_raw.csv",
+                     "--output", "/tmp/pickleball_model_latest.xlsx"],
+                    cwd=REPO_ROOT, check=True, timeout=600,
+                )
+                subprocess.run(
+                    ["mv", "/tmp/pickleball_model_latest.xlsx",
+                     str(REPO_ROOT / "output/pickleball_model_latest.xlsx")],
+                    check=True,
+                )
+                refresh_fn()
+                result = ("ok", "engine rebuilt, court assignments refreshed")
+            except subprocess.CalledProcessError as e:
+                result = ("failed", f"rebuild step failed (exit {e.returncode}): {e}")
+            except subprocess.TimeoutExpired as e:
+                result = ("failed", f"rebuild step timed out: {e}")
+            except Exception as e:
+                result = ("failed", f"unexpected error: {e}")
+    finally:
+        with _REBUILD_STATE_LOCK:
+            _REBUILD_STATE["pending"] -= 1
+            _REBUILD_STATE["state"], _REBUILD_STATE["detail"] = result
+        print(f"tryout rebuild: {result[0]} -- {result[1]}", flush=True)
+# -------------------------------------------------------------------------
 SHOOTOUT_TIES_CSV = REPO_ROOT / "data" / "shootout_leader_overrides.csv"
 SHOOTOUT_TIES_HTML_PATH = BASE_DIR / "shootout_ties.html"
 PORT = 8765
@@ -200,6 +258,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"display": get_next_shootout_display()})
         elif self.path == "/api/recorded-dates":
             self._send_json(get_recorded_dates())
+        elif self.path == "/api/tryout-rebuild-status":
+            self._send_json(get_tryout_rebuild_status())
         elif self.path == "/dates" or self.path == "/dates.html":
             self._send_html(DATES_HTML_PATH)
         elif self.path == "/tryout-name" or self.path == "/tryout_name.html":
@@ -365,35 +425,31 @@ class Handler(BaseHTTPRequestHandler):
         with open(TRYOUT_NAME_FIXES_CSV, "a") as f:
             f.write(f"{date_str},{real_name}\n")
 
+        # Reply as soon as the name is saved. The engine rebuild + court
+        # assignments refresh take minutes (about four were seen on
+        # 2026-09-28), and the page showed "Load failed" during that wait even
+        # though the save and the rebuild worked. The cause of that error was
+        # not confirmed; replying immediately removes the long wait. The page
+        # polls /api/tryout-rebuild-status for the outcome.
+        with _REBUILD_STATE_LOCK:
+            _REBUILD_STATE["pending"] += 1
         try:
-            # Re-run the engine so MANUAL_NAME_FIXES picks up the new entry
-            # for any games already scraped under this date -- harmless
-            # no-op if the date has no games yet (a future signup sheet).
-            # /tmp-then-mv: writing large xlsx files directly into the
-            # Documents subtree has hit a real macOS write-timeout bug
-            # before -- always build there first.
-            subprocess.run(
-                ["python3", "engine/pickleball_engine_v2.py",
-                 "--input", "data/master_history_raw.csv",
-                 "--output", "/tmp/pickleball_model_latest.xlsx"],
-                cwd=REPO_ROOT, check=True, timeout=600,
-            )
-            subprocess.run(
-                ["mv", "/tmp/pickleball_model_latest.xlsx",
-                 str(REPO_ROOT / "output/pickleball_model_latest.xlsx")],
-                check=True,
-            )
-            self._refresh_court_assignments_viewer()
-        except subprocess.CalledProcessError as e:
-            self._send_json({"error": f"Recorded, but rebuild step failed (exit {e.returncode}): {e}"}, status=500)
-            return
-        except subprocess.TimeoutExpired as e:
-            self._send_json({"error": f"Recorded, but rebuild step timed out: {e}"}, status=500)
+            threading.Thread(
+                target=_run_tryout_rebuild,
+                args=(self._refresh_court_assignments_viewer,),
+                daemon=True,
+            ).start()
+        except Exception as e:
+            with _REBUILD_STATE_LOCK:
+                _REBUILD_STATE["pending"] -= 1
+            self._send_json(
+                {"error": f"Recorded, but could not start the rebuild: {e}"},
+                status=500)
             return
         self._send_json({
             "date": date_str, "real_name": real_name,
-            "status": "recorded, engine rebuilt, court assignments refreshed",
-        })
+            "status": "saved; engine rebuild and court-assignments refresh started in the background",
+        }, status=202)
 
     def _handle_resolve_shootout_tie(self, payload):
         play_date = str(payload.get("play_date", "")).strip()

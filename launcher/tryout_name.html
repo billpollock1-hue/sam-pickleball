@@ -115,7 +115,7 @@ async function submitFix() {
 
   btn.disabled = true;
   statusEl.className = 'pending';
-  statusEl.textContent = 'Rebuilding engine and refreshing court assignments — this may take a couple minutes...';
+  statusEl.textContent = 'Saving...';
 
   try {
     const resp = await fetch('/api/record-tryout-name', {
@@ -125,8 +125,9 @@ async function submitFix() {
     });
     const data = await resp.json();
     if (resp.ok) {
-      statusEl.className = 'ok';
-      statusEl.textContent = `Done: ${date}'s tryout slot recorded as "${real_name}" — ${data.status}.`;
+      statusEl.className = 'pending';
+      statusEl.textContent = `Saved: ${date}'s tryout slot recorded as "${real_name}". Rebuilding in the background — this message updates when it finishes (a few minutes)...`;
+      pollRebuildStatus(date, real_name);
     } else {
       statusEl.className = 'err';
       statusEl.textContent = `Error: ${data.error || 'unknown error'}`;
@@ -137,6 +138,39 @@ async function submitFix() {
   } finally {
     btn.disabled = false;
   }
+}
+
+async function pollRebuildStatus(date, realName) {
+  const statusEl = document.getElementById('status');
+  const started = Date.now();
+  const MAX_MS = 15 * 60 * 1000;
+  while (Date.now() - started < MAX_MS) {
+    await new Promise(r => setTimeout(r, 5000));
+    try {
+      const resp = await fetch('/api/tryout-rebuild-status');
+      const s = await resp.json();
+      if (s.state === 'ok') {
+        statusEl.className = 'ok';
+        statusEl.textContent = `Done: ${date}'s tryout slot recorded as "${realName}" — ${s.detail}.`;
+        return;
+      }
+      if (s.state === 'failed') {
+        statusEl.className = 'err';
+        statusEl.textContent = `Saved, but the rebuild failed: ${s.detail}. The name is recorded; the court-assignments page may not reflect it yet.`;
+        return;
+      }
+      if (s.state === 'idle') {
+        statusEl.className = 'err';
+        statusEl.textContent = 'Saved, but the server has no record of a rebuild running (it may have restarted). The name is recorded; check the court-assignments page in a few minutes.';
+        return;
+      }
+      // state === 'running': keep waiting
+    } catch (e) {
+      // transient error while polling: keep trying until the time limit
+    }
+  }
+  statusEl.className = 'err';
+  statusEl.textContent = 'Saved, but the rebuild is taking longer than 15 minutes. The name is recorded; check the court-assignments page later.';
 }
 </script>
 </body>

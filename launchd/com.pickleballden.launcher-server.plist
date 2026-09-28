@@ -21,12 +21,14 @@
     <dict>
         <key>TZ</key>
         <string>America/Phoenix</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/local/sbin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin</string>
     </dict>
 
     <key>StandardOutPath</key>
-    <string>/Users/billpollock/Documents/SAM Pickleball/sam-pickleball/launcher/logs/launcher-server.out.log</string>
+    <string>/Users/billpollock/Library/Application Support/PBMonitor/logs/launcher-server.out.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/billpollock/Documents/SAM Pickleball/sam-pickleball/launcher/logs/launcher-server.err.log</string>
+    <string>/Users/billpollock/Library/Application Support/PBMonitor/logs/launcher-server.err.log</string>
 </dict>
 </plist>

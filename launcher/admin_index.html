@@ -103,7 +103,7 @@
     <p>Attribute a "Den New Player Tryout" slot to a real, known player — corrects their rating history and lets court assignments seed them by their actual rating instead of treating them as unrated.</p>
   </a>
 
-  <a class="card group-c" href="/shootout-ties">
+  <a class="card group-c" href="/shootout-ties" id="tiesCard">
     <h2>Shootout Ties<span id="tieBadge" class="pending-badge" style="display:none;"></span></h2>
     <p>Pools where two or more players tied on both wins and point differential — pick the player Den actually declared the winner so their Bear Count shootout bear is awarded correctly.</p>
   </a>
@@ -129,6 +129,27 @@ fetch('/api/unresolved-ties')
     }
   })
   .catch(() => {});
+
+async function refreshTiesCard() {
+  const card = document.getElementById('tiesCard');
+  const badge = document.getElementById('tieBadge');
+  if (!card || !badge) return;
+  try {
+    const resp = await fetch('/api/unresolved-ties');
+    const ties = await resp.json();
+    if (!ties.length) {
+      card.style.display = 'none';
+    } else {
+      card.style.display = '';
+      badge.textContent = ties.length;
+      badge.style.display = 'inline-block';
+    }
+  } catch (e) {
+    // Leave the card visible (its own page will show a real error) rather
+    // than hide something that might still need attention.
+  }
+}
+refreshTiesCard();
 </script>
 </body>
 </html>

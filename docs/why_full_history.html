@@ -88,39 +88,18 @@
   </section>
 
   <section>
-    <div class="kicker">The Proof</div>
-    <h2>We Just Ran This Experiment</h2>
-    <p>In September 2026 we found and corrected two real data errors &mdash; one from a single duplicated game pair on <b>2023-09-27</b>, over three years old, and one from a systemic duplicate day on 2026-09-25. Fixing them meant recomputing every rating forward from the earliest error, 603 dates in a row, all the way to today.</p>
-    <div class="stat-row">
-      <div class="stat flag"><div class="num">3+ yrs</div><div class="lbl">old, the error we corrected</div></div>
-      <div class="stat"><div class="num">603</div><div class="lbl">dates recomputed</div></div>
-      <div class="stat"><div class="num">0 of 55</div><div class="lbl">players' rating today changed</div></div>
-    </div>
-    <svg style="display:block;" viewbox="0 0 620 150" width="100%">
-      <line stroke="#c9bfa8" stroke-width="2" x1="40" x2="580" y1="90" y2="90"></line>
-      <circle cx="95" cy="90" fill="#b3543a" r="5"></circle>
-      <line stroke="#b3543a" stroke-dasharray="3,3" stroke-width="1.5" x1="95" x2="95" y1="90" y2="60"></line>
-      <text fill="#8a3c26" font-family="'Trebuchet MS',sans-serif" font-size="11" font-weight="bold" text-anchor="middle" x="95" y="52">2023-09-27</text>
-      <text fill="#8a3c26" font-family="'Trebuchet MS',sans-serif" font-size="10" text-anchor="middle" x="95" y="66">the fix</text>
-      <rect fill="var(--tan)" height="16" x="95" y="82" width="390" rx="4"></rect>
-      <text fill="#6d6353" font-family="'Trebuchet MS',sans-serif" font-size="10" text-anchor="middle" x="290" y="115">23 players briefly nudged, never more than &plusmn;2 points</text>
-      <circle cx="485" cy="90" fill="var(--navy-2)" r="4"></circle>
-      <text fill="var(--navy-2)" font-family="'Trebuchet MS',sans-serif" font-size="10" text-anchor="middle" x="485" y="66">2026-08-06</text>
-      <text fill="var(--navy-2)" font-family="'Trebuchet MS',sans-serif" font-size="9.5" text-anchor="middle" x="485" y="132">last date any rating differed</text>
-      <rect fill="var(--navy-2)" height="16" x="485" y="82" width="95" rx="4"></rect>
-      <text fill="#fff" font-family="'Trebuchet MS',sans-serif" font-size="10" font-weight="bold" text-anchor="middle" x="532" y="94">back in sync</text>
-      <circle cx="580" cy="90" fill="var(--navy)" r="5"></circle>
-      <text fill="var(--navy)" font-family="'Trebuchet MS',sans-serif" font-size="11" font-weight="bold" text-anchor="middle" x="580" y="52">Today</text>
-    </svg>
-    <p>Only 23 players ever saw a rating value shift at any point in that whole 603-date recompute, and the largest swing &mdash; even on the exact day of the fix &mdash; was 2 points. Every one of those nudges had washed out completely by August 2026. As of today, every single player's rating is bit-for-bit identical to what it would have been if that three-year-old error had never happened.</p>
-    <div class="callout">If data from years back still meaningfully drove today's ratings, correcting a real error that old should have moved something. It moved <b>nothing</b>, for anyone, as of today.</div>
+    <div class="kicker">Why Old Mistakes Don't Linger</div>
+    <h2>Every Game Is An Audit</h2>
+    <p>A rating only survives if it keeps being backed up by results. If something pushes a number away from what a player is actually capable of &mdash; bad data, a fluke game, anything that doesn't reflect real play &mdash; every game after that acts as a fresh check against reality. If the rating doesn't match how the player is actually performing, the next results pull it back toward what's earned, the same way it always does. That correction doesn't have an expiration date; it works identically whether the mismatch happened last week or four years ago.</p>
+    <p>Genuine skill doesn't get corrected away the same way, because it keeps being reconfirmed by exactly the same process. A player who was genuinely better in 2023 and has stayed that way has had that fact re-validated by every match since. That's the real reason full history is safe to use: it's not that old results are ignored or forgotten, it's that anything in a rating that isn't backed by a real, sustained pattern gets self-corrected out, automatically, regardless of when it happened. A short window doesn't add that protection &mdash; it's already built in.</p>
+    <p style="font-size:13px;color:#8a7f6a;">This has been checked directly, not just argued: a data correction made in September 2026 to records more than three years old produced no change to any player's current rating once it had propagated forward through everything since.</p>
   </section>
 
   <section>
     <div class="kicker">The Core Flaws</div>
     <h2>What A Hard 2025&ndash;2026 Cutoff Would Actually Do</h2>
     <div class="flaw"><b>THE COLD-START PROBLEM</b><span> &mdash; the moment you draw a line at January 1, 2025, every player needs a starting rating for that day. Where does it come from? Either you carry forward their rating as of that date &mdash; which still encodes every game before it, the exact thing the cutoff was supposed to avoid &mdash; or you reset everyone to a common number and let the ratings re-establish from scratch, erasing real, earned skill separation overnight.</span></div>
-    <div class="flaw"><b>CLIFF EDGES, NOT TRENDS</b><span> &mdash; with a rolling or fixed window, a rating can jump the moment an old game ages out, for reasons that have nothing to do with anything a player did recently. That's a harder thing to explain and trust than a number that only ever moves because of an actual result.</span></div>
+    <div class="flaw"><b>A FIXED LINE DOESN'T STAY FIXED</b><span> &mdash; draw the cutoff at January 1, 2025 and never move it again, and in a couple of years "2025 and 2026" is exactly as old and arbitrary as "since 2022" sounds today &mdash; the objection doesn't get solved, just relocated a little further down the calendar. The only way to keep a fixed window actually recent is to keep advancing the start date, and every time that happens, it's the cold-start problem all over again for every player at once. A rolling window doesn't avoid this either &mdash; it just spreads the same discontinuity into a small jump every single day, forever, as yesterday's oldest game falls out of range for reasons that have nothing to do with anyone's actual play.</span></div>
     <div class="flaw"><b>ALREADY TESTED, AND IT HURT ACCURACY</b><span> &mdash; making ratings react more strongly to recent games isn't a new idea here; an earlier version of the system tried exactly that, weighting recent play more heavily. Tested directly against real results, it produced worse predictions overall and specific players with unstable, inflated ratings built on a handful of outlier games rather than a sustained record. Reverting to the steadier, full-history design fixed it.</span></div>
   </section>
 
@@ -135,9 +114,9 @@
   <footer>
     <div class="rule"></div>
     <h3>The Short Version</h3>
-    <p>Ratings fade old results out automatically, every game, without a cutoff.<br>We tested it directly on a real three-year-old correction &mdash; it changed nothing today.<br>A hard window would trade that for cold starts and cliff edges, and we've already tried the more-reactive version and it made ratings worse.</p>
+    <p>A rating only holds if real results keep backing it up &mdash; anything that doesn't gets corrected out automatically, no matter how old it is.<br>A fixed or rolling cutoff doesn't add that protection; it just trades it for cold starts and an arbitrary line that ages just as fast as the one it replaced.</p>
     <p style="margin-top:16px;"><a href="index.html">&larr; Back to SAM Pickleball</a></p>
-    <div class="fine">Recompute verified September 2026 &middot; 603 dates, 55 players, 0 current ratings changed</div>
+    <div class="fine">SAM Pickleball &middot; Modified Elo, full history</div>
   </footer>
 
 </div>

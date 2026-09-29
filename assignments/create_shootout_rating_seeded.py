@@ -667,15 +667,17 @@ def create_shootout(page, num_courts):
     page.get_by_role("button", name="Create Shootout", exact=True).click(timeout=60000)
     page.wait_for_timeout(1200)
 
-    return actual_shuffle_mode
-
     # "Sign-up sheet is still available for additional players" guard popup
-    # -- ignore and proceed, per the documented routine.
+    # -- ignore and proceed, per the documented routine. This block was
+    # previously unreachable (it sat after the return), so the popup was
+    # never dismissed. Fixed 2026-09-29 MST.
     try:
         page.get_by_text("Yes", exact=True).click(timeout=3000)
         page.wait_for_timeout(800)
     except PWTimeout:
         pass  # popup didn't appear this time -- fine, nothing to dismiss
+
+    return actual_shuffle_mode
 
 
 def check_in_all(page):

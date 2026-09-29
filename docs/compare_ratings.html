@@ -694,11 +694,16 @@ function updateDeltaColumn() {
         : "";
     }
 
+    // Games played is independent of whether a From/To rating exists -- a
+    // player whose first game falls after the From date (no prior rating to
+    // carry forward) can still have played real games in the window, so this
+    // must not be gated on from.value/to.value being non-null.
+    if (gamesCell) gamesCell.textContent = countGames(player, fromDate, toDate);
+
     if (from.value === null || to.value === null) {
       cell.textContent = "—";
       cell.style.color = "";
       if (nameCell) nameCell.style.color = "";
-      if (gamesCell) gamesCell.textContent = "—";
       return;
     }
 
@@ -708,7 +713,6 @@ function updateDeltaColumn() {
     cell.textContent = (delta > 0 ? "+" : "") + delta;
     cell.style.color = color;
     if (nameCell) nameCell.style.color = color;
-    if (gamesCell) gamesCell.textContent = countGames(player, fromDate, toDate);
   });
 
   const pct = cells.length ? Math.round((captured / cells.length) * 100) : 0;

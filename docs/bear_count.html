@@ -54,7 +54,17 @@
   td.rk { color: #8a97a8; font-size: 13px; width: 30px; }
   td.nm { text-align: left; font-weight: 600; }
   td.tot { font-weight: bold; color: var(--blue-dark); white-space: normal; }
-  .bear-tally { font-size: 11px; letter-spacing: -1px; }
+  .bear-tally { display: inline-flex; gap: 3px; flex-wrap: wrap; vertical-align: middle; }
+  .bear-bill {
+    display: inline-flex; align-items: center; gap: 2px;
+    font-family: 'Trebuchet MS', Verdana, sans-serif; font-size: 10.5px; font-weight: 700;
+    color: #fff; border-radius: 4px; padding: 1px 5px 1px 4px; line-height: 1.5;
+    white-space: nowrap; cursor: help;
+  }
+  .bear-bill.b20 { background: #7b4fa6; }
+  .bear-bill.b10 { background: #2E75B6; }
+  .bear-bill.b5  { background: #2A9D8F; }
+  .bear-bill.b1  { background: #8a97a8; }
   tr:nth-child(even) td { background: #f2f6fb; }
   .lc { color: #c9a84c; font-weight: 700; cursor: help; }
 
@@ -144,7 +154,7 @@
         <td>12</td>
         <td>1</td>
         <td>12</td>
-        <td class="tot">13 <span class="bear-tally">🐻🐻🐻🐻🐻🐻🐻🐻🐻🐻🐻🐻🐻</span></td>
+        <td class="tot">13 <span class="bear-tally"><span class="bear-bill b10" title="10-bear icon">🐻10</span><span class="bear-bill b1" title="3 &times; 1-bear icons = 3 bears">🐻1&times;3</span></span></td>
       </tr>
       <tr>
         <td class="rk">2</td>
@@ -154,7 +164,7 @@
         <td>3</td>
         <td>4</td>
         <td>9</td>
-        <td class="tot">13 <span class="bear-tally">🐻🐻🐻🐻🐻🐻🐻🐻🐻🐻🐻🐻🐻</span></td>
+        <td class="tot">13 <span class="bear-tally"><span class="bear-bill b10" title="10-bear icon">🐻10</span><span class="bear-bill b1" title="3 &times; 1-bear icons = 3 bears">🐻1&times;3</span></span></td>
       </tr>
       <tr>
         <td class="rk">3</td>
@@ -164,7 +174,7 @@
         <td>8</td>
         <td>4</td>
         <td>8</td>
-        <td class="tot">12 <span class="bear-tally">🐻🐻🐻🐻🐻🐻🐻🐻🐻🐻🐻🐻</span></td>
+        <td class="tot">12 <span class="bear-tally"><span class="bear-bill b10" title="10-bear icon">🐻10</span><span class="bear-bill b1" title="2 &times; 1-bear icons = 2 bears">🐻1&times;2</span></span></td>
       </tr>
       <tr>
         <td class="rk">4</td>
@@ -174,7 +184,7 @@
         <td>6</td>
         <td>3</td>
         <td>6</td>
-        <td class="tot">9 <span class="bear-tally">🐻🐻🐻🐻🐻🐻🐻🐻🐻</span></td>
+        <td class="tot">9 <span class="bear-tally"><span class="bear-bill b5" title="5-bear icon">🐻5</span><span class="bear-bill b1" title="4 &times; 1-bear icons = 4 bears">🐻1&times;4</span></span></td>
       </tr>
       <tr>
         <td class="rk">5</td>
@@ -184,7 +194,7 @@
         <td>6</td>
         <td>1</td>
         <td>6</td>
-        <td class="tot">7 <span class="bear-tally">🐻🐻🐻🐻🐻🐻🐻</span></td>
+        <td class="tot">7 <span class="bear-tally"><span class="bear-bill b5" title="5-bear icon">🐻5</span><span class="bear-bill b1" title="2 &times; 1-bear icons = 2 bears">🐻1&times;2</span></span></td>
       </tr>
       <tr>
         <td class="rk">6</td>
@@ -194,7 +204,7 @@
         <td>5</td>
         <td>2</td>
         <td>5</td>
-        <td class="tot">7 <span class="bear-tally">🐻🐻🐻🐻🐻🐻🐻</span></td>
+        <td class="tot">7 <span class="bear-tally"><span class="bear-bill b5" title="5-bear icon">🐻5</span><span class="bear-bill b1" title="2 &times; 1-bear icons = 2 bears">🐻1&times;2</span></span></td>
       </tr>
       <tr>
         <td class="rk">7</td>
@@ -204,7 +214,7 @@
         <td>1</td>
         <td>0</td>
         <td>6</td>
-        <td class="tot">6 <span class="bear-tally">🐻🐻🐻🐻🐻🐻</span></td>
+        <td class="tot">6 <span class="bear-tally"><span class="bear-bill b5" title="5-bear icon">🐻5</span><span class="bear-bill b1" title="1-bear icon">🐻1</span></span></td>
       </tr>
       <tr>
         <td class="rk">8</td>
@@ -214,7 +224,7 @@
         <td>1</td>
         <td>1</td>
         <td>5</td>
-        <td class="tot">6 <span class="bear-tally">🐻🐻🐻🐻🐻🐻</span></td>
+        <td class="tot">6 <span class="bear-tally"><span class="bear-bill b5" title="5-bear icon">🐻5</span><span class="bear-bill b1" title="1-bear icon">🐻1</span></span></td>
       </tr>
       <tr>
         <td class="rk">9</td>
@@ -224,7 +234,7 @@
         <td>1</td>
         <td>1</td>
         <td>4</td>
-        <td class="tot">5 <span class="bear-tally">🐻🐻🐻🐻🐻</span></td>
+        <td class="tot">5 <span class="bear-tally"><span class="bear-bill b5" title="5-bear icon">🐻5</span></span></td>
       </tr>
       <tr>
         <td class="rk">10</td>
@@ -234,7 +244,7 @@
         <td>3</td>
         <td>2</td>
         <td>3</td>
-        <td class="tot">5 <span class="bear-tally">🐻🐻🐻🐻🐻</span></td>
+        <td class="tot">5 <span class="bear-tally"><span class="bear-bill b5" title="5-bear icon">🐻5</span></span></td>
       </tr>
       <tr>
         <td class="rk">11</td>
@@ -244,7 +254,7 @@
         <td>3</td>
         <td>1</td>
         <td>3</td>
-        <td class="tot">4 <span class="bear-tally">🐻🐻🐻🐻</span></td>
+        <td class="tot">4 <span class="bear-tally"><span class="bear-bill b1" title="4 &times; 1-bear icons = 4 bears">🐻1&times;4</span></span></td>
       </tr>
       <tr>
         <td class="rk">12</td>
@@ -254,7 +264,7 @@
         <td>3</td>
         <td>1</td>
         <td>3</td>
-        <td class="tot">4 <span class="bear-tally">🐻🐻🐻🐻</span></td>
+        <td class="tot">4 <span class="bear-tally"><span class="bear-bill b1" title="4 &times; 1-bear icons = 4 bears">🐻1&times;4</span></span></td>
       </tr>
       <tr>
         <td class="rk">13</td>
@@ -264,7 +274,7 @@
         <td>2</td>
         <td>2</td>
         <td>2</td>
-        <td class="tot">4 <span class="bear-tally">🐻🐻🐻🐻</span></td>
+        <td class="tot">4 <span class="bear-tally"><span class="bear-bill b1" title="4 &times; 1-bear icons = 4 bears">🐻1&times;4</span></span></td>
       </tr>
       <tr>
         <td class="rk">14</td>
@@ -274,7 +284,7 @@
         <td>2</td>
         <td>2</td>
         <td>2</td>
-        <td class="tot">4 <span class="bear-tally">🐻🐻🐻🐻</span></td>
+        <td class="tot">4 <span class="bear-tally"><span class="bear-bill b1" title="4 &times; 1-bear icons = 4 bears">🐻1&times;4</span></span></td>
       </tr>
       <tr>
         <td class="rk">15</td>
@@ -284,7 +294,7 @@
         <td>3</td>
         <td>0</td>
         <td>3</td>
-        <td class="tot">3 <span class="bear-tally">🐻🐻🐻</span></td>
+        <td class="tot">3 <span class="bear-tally"><span class="bear-bill b1" title="3 &times; 1-bear icons = 3 bears">🐻1&times;3</span></span></td>
       </tr>
       <tr>
         <td class="rk">16</td>
@@ -294,7 +304,7 @@
         <td>0</td>
         <td>0</td>
         <td>3</td>
-        <td class="tot">3 <span class="bear-tally">🐻🐻🐻</span></td>
+        <td class="tot">3 <span class="bear-tally"><span class="bear-bill b1" title="3 &times; 1-bear icons = 3 bears">🐻1&times;3</span></span></td>
       </tr>
       <tr>
         <td class="rk">17</td>
@@ -304,7 +314,7 @@
         <td>0</td>
         <td>1</td>
         <td>2</td>
-        <td class="tot">3 <span class="bear-tally">🐻🐻🐻</span></td>
+        <td class="tot">3 <span class="bear-tally"><span class="bear-bill b1" title="3 &times; 1-bear icons = 3 bears">🐻1&times;3</span></span></td>
       </tr>
       <tr>
         <td class="rk">18</td>
@@ -314,7 +324,7 @@
         <td>2</td>
         <td>1</td>
         <td>2</td>
-        <td class="tot">3 <span class="bear-tally">🐻🐻🐻</span></td>
+        <td class="tot">3 <span class="bear-tally"><span class="bear-bill b1" title="3 &times; 1-bear icons = 3 bears">🐻1&times;3</span></span></td>
       </tr>
       <tr>
         <td class="rk">19</td>
@@ -324,7 +334,7 @@
         <td>2</td>
         <td>0</td>
         <td>2</td>
-        <td class="tot">2 <span class="bear-tally">🐻🐻</span></td>
+        <td class="tot">2 <span class="bear-tally"><span class="bear-bill b1" title="2 &times; 1-bear icons = 2 bears">🐻1&times;2</span></span></td>
       </tr>
       <tr>
         <td class="rk">20</td>
@@ -334,7 +344,7 @@
         <td>2</td>
         <td>0</td>
         <td>2</td>
-        <td class="tot">2 <span class="bear-tally">🐻🐻</span></td>
+        <td class="tot">2 <span class="bear-tally"><span class="bear-bill b1" title="2 &times; 1-bear icons = 2 bears">🐻1&times;2</span></span></td>
       </tr>
       <tr>
         <td class="rk">21</td>
@@ -344,7 +354,7 @@
         <td>0</td>
         <td>0</td>
         <td>2</td>
-        <td class="tot">2 <span class="bear-tally">🐻🐻</span></td>
+        <td class="tot">2 <span class="bear-tally"><span class="bear-bill b1" title="2 &times; 1-bear icons = 2 bears">🐻1&times;2</span></span></td>
       </tr>
       <tr>
         <td class="rk">22</td>
@@ -354,7 +364,7 @@
         <td>1</td>
         <td>1</td>
         <td>1</td>
-        <td class="tot">2 <span class="bear-tally">🐻🐻</span></td>
+        <td class="tot">2 <span class="bear-tally"><span class="bear-bill b1" title="2 &times; 1-bear icons = 2 bears">🐻1&times;2</span></span></td>
       </tr>
       <tr>
         <td class="rk">23</td>
@@ -364,7 +374,7 @@
         <td>1</td>
         <td>1</td>
         <td>1</td>
-        <td class="tot">2 <span class="bear-tally">🐻🐻</span></td>
+        <td class="tot">2 <span class="bear-tally"><span class="bear-bill b1" title="2 &times; 1-bear icons = 2 bears">🐻1&times;2</span></span></td>
       </tr>
       <tr>
         <td class="rk">24</td>
@@ -374,7 +384,7 @@
         <td>1</td>
         <td>0</td>
         <td>1</td>
-        <td class="tot">1 <span class="bear-tally">🐻</span></td>
+        <td class="tot">1 <span class="bear-tally"><span class="bear-bill b1" title="1-bear icon">🐻1</span></span></td>
       </tr>
       <tr>
         <td class="rk">25</td>
@@ -384,7 +394,7 @@
         <td>1</td>
         <td>0</td>
         <td>1</td>
-        <td class="tot">1 <span class="bear-tally">🐻</span></td>
+        <td class="tot">1 <span class="bear-tally"><span class="bear-bill b1" title="1-bear icon">🐻1</span></span></td>
       </tr>
       <tr>
         <td class="rk">26</td>
@@ -394,7 +404,7 @@
         <td>1</td>
         <td>0</td>
         <td>1</td>
-        <td class="tot">1 <span class="bear-tally">🐻</span></td>
+        <td class="tot">1 <span class="bear-tally"><span class="bear-bill b1" title="1-bear icon">🐻1</span></span></td>
       </tr>
       <tr>
         <td class="rk">27</td>
@@ -404,7 +414,7 @@
         <td>0</td>
         <td>0</td>
         <td>1</td>
-        <td class="tot">1 <span class="bear-tally">🐻</span></td>
+        <td class="tot">1 <span class="bear-tally"><span class="bear-bill b1" title="1-bear icon">🐻1</span></span></td>
       </tr>
       <tr>
         <td class="rk">28</td>
@@ -414,7 +424,7 @@
         <td>0</td>
         <td>1</td>
         <td>0</td>
-        <td class="tot">1 <span class="bear-tally">🐻</span></td>
+        <td class="tot">1 <span class="bear-tally"><span class="bear-bill b1" title="1-bear icon">🐻1</span></span></td>
       </tr>
       <tr>
         <td class="rk">29</td>
@@ -424,7 +434,7 @@
         <td>0</td>
         <td>1</td>
         <td>0</td>
-        <td class="tot">1 <span class="bear-tally">🐻</span></td>
+        <td class="tot">1 <span class="bear-tally"><span class="bear-bill b1" title="1-bear icon">🐻1</span></span></td>
       </tr>
       <tr>
         <td class="rk">30</td>
@@ -434,7 +444,7 @@
         <td>0</td>
         <td>1</td>
         <td>0</td>
-        <td class="tot">1 <span class="bear-tally">🐻</span></td>
+        <td class="tot">1 <span class="bear-tally"><span class="bear-bill b1" title="1-bear icon">🐻1</span></span></td>
       </tr>
       <tr>
         <td class="rk">31</td>
@@ -572,6 +582,7 @@
       Bears counted since Aug 24, 2026, from rated games only.<br>
       Leader (2W)/(3W) = number of pools where this player finished on top with 2 or 3 wins (informational -- not every "Leader" earns a bear; see rules).<br>
       Tap the 📋 next to a player's name for their pool-by-pool bear log.<br>
+      Bear totals are shown as 🐻20 / 🐻10 / 🐻5 / 🐻1 icons, like bills of different denominations, so a big total stays compact.<br>
       <a href="index.html">All charts &amp; tools</a> &middot; updated after every play date
     </p>
   </div>

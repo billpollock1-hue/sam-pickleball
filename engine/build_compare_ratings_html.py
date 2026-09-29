@@ -7,6 +7,7 @@ same workbook the Leaderboard does.
 """
 
 import json
+from collections import defaultdict
 from pathlib import Path
 
 import pandas as pd
@@ -30,6 +31,19 @@ for _, hr in hist.iterrows():
 rating_dates_json = json.dumps(rating_dates_sorted)
 rating_grid_json = json.dumps(rating_grid)
 
+# ── Games played per player, one date string per rated game ──────────────
+# Sourced from Player_Game_Log (same sheet build_player_history.py uses) so
+# the Games Played column only counts games that actually moved a rating --
+# the same games the Delta Rating column reflects.
+pgl = pd.read_excel(XLSX_PATH, sheet_name="Player_Game_Log")
+pgl["posted_dt"] = pd.to_datetime(pgl["posted_dt"])
+pgl["date_str"] = pgl["posted_dt"].dt.strftime("%Y-%m-%d")
+pgl_rated = pgl[pgl["include_in_ratings"].astype(str).str.strip() == "Yes"]
+game_dates = defaultdict(list)
+for _, gr in pgl_rated.sort_values("posted_dt").iterrows():
+    game_dates[str(gr["player"])].append(gr["date_str"])
+game_dates_json = json.dumps(game_dates)
+
 rows = ""
 for _, r in lb.iterrows():
     name_attr = str(r["Player"]).replace('"', "&quot;")
@@ -40,6 +54,7 @@ for _, r in lb.iterrows():
         <td class="from-rating" data-player="{name_attr}">&#8212;</td>
         <td class="to-rating" data-player="{name_attr}">&#8212;</td>
         <td class="delta" data-player="{name_attr}">&#8212;</td>
+        <td class="games-played" data-player="{name_attr}">&#8212;</td>
       </tr>"""
 
 html = f"""<!DOCTYPE html>
@@ -126,7 +141,7 @@ html = f"""<!DOCTYPE html>
       <div class="lg-row"><div class="lg-swatch" style="background:#888888;"></div><span>No meaningful change</span></div>
       <div class="lg-row"><div class="lg-swatch" style="background:#c05a5a;"></div><span>Small loss</span></div>
       <div class="lg-row"><div class="lg-swatch" style="background:#a01515;"></div><span>Large loss</span></div>
-      <div class="lg-note">Color intensity scales with the size of the rating change between the selected From and To dates.</div>
+      <div class="lg-note">Color intensity scales with the size of the rating change between the selected From and To dates.<br><br>An asterisk (*) on a From/To rating means the player didn't play on that exact date &mdash; it's their most recent rating as of that date instead.</div>
     </div>
   </div>
 
@@ -142,7 +157,7 @@ html = f"""<!DOCTYPE html>
 
     <table>
       <thead>
-        <tr><th class="nm">Player</th><th class="sortable" data-col="1" onclick="sortTable(1)">Current Rating<span class="sort-arrow"></span></th><th class="sortable" data-col="2" id="fromHeader" onclick="sortTable(2)">From<span class="sort-arrow"></span></th><th class="sortable" data-col="3" id="toHeader" onclick="sortTable(3)">To<span class="sort-arrow"></span></th><th class="sortable" data-col="4" onclick="sortTable(4)">&Delta; Rating<span class="sort-arrow"></span></th></tr>
+        <tr><th class="nm">Player</th><th class="sortable" data-col="1" onclick="sortTable(1)">Current Rating<span class="sort-arrow"></span></th><th class="sortable" data-col="2" id="fromHeader" onclick="sortTable(2)">From<span class="sort-arrow"></span></th><th class="sortable" data-col="3" id="toHeader" onclick="sortTable(3)">To<span class="sort-arrow"></span></th><th class="sortable" data-col="4" onclick="sortTable(4)">&Delta; Rating<span class="sort-arrow"></span></th><th class="sortable" data-col="5" onclick="sortTable(5)" title="Rated games played between the selected From and To dates">Games<span class="sort-arrow"></span></th></tr>
       </thead>
       <tbody>{rows}
       </tbody>
@@ -153,6 +168,7 @@ html = f"""<!DOCTYPE html>
 <script>
 const RATING_DATES = {rating_dates_json};
 const RATING_GRID = {rating_grid_json};
+const GAME_DATES = {game_dates_json};
 
 // -- Freshness: force a genuine network fetch on every real navigation to
 // this page, bypassing any browser/CDN cache. If this load doesn't already
@@ -237,6 +253,21 @@ function deltaColor(delta) {{
   }}
 }}
 
+function findRating(grid, idx) {{
+  if (idx < 0) return {{ value: null, exact: false, atIdx: -1 }};
+  if (grid[idx] !== null) return {{ value: grid[idx], exact: true, atIdx: idx }};
+  for (let i = idx - 1; i >= 0; i--) {{
+    if (grid[i] !== null) return {{ value: grid[i], exact: false, atIdx: i }};
+  }}
+  return {{ value: null, exact: false, atIdx: -1 }};
+}}
+
+function countGames(player, fromDate, toDate) {{
+  const dates = GAME_DATES[player];
+  if (!dates || !fromDate || !toDate) return 0;
+  return dates.filter(d => d > fromDate && d <= toDate).length;
+}}
+
 function updateDeltaColumn() {{
   const fromDate = document.getElementById("fromDateSelect").value;
   const toDate = document.getElementById("toDateSelect").value;
@@ -253,28 +284,50 @@ function updateDeltaColumn() {{
     const grid = RATING_GRID[player];
     const fromCell = document.querySelector(`td.from-rating[data-player="${{CSS.escape(player)}}"]`);
     const toCell = document.querySelector(`td.to-rating[data-player="${{CSS.escape(player)}}"]`);
+    const gamesCell = document.querySelector(`td.games-played[data-player="${{CSS.escape(player)}}"]`);
     const nameCell = document.querySelector(`td.nm[data-player="${{CSS.escape(player)}}"]`);
 
     if (!grid || fromIdx < 0 || toIdx < 0) {{
       cell.textContent = "\u2014";
       cell.style.color = "";
       if (nameCell) nameCell.style.color = "";
-      if (fromCell) fromCell.textContent = "\u2014";
-      if (toCell) toCell.textContent = "\u2014";
+      if (fromCell) {{ fromCell.textContent = "\u2014"; fromCell.title = ""; }}
+      if (toCell) {{ toCell.textContent = "\u2014"; toCell.title = ""; }}
+      if (gamesCell) gamesCell.textContent = "\u2014";
       return;
     }}
-    const fromVal = grid[fromIdx];
-    const toVal = grid[toIdx];
-    if (fromCell) fromCell.textContent = fromVal !== null ? fromVal : "\u2014";
-    if (toCell) toCell.textContent = toVal !== null ? toVal : "\u2014";
-    if (fromVal === null || toVal === null) {{
+
+    const from = findRating(grid, fromIdx);
+    const to = findRating(grid, toIdx);
+
+    if (fromCell) {{
+      fromCell.textContent = from.value !== null ? from.value + (from.exact ? "" : "*") : "\u2014";
+      fromCell.title = (from.value !== null && !from.exact)
+        ? `Last rating as of ${{RATING_DATES[from.atIdx]}} \u2014 no games on ${{fromDate}}`
+        : "";
+    }}
+    if (toCell) {{
+      toCell.textContent = to.value !== null ? to.value + (to.exact ? "" : "*") : "\u2014";
+      toCell.title = (to.value !== null && !to.exact)
+        ? `Last rating as of ${{RATING_DATES[to.atIdx]}} \u2014 no games on ${{toDate}}`
+        : "";
+    }}
+
+    // Games played is independent of whether a From/To rating exists -- a
+    // player whose first game falls after the From date (no prior rating to
+    // carry forward) can still have played real games in the window, so this
+    // must not be gated on from.value/to.value being non-null.
+    if (gamesCell) gamesCell.textContent = countGames(player, fromDate, toDate);
+
+    if (from.value === null || to.value === null) {{
       cell.textContent = "\u2014";
       cell.style.color = "";
       if (nameCell) nameCell.style.color = "";
       return;
     }}
+
     captured++;
-    const delta = toVal - fromVal;
+    const delta = to.value - from.value;
     const color = deltaColor(delta);
     cell.textContent = (delta > 0 ? "+" : "") + delta;
     cell.style.color = color;
@@ -283,7 +336,7 @@ function updateDeltaColumn() {{
 
   const pct = cells.length ? Math.round((captured / cells.length) * 100) : 0;
   document.getElementById("coverageStatus").textContent =
-    `Based on the From/To dates above, ${{pct}}% of current leaderboard players are captured in the \u0394 Rating column. To increase that percentage, choose a more current From date and/or To date.`;
+    `Based on the From/To dates above, ${{pct}}% of current leaderboard players have a rating for both dates (an asterisk marks one carried forward from a player's last game before that date). To increase that percentage, choose a more current From date and/or To date.`;
 }}
 
 let sortState = {{ col: -1, asc: true }};

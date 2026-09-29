@@ -144,8 +144,18 @@ function normShootout(x) {
     }
     const config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
 
+    const CREDS_FILE = `${__dirname}/den_credentials.json`;
+    const creds = fs.existsSync(CREDS_FILE)
+      ? JSON.parse(fs.readFileSync(CREDS_FILE, 'utf8'))
+      : {};
+    const hasCredentials = creds.email && creds.password;
+
     const startInput = getArg('--start');
     const endInput = getArg('--end');
+    const onlyDatesArg = getArg('--only-dates'); // optional: comma-separated YYYY-MM-DD list
+    const onlyDates = onlyDatesArg
+      ? new Set(onlyDatesArg.split(',').map((d) => d.trim()).filter(Boolean))
+      : null;
     if (!startInput || !endInput) {
       throw new Error('Usage: node backfill_view_event.js --start MMDDYY --end MMDDYY');
     }
@@ -160,20 +170,177 @@ function normShootout(x) {
     const covered = new Set(
       existingStandings.map((r) => `${r.play_date}|${normShootout(r.shootout)}|${r.pool}`)
     );
-    console.log(`${covered.size / 4 | 0} pool(s) already covered in data/pool_standings.csv (skipping those).`);
+    console.log(`${covered.size} pool(s) already covered in data/pool_standings.csv (skipping those).`);
 
     browser = await chromium.launch({ headless: false, slowMo: 60 });
     const context = await browser.newContext({ storageState: SESSION_FILE });
     const page = await context.newPage();
 
     // --- Copied verbatim from scrape.js (see header comment for why) ---
+    async function autoLogin() {
+      console.log('  Attempting auto-login...');
+      await page.goto('https://app.pickleballden.com', { waitUntil: 'domcontentloaded' });
+      await sleep(3000);
+
+      const screenshotPath = 'output/login_debug.png';
+
+      try {
+        const emailSelectors = [
+          'vaadin-text-field input',
+          'vaadin-email-field input',
+          'input[type="email"]',
+          'input[name="email"]',
+          'input[placeholder*="email" i]',
+          'input[autocomplete*="email" i]',
+          'input',
+        ];
+
+        let emailField = null;
+        for (const sel of emailSelectors) {
+          const loc = page.locator(sel).first();
+          if (await loc.count() > 0) { emailField = loc; break; }
+        }
+        if (!emailField) {
+          await page.screenshot({ path: screenshotPath });
+          throw new Error(`Could not find email field. Screenshot saved to ${screenshotPath}`);
+        }
+        await emailField.click();
+        await emailField.fill(creds.email);
+
+        const passSelectors = [
+          'vaadin-password-field input',
+          'input[type="password"]',
+          'input[name="password"]',
+        ];
+        let passField = null;
+        for (const sel of passSelectors) {
+          const loc = page.locator(sel).first();
+          if (await loc.count() > 0) { passField = loc; break; }
+        }
+        if (!passField) {
+          await page.screenshot({ path: screenshotPath });
+          throw new Error(`Could not find password field. Screenshot saved to ${screenshotPath}`);
+        }
+        await passField.click();
+        await passField.fill(creds.password);
+        await sleep(500);
+
+        const submitSelectors = [
+          'button[type="submit"]',
+          'vaadin-button[theme*="primary"]',
+          'vaadin-button',
+        ];
+        let submitted = false;
+        for (const sel of submitSelectors) {
+          const btns = page.locator(sel);
+          const count = await btns.count();
+          for (let i = 0; i < count; i++) {
+            const txt = (await btns.nth(i).innerText().catch(() => '')).toLowerCase();
+            if (/sign in|log in|login|submit|continue/.test(txt) || sel === 'button[type="submit"]') {
+              await btns.nth(i).click();
+              submitted = true;
+              break;
+            }
+          }
+          if (submitted) break;
+        }
+        if (!submitted) { await passField.press('Enter'); }
+
+        await sleep(5000);
+
+        const bodyText = await page.locator('body').innerText().catch(() => '');
+        if (!bodyText.includes('Club Play List') && !bodyText.includes('Shootout')) {
+          await page.screenshot({ path: screenshotPath });
+          throw new Error(`Auto-login failed -- credentials may be wrong or page changed. Screenshot saved to ${screenshotPath}`);
+        }
+        console.log('  Auto-login successful.');
+      } catch (err) {
+        await page.screenshot({ path: screenshotPath }).catch(() => {});
+        throw err;
+      }
+    }
+
+    async function autoNavigateToClubPlayList() {
+      console.log('  Attempting auto-navigation via Play -> Shootout -> List Shootouts...');
+      await page.goto('https://app.pickleballden.com', { waitUntil: 'domcontentloaded' });
+      await sleep(2000);
+
+      let playButtons = page.locator('vaadin-button.pd-context-button').filter({ hasText: /play/i });
+      let count = 0;
+      for (let attempt = 0; attempt < 8; attempt++) {
+        await sleep(1500);
+        count = await playButtons.count();
+        if (count > 0) break;
+      }
+      if (count === 0) {
+        console.log('  Found 0 Play button(s) -- cannot auto-navigate.');
+        return false;
+      }
+
+      for (let i = 0; i < count; i++) {
+        try {
+          await playButtons.nth(i).click();
+          await sleep(1000);
+
+          const shootoutItem = page.getByText('Shootout', { exact: true }).first();
+          if (!await shootoutItem.count()) continue;
+          await shootoutItem.click();
+          await sleep(1000);
+
+          const listItem = page.getByText('List Shootouts', { exact: true }).first();
+          if (!await listItem.count()) continue;
+          await listItem.click();
+          await sleep(3000);
+
+          const bodyText = await page.locator('body').innerText().catch(() => '');
+          if (bodyText.includes('Club Play List') || bodyText.includes('Group 1')) {
+            console.log('  Auto-navigated to Club Play List.');
+            return true;
+          }
+
+          await page.goBack({ waitUntil: 'domcontentloaded' });
+          await sleep(2000);
+        } catch {
+          await page.goto('https://app.pickleballden.com', { waitUntil: 'domcontentloaded' });
+          await sleep(2000);
+        }
+      }
+      console.log('  Could not auto-navigate to Club Play List.');
+      return false;
+    }
+
     async function waitForClubList() {
       await page.waitForLoadState('domcontentloaded');
       await sleep(3000);
-      const bodyText = await page.locator('body').innerText();
-      if (!bodyText.includes('Club Play List')) {
-        throw new Error('Club Play List text not detected on page.');
+      let bodyText = await page.locator('body').innerText().catch(() => '');
+      if (bodyText.includes('Club Play List')) return;
+
+      const isLoggedIn = bodyText.includes('Account')
+        || bodyText.includes('Friends')
+        || bodyText.includes('Timeline')
+        || bodyText.includes('Shootout');
+
+      if (isLoggedIn) {
+        console.log('  \u26a0 Logged in but not on Club Play List -- auto-navigating via menu.');
+        if (await autoNavigateToClubPlayList()) {
+          config.clubPlayListUrl = page.url();
+          console.log('  Recovered via auto-navigation -- resuming.');
+          return;
+        }
+        throw new Error('Logged in, but could not auto-navigate back to Club Play List.');
       }
+
+      console.log('  \u26a0 Club Play List not detected -- session may have expired.');
+      if (!hasCredentials) {
+        throw new Error('Club Play List text not detected on page, and no saved credentials to auto-login with.');
+      }
+      await autoLogin();
+      if (!await autoNavigateToClubPlayList()) {
+        throw new Error('Logged in via auto-login, but could not auto-navigate to Club Play List.');
+      }
+      config.clubPlayListUrl = page.url();
+      console.log('  Auto-login recovered the session -- resuming.');
+      await context.storageState({ path: SESSION_FILE });
     }
 
     async function getVisibleShootouts() {
@@ -310,8 +477,13 @@ function normShootout(x) {
     // --- end copied section ---
 
     await reopenClubPlayList();
-    const allShootouts = await collectShootoutsByTrueGridScroll(startDate, endDate);
+    let allShootouts = await collectShootoutsByTrueGridScroll(startDate, endDate);
     console.log(`Collected ${allShootouts.length} shootouts within date window.`);
+    if (onlyDates) {
+      const before = allShootouts.length;
+      allShootouts = allShootouts.filter((s) => onlyDates.has(new Date(s.started).toISOString().slice(0, 10)));
+      console.log(`--only-dates given (${[...onlyDates].join(', ')}): narrowed ${before} shootouts down to ${allShootouts.length} to actually process.`);
+    }
 
     const shootoutsByDate = {};
     for (const s of allShootouts) {
@@ -359,7 +531,14 @@ function normShootout(x) {
         }
 
         const pools = await viewEventLib.listPoolsInBracket(page);
-        const poolsToDo = pools.filter((p) => !covered.has(`${playDate}|${s.sessionNumber}|${p}`));
+        // When --only-dates targets specific known-incomplete dates, always
+        // revisit every pool that day even if its standings are already in
+        // pool_standings.csv -- the goal here is recovering first_choice on
+        // specific games, and merge_standings() re-writing the same standings
+        // rows again is harmless.
+        const poolsToDo = onlyDates
+          ? pools
+          : pools.filter((p) => !covered.has(`${playDate}|${s.sessionNumber}|${p}`));
         if (poolsToDo.length === 0) {
           console.log(`  (all ${pools.length} pool(s) already covered -- skipping)`);
           continue;

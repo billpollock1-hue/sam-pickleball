@@ -243,7 +243,17 @@ def automate_signup_search_today(page):
         # correct the whole time. The true cause of the original sporadic
         # timeouts remains unconfirmed -- most likely genuine page-load
         # slowness on some mornings, not a selector bug at all.
-        search_button = page.get_by_role("button", name="Search", exact=True)
+        # Races two independent ways of finding the same button (accessible
+        # name vs. CSS class + icon) via or_(), rather than relying on either
+        # alone -- confirmed real incident: this button has twice been seen
+        # fully visible and unchanged for the entire wait while the
+        # accessible-name selector alone still timed out (2026-09-11,
+        # 2026-09-21 traces). Both locators should resolve to the same single
+        # physical button (only one search-icon button on this page), so this
+        # does not reintroduce the earlier strict-mode multi-match problem.
+        by_name = page.get_by_role("button", name="Search", exact=True)
+        by_structure = page.locator('vaadin-button.pd-primary-button:has(vaadin-icon[icon="vaadin:search"])')
+        search_button = by_name.or_(by_structure)
         search_button.wait_for(state="visible", timeout=150000)
         search_button.click()
         page.wait_for_timeout(2500)

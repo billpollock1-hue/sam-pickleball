@@ -95,6 +95,20 @@
   </section>
 
   <section>
+    <div class="kicker">Tested, Not Just Argued</div>
+    <h2>Checked Directly, At Realistic Window Lengths</h2>
+    <p>This isn't just a design philosophy &mdash; it's been tested against real outcomes. Using every 2026 game where all four players had enough rated history to matter (2,301 games), we scored how well different rating designs actually predicted what happened on the court, using Brier score and log loss &mdash; the standard measures of how well a model's stated probabilities match reality. Lower is better for both.</p>
+    <p>The test compared full history against a genuinely hard cutoff &mdash; not a gradual fade, the literal thing a fixed window does: games older than the line count for exactly nothing &mdash; at the window lengths people actually propose.</p>
+    <div class="stat-row">
+      <div class="stat"><div class="num">0.1859</div><div class="lbl">Brier score, full history</div></div>
+      <div class="stat flag"><div class="num">0.1863&ndash;0.1868</div><div class="lbl">Brier score, 12&ndash;48 month windows</div></div>
+    </div>
+    <p>At every window length from 12 to 48 months, full history matched or beat the windowed version &mdash; 18 months came out close enough to call a tie, and every other length tested came out worse for windowing, consistently, on both measures.</p>
+    <p>Windows under a year actually scored better on this test &mdash; but that's not a fair comparison. The test only scores a game if all four players already have a long track record, 60 or more rated games. With only a few months of games to draw from, most players never reach that many that fast, so far fewer games qualify to be scored at all (870 games at 6 months, versus 2,301 for full history). The games that do qualify under a short window are almost all between the club's most frequent players, since they're the only ones who rack up 60 games that quickly &mdash; a narrower, more predictable slice of the schedule than the real one. Short windows look good here for the wrong reason: not because they predict better, but because the hardest games to predict &mdash; the ones involving newer or less frequent players &mdash; get dropped from the test entirely.</p>
+    <div class="callout">Across every realistic length anyone has actually proposed, the data doesn't just fail to support a window &mdash; it favors full history outright.</div>
+  </section>
+
+  <section>
     <div class="kicker">The Core Flaws</div>
     <h2>What A Hard 2025&ndash;2026 Cutoff Would Actually Do</h2>
     <div class="flaw"><b>THE COLD-START PROBLEM</b><span> &mdash; the moment you draw a line at January 1, 2025, every player needs a starting rating for that day. Where does it come from? Either you carry forward their rating as of that date &mdash; which still encodes every game before it, the exact thing the cutoff was supposed to avoid &mdash; or you reset everyone to a common number and let the ratings re-establish from scratch, erasing real, earned skill separation overnight.</span></div>

@@ -71,14 +71,25 @@
     color: #8a97a8;
     padding: 12px;
   }
+
+  .refresh-badge { position: fixed; top: 10px; right: 10px; z-index: 1000;
+                    background: var(--blue-dark); color: #fff; font-size: 12px;
+                    padding: 6px 12px; border-radius: 6px; text-decoration: none;
+                    box-shadow: 0 1px 4px rgba(0,0,0,0.2); border: none; cursor: pointer; }
+  .refresh-badge:hover { background: #163a5c; }
+  #freshness-hint { padding: 6px 16px; font-size: 11px; color: #888;
+                     background: #fafafa; border-bottom: 1px solid #e8edf3; text-align: center; }
 </style>
 </head>
 <body>
+
+<button class="refresh-badge" onclick="forceRefresh()">&#8635;&nbsp;Refresh</button>
 
 <header>
   <h1>SAM Pickleball</h1>
   <p>Ratings, results, everything SAM.</p>
 </header>
+<div id="freshness-hint">💡 Tap Refresh anytime to make sure you're seeing the latest menu.</div>
 
 <main>
 <a class="card group-a" href="leaderboard.html">
@@ -131,6 +142,25 @@
   Leaderboard, ratings, court assignments, and signups update automatically after each play date.<br/>
   The <span style="color: var(--gold); font-weight: 600;">research pages</span> are dated snapshots and update only when refreshed.
 </footer>
+
+<script>
+(function () {
+  const params = new URLSearchParams(location.search);
+  if (!params.has('_cb')) {
+    params.set('_cb', Date.now());
+    location.replace(location.pathname + '?' + params.toString());
+  }
+})();
+
+function forceRefresh() {
+  const params = new URLSearchParams(location.search);
+  params.set('_cb', Date.now());
+  location.replace(location.pathname + '?' + params.toString());
+}
+
+// Periodic freshness re-check for tabs left open a while.
+setInterval(forceRefresh, 5 * 60 * 1000);
+</script>
 
 </body>
 </html>

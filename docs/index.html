@@ -38,7 +38,7 @@
     flex-direction: column;
     gap: 14px;
   }
-  a.card {
+  .card {
     display: block;
     background: #fff;
     border: 1px solid #dbe4ee;
@@ -53,17 +53,41 @@
     box-shadow: 0 3px 10px rgba(31, 78, 121, 0.15);
     transform: translateY(-1px);
   }
-  a.card h2 {
+  .card h2 {
     font-size: 17px;
     color: var(--blue-dark);
     margin-bottom: 4px;
   }
-  a.card p { font-size: 13.5px; color: #555; line-height: 1.4; }
+  .card p { font-size: 13.5px; color: #555; line-height: 1.4; }
 
-  a.card.group-a { border-left-color: var(--blue-dark); background: rgba(31, 78, 121, 0.16); }
-  a.card.group-b { border-left-color: var(--teal); background: rgba(42, 157, 143, 0.16); }
-  a.card.group-c { border-left-color: var(--rust); background: rgba(179, 84, 58, 0.16); }
-  a.card.group-d { border-left-color: var(--gold); background: rgba(201, 168, 76, 0.16); }
+  .card.group-a { border-left-color: var(--blue-dark); background: rgba(31, 78, 121, 0.16); }
+  .card.group-b { border-left-color: var(--teal); background: rgba(42, 157, 143, 0.16); }
+  .card.group-c { border-left-color: var(--rust); background: rgba(179, 84, 58, 0.16); }
+  .card.group-d { border-left-color: var(--gold); background: rgba(201, 168, 76, 0.16); }
+
+  .subcards {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 14px;
+  }
+  a.subcard {
+    display: block;
+    background: #fff;
+    border: 1px solid #e4d9be;
+    border-left: 3px solid var(--gold);
+    border-radius: 6px;
+    padding: 12px 14px;
+    text-decoration: none;
+    color: var(--text);
+    transition: box-shadow 0.15s, transform 0.15s;
+  }
+  a.subcard:hover {
+    box-shadow: 0 2px 8px rgba(201, 168, 76, 0.25);
+    transform: translateY(-1px);
+  }
+  a.subcard h3 { font-size: 14.5px; color: var(--blue-dark); margin-bottom: 3px; }
+  a.subcard p { font-size: 12.5px; color: #666; line-height: 1.4; }
 
   footer {
     text-align: center;
@@ -96,6 +120,26 @@
     <p>Track bears earned since Aug 24, 2026: 11-0 wins, and finishing on top of your shootout pool. See who's leading the pack.</p>
   </a>
 
+  <a class="card group-c" href="court_assignments.html">
+    <h2>Court Assignments</h2>
+    <p>Shootout 1 court assignments for the next play date (and projected Shootout 1 court assignments for other upcoming play dates) under Modified ELO ratings, the Den's default rating system, and the difference between the 2 methods. Also contains historical archive back to July 2, 2026.</p>
+  </a>
+
+  <div class="card group-d">
+    <h2>Your Questions</h2>
+    <p>Straight answers to the questions we hear most about how ratings work.</p>
+    <div class="subcards">
+      <a class="subcard" href="why_full_history.html">
+        <h3>Why Full History?</h3>
+        <p>Wouldn't ratings be better based only on recent games? Here's why full history wins — argued, and tested against real results.</p>
+      </a>
+      <a class="subcard" href="score_impact.html">
+        <h3>How Score Affects Your Rating</h3>
+        <p>How much does the final score matter? Worked examples showing exactly how margin and surprise combine to move your number.</p>
+      </a>
+    </div>
+  </div>
+
   <a class="card group-b" href="session_viewer.html">
     <h2>Session Viewer</h2>
     <p>Game-by-game results and rating changes for any play date. Pick a date, see every game, every score, and how each player's rating moved.</p>
@@ -106,11 +150,6 @@
     <p>Every game a player has ever played, in one place. Pick a player, filter by year, see the full record.</p>
   </a>
 
-  <a class="card group-c" href="court_assignments.html">
-    <h2>Court Assignments</h2>
-    <p>Shootout 1 court assignments for the next play date (and projected Shootout 1 court assignments for other upcoming play dates) under Modified ELO ratings, the Den's default rating system, and the difference between the 2 methods. Also contains historical archive back to July 2, 2026.</p>
-  </a>
-
   <a class="card group-d" href="highlights.html">
     <h2>What We're Changing</h2>
     <p>The short version: the problem, the evidence, and the two-phase plan to make court assignments fairer.</p>
@@ -119,11 +158,6 @@
   <a class="card group-d" href="storybook.html">
     <h2>The Case for Change</h2>
     <p>The full story behind how courts get assigned — the evidence, the ratings math, and what we tested to make Shootout 2 fairer.</p>
-  </a>
-
-  <a class="card group-d" href="why_full_history.html">
-    <h2>Your Questions</h2>
-    <p>Straight answers to the questions we hear most — starting with: wouldn't ratings be better based only on recent games?</p>
   </a>
 </main>
 

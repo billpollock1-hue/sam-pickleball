@@ -80,15 +80,33 @@ def validate_pools(df, touched_pools):
         #    from a different game in the same pool that happened to post
         #    at the same minute), and is essentially impossible to occur
         #    legitimately in a 3-game pool.
-        dupe_key = grp["posted"].astype(str) + "|" + grp["winning_score"].astype(str) + "-" + grp["losing_score"].astype(str)
-        dupe_counts = dupe_key.value_counts()
-        for key, n in dupe_counts[dupe_counts > 1].items():
-            ts, score = key.split("|", 1)
+        # Two games sharing timestamp+score alone can be a real coincidence
+        # on rapid manual entry (confirmed real, 2026-09-30) -- only flag it
+        # when the teams match too (unordered pair, so "A / B" and "B / A"
+        # count as the same team), since a genuine stale-grid read carries
+        # over the SAME team data from the source row, not just its score.
+        def _team_pair(row):
+            t1 = frozenset(p.strip() for p in str(row["winning_team"]).split("/") if p.strip())
+            t2 = frozenset(p.strip() for p in str(row["losing_team"]).split("/") if p.strip())
+            return frozenset([t1, t2])
+
+        dupe_key = list(zip(
+            grp["posted"].astype(str),
+            grp["winning_score"].astype(str) + "-" + grp["losing_score"].astype(str),
+            grp.apply(_team_pair, axis=1),
+        ))
+        seen_counts = {}
+        for key in dupe_key:
+            seen_counts[key] = seen_counts.get(key, 0) + 1
+        for key, n in seen_counts.items():
+            if n <= 1:
+                continue
+            ts, score, _ = key
             problems.append(
                 f"{label}: {n} games share both the identical posted timestamp '{ts}' "
-                f"AND the identical score {score} -- this is the signature of a stale/"
-                f"cross-contaminated grid read (one row's score borrowed from another "
-                f"game in the pool), not a real coincidence."
+                f"AND the identical score {score} AND the identical teams -- this is "
+                f"the signature of a stale/cross-contaminated grid read (one row's "
+                f"score borrowed from another game in the pool), not a real coincidence."
             )
 
         # 2. Score sanity: winner must be 11, loser 0-10.

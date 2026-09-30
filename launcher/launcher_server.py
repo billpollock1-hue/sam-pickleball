@@ -69,6 +69,66 @@ _REBUILD_STATE_LOCK = threading.Lock()
 _REBUILD_STATE = {"pending": 0, "state": "idle", "detail": ""}
 
 
+_RECORD_DATE_STATE_LOCK = threading.Lock()
+_RECORD_DATE_STATE = {"pending": 0, "state": "idle", "detail": ""}
+
+
+def get_record_date_status():
+    with _RECORD_DATE_STATE_LOCK:
+        if _RECORD_DATE_STATE["pending"] > 0:
+            return {"state": "running", "detail": ""}
+        return {"state": _RECORD_DATE_STATE["state"], "detail": _RECORD_DATE_STATE["detail"]}
+
+
+def _run_single_shootout_pipeline(date_str, refresh_fn):
+    """Background thread body for the 'single shootout' record-date
+    path. Shares _REBUILD_LOCK with the tryout-name pipeline below --
+    both write to the same /tmp/pickleball_model_latest.xlsx, so they
+    must never run concurrently."""
+    result = ("failed", "pipeline did not run")
+    try:
+        with _REBUILD_LOCK:
+            try:
+                parsed = datetime.strptime(date_str, "%Y-%m-%d")
+                scrape_date = parsed.strftime("%m%d%y")
+                subprocess.run(
+                    ["node", "scraper/scrape.js", "--start", scrape_date, "--end", scrape_date,
+                     "--output", "data/latest_scrape.csv"],
+                    cwd=REPO_ROOT, check=True, timeout=120,
+                )
+                subprocess.run(
+                    ["python3", "scraper/merge_csv.py"],
+                    cwd=REPO_ROOT, check=True, timeout=60,
+                )
+                # /tmp-then-mv: writing large xlsx files directly into the
+                # Documents subtree has hit a real macOS write-timeout bug
+                # before -- always build there first.
+                subprocess.run(
+                    ["python3", "engine/pickleball_engine_v2.py",
+                     "--input", "data/master_history_raw.csv",
+                     "--output", "/tmp/pickleball_model_latest.xlsx"],
+                    cwd=REPO_ROOT, check=True, timeout=600,
+                )
+                subprocess.run(
+                    ["mv", "/tmp/pickleball_model_latest.xlsx",
+                     str(REPO_ROOT / "output/pickleball_model_latest.xlsx")],
+                    check=True,
+                )
+                refresh_fn()
+                result = ("ok", "scraped, merged, engine rebuilt, viewer refreshed")
+            except subprocess.CalledProcessError as e:
+                result = ("failed", f"pipeline step failed (exit {e.returncode}): {e}")
+            except subprocess.TimeoutExpired as e:
+                result = ("failed", f"pipeline step timed out: {e}")
+            except Exception as e:
+                result = ("failed", f"unexpected error: {e}")
+    finally:
+        with _RECORD_DATE_STATE_LOCK:
+            _RECORD_DATE_STATE["pending"] -= 1
+            _RECORD_DATE_STATE["state"], _RECORD_DATE_STATE["detail"] = result
+        print(f"single-shootout record-date pipeline: {result[0]} -- {result[1]}", flush=True)
+
+
 def get_tryout_rebuild_status():
     with _REBUILD_STATE_LOCK:
         if _REBUILD_STATE["pending"] > 0:
@@ -260,6 +320,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(get_recorded_dates())
         elif self.path == "/api/tryout-rebuild-status":
             self._send_json(get_tryout_rebuild_status())
+        elif self.path == "/api/record-date-status":
+            self._send_json(get_record_date_status())
         elif self.path == "/dates" or self.path == "/dates.html":
             self._send_html(DATES_HTML_PATH)
         elif self.path == "/tryout-name" or self.path == "/tryout_name.html":
@@ -369,47 +431,34 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         # date_type == "single"
+        # Reply as soon as the date is saved; the scrape/merge/rebuild/
+        # refresh pipeline runs in the background and this page polls
+        # /api/record-date-status for the outcome -- real incident
+        # 2026-09-30: this request used to stay open through the whole
+        # pipeline and "Load failed" in the browser even when the work
+        # eventually succeeded.
         if not self._append_csv_date(PARTIAL_SHOOTOUT_CSV, date_str):
             self._send_json({"error": f"{date_str} is already recorded"}, status=409)
             return
+        with _RECORD_DATE_STATE_LOCK:
+            _RECORD_DATE_STATE["pending"] += 1
         try:
-            parsed = datetime.strptime(date_str, "%Y-%m-%d")
-            scrape_date = parsed.strftime("%m%d%y")
-
-            subprocess.run(
-                ["node", "scraper/scrape.js", "--start", scrape_date, "--end", scrape_date,
-                 "--output", "data/latest_scrape.csv"],
-                cwd=REPO_ROOT, check=True, timeout=120,
-            )
-            subprocess.run(
-                ["python3", "scraper/merge_csv.py"],
-                cwd=REPO_ROOT, check=True, timeout=60,
-            )
-            # /tmp-then-mv: writing large xlsx files directly into the
-            # Documents subtree has hit a real macOS write-timeout bug
-            # before -- always build there first.
-            subprocess.run(
-                ["python3", "engine/pickleball_engine_v2.py",
-                 "--input", "data/master_history_raw.csv",
-                 "--output", "/tmp/pickleball_model_latest.xlsx"],
-                cwd=REPO_ROOT, check=True, timeout=600,
-            )
-            subprocess.run(
-                ["mv", "/tmp/pickleball_model_latest.xlsx",
-                 str(REPO_ROOT / "output/pickleball_model_latest.xlsx")],
-                check=True,
-            )
-            self._refresh_court_assignments_viewer()
-        except subprocess.CalledProcessError as e:
-            self._send_json({"error": f"Pipeline step failed (exit {e.returncode}): {e}"}, status=500)
-            return
-        except subprocess.TimeoutExpired as e:
-            self._send_json({"error": f"Pipeline step timed out: {e}"}, status=500)
+            threading.Thread(
+                target=_run_single_shootout_pipeline,
+                args=(date_str, self._refresh_court_assignments_viewer),
+                daemon=True,
+            ).start()
+        except Exception as e:
+            with _RECORD_DATE_STATE_LOCK:
+                _RECORD_DATE_STATE["pending"] -= 1
+            self._send_json(
+                {"error": f"Recorded, but could not start the pipeline: {e}"},
+                status=500)
             return
         self._send_json({
             "date": date_str, "type": "single",
-            "status": "scraped, merged, engine rebuilt, viewer refreshed",
-        })
+            "status": "saved; scrape/merge/rebuild pipeline started in the background",
+        }, status=202)
 
     def _handle_record_tryout_name(self, payload):
         date_str = str(payload.get("date", "")).strip()

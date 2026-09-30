@@ -229,6 +229,28 @@ player_detail = {r["player"]: r["detail"] for r in rows_out}
 player_detail_json = json.dumps(player_detail, separators=(",", ":"))
 
 # ── Build table rows ────────────────────────────────────────────────────
+# Bear tallies are shown as denomination "bills" (20/10/5/1) rather than one
+# emoji per bear -- a flat count of individual bear icons got unwieldy once
+# players passed ~10 bears, especially on a phone screen.
+BEAR_DENOMS = [(20, "b20"), (10, "b10"), (5, "b5"), (1, "b1")]
+
+def bear_tally_html(n):
+    if n <= 0:
+        return ""
+    chips = []
+    remaining = n
+    for value, css_class in BEAR_DENOMS:
+        count = remaining // value
+        remaining -= count * value
+        if count <= 0:
+            continue
+        label = str(value) if count == 1 else f"{value}&times;{count}"
+        title = f"{value}-bear icon" if count == 1 else f"{count} &times; {value}-bear icons = {value * count} bears"
+        chips.append(
+            f'<span class="bear-bill {css_class}" title="{title}">🐻{label}</span>'
+        )
+    return "".join(chips)
+
 table_rows = ""
 for i, r in enumerate(rows_out, start=1):
     flag = ' <span class="lc" title="Gender inferred from name -- needs review">?</span>' if r["low_conf"] else ""
@@ -241,7 +263,7 @@ for i, r in enumerate(rows_out, start=1):
         <td>{r['leader_3']}</td>
         <td>{r['pickle_bears']}</td>
         <td>{r['shootout_bears']}</td>
-        <td class="tot">{r['total_bears']} <span class="bear-tally">{'🐻' * r['total_bears']}</span></td>
+        <td class="tot">{r['total_bears']} <span class="bear-tally">{bear_tally_html(r['total_bears'])}</span></td>
       </tr>"""
 
 html = f"""<!DOCTYPE html>
@@ -300,7 +322,17 @@ html = f"""<!DOCTYPE html>
   td.rk {{ color: #8a97a8; font-size: 13px; width: 30px; }}
   td.nm {{ text-align: left; font-weight: 600; }}
   td.tot {{ font-weight: bold; color: var(--blue-dark); white-space: normal; }}
-  .bear-tally {{ font-size: 11px; letter-spacing: -1px; }}
+  .bear-tally {{ display: inline-flex; gap: 3px; flex-wrap: wrap; vertical-align: middle; }}
+  .bear-bill {{
+    display: inline-flex; align-items: center; gap: 2px;
+    font-family: 'Trebuchet MS', Verdana, sans-serif; font-size: 10.5px; font-weight: 700;
+    color: #fff; border-radius: 4px; padding: 1px 5px 1px 4px; line-height: 1.5;
+    white-space: nowrap; cursor: help;
+  }}
+  .bear-bill.b20 {{ background: #7b4fa6; }}
+  .bear-bill.b10 {{ background: #2E75B6; }}
+  .bear-bill.b5  {{ background: #2A9D8F; }}
+  .bear-bill.b1  {{ background: #8a97a8; }}
   tr:nth-child(even) td {{ background: #f2f6fb; }}
   .lc {{ color: #c9a84c; font-weight: 700; cursor: help; }}
 
@@ -388,6 +420,7 @@ html = f"""<!DOCTYPE html>
       Bears counted since Aug 24, 2026, from rated games only.<br>
       Leader (2W)/(3W) = number of pools where this player finished on top with 2 or 3 wins (informational -- not every "Leader" earns a bear; see rules).<br>
       Tap the 📋 next to a player's name for their pool-by-pool bear log.<br>
+      Bear totals are shown as 🐻20 / 🐻10 / 🐻5 / 🐻1 icons, like bills of different denominations, so a big total stays compact.<br>
       <a href="index.html">All charts &amp; tools</a> &middot; updated after every play date
     </p>
   </div>

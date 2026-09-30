@@ -124,24 +124,40 @@
 
   <section>
     <div class="kicker">Example 2</div>
-    <h2>Same Score, Different Surprise</h2>
-    <p>Now hold the margin fixed and change how surprising the result is. Take two players 200 rating points apart &mdash; a real, established skill gap &mdash; and have them play the same 11-2 game:</p>
-    <div class="stat-row">
-      <div class="stat flag"><div class="num">+35</div><div class="lbl">Underdog wins 11&ndash;2 (upset)</div></div>
-      <div class="stat"><div class="num">+11</div><div class="lbl">Favorite wins 11&ndash;2 (expected)</div></div>
+    <h2>Give The Underdog A Real Gap</h2>
+    <p>Example 1 held both sides equal, so margin alone decided the outcome. Now put a real 200-point gap between the two players and run the same range of scores. Margin still bends the curve exactly the same way &mdash; but every number moves higher, because winning is now the less expected outcome.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Score</th><th>Underdog Wins</th><th>Favorite Wins</th></tr></thead>
+        <tbody>
+          <tr><td>11&ndash;10</td><td class="delta">+11</td><td class="delta">+3</td></tr>
+          <tr><td>11&ndash;8</td><td class="delta">+21</td><td class="delta">+7</td></tr>
+          <tr><td>11&ndash;5</td><td class="delta">+30</td><td class="delta">+9</td></tr>
+          <tr><td>11&ndash;2</td><td class="delta">+35</td><td class="delta">+11</td></tr>
+          <tr><td>11&ndash;0</td><td class="delta">+38</td><td class="delta">+12</td></tr>
+        </tbody>
+      </table>
     </div>
-    <p>Same score, three times the rating movement. The favorite winning 11-2 barely tells the system anything it didn't already expect. The underdog winning 11-2 is a real surprise, and the rating reacts accordingly &mdash; that's the surprise term doing its job, independent of margin.</p>
+    <p>The underdog's column climbs the same log curve as Example 1, just scaled up by how surprising the result is. The favorite's column barely moves regardless of score &mdash; winning when you were already expected to win was never going to teach the ratings much.</p>
   </section>
 
   <section>
     <div class="kicker">Example 3</div>
-    <h2>Same Underdog, Different Margin</h2>
-    <p>Finally, hold the surprise fixed and change the margin. Same 200-point underdog from Example 2, winning by two different amounts:</p>
-    <div class="stat-row">
-      <div class="stat"><div class="num">+17</div><div class="lbl">Underdog wins 11&ndash;9 (narrow)</div></div>
-      <div class="stat flag"><div class="num">+35</div><div class="lbl">Underdog wins 11&ndash;2 (wider margin)</div></div>
+    <h2>Widen The Gap Further</h2>
+    <p>Push the gap to 400 points &mdash; a decisive favorite by any measure &mdash; and run the same scores again:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Score</th><th>Underdog Wins</th><th>Favorite Wins</th></tr></thead>
+        <tbody>
+          <tr><td>11&ndash;10</td><td class="delta">+13</td><td class="delta">+1</td></tr>
+          <tr><td>11&ndash;8</td><td class="delta">+25</td><td class="delta">+3</td></tr>
+          <tr><td>11&ndash;5</td><td class="delta">+35</td><td class="delta">+4</td></tr>
+          <tr><td>11&ndash;2</td><td class="delta">+42</td><td class="delta">+4</td></tr>
+          <tr><td>11&ndash;0</td><td class="delta">+45</td><td class="delta">+5</td></tr>
+        </tbody>
+      </table>
     </div>
-    <div class="callout">Both wins are equally surprising &mdash; same rating gap, same upset. The wider win still counts for more than twice as much, but not because one game proves anything on its own: any result, lopsided or narrow, can just be someone's especially good or off day. Margin sets how much weight that single result gets, not how confident the system is. What actually keeps the rating honest isn't this one game &mdash; it's every game that follows.</div>
+    <div class="callout">Same shape, bigger stakes: a 400-point upset still moves the rating more than a 200-point one, at every margin &mdash; but not proportionally more. Doubling the rating gap doesn't double the reward, because the surprise term has diminishing returns too, just like margin does. And the favorite's column keeps shrinking toward nothing: beating someone you were already expected to blow out tells the system almost nothing it didn't know. None of this means any single game is gospel &mdash; a shutout can still just be someone's best or worst day. Margin and surprise only set how much weight one result carries; it's every game that follows that keeps a rating honest.</div>
   </section>
 
   <div class="divider"></div>

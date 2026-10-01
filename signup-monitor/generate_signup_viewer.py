@@ -139,6 +139,12 @@ def parse_log(date_str: str) -> Optional[dict]:
     # derive each player's WLx label from their live position in it.
     players = []
     player_map = {}
+    # Every episode (not just the current one) a canonical name has had,
+    # as (start_ts, row) pairs in chronological order -- lets the
+    # revision-population pass below route each historical event to
+    # whichever episode actually owned it, instead of trusting
+    # player_map[name]'s current (possibly since-reassigned) value.
+    episode_history = {}
     active_wl = []            # canonical names currently wait-listed, in order
     last_shown_wl_rank = {}   # canonical -> last WL rank rendered in the table
 
@@ -148,11 +154,6 @@ def parse_log(date_str: str) -> Optional[dict]:
             c = canonical(name)
 
             if action in ("joined*", "joined"):
-                # Skip the "regular" half of a WL→regular transition — the
-                # row already exists from their original WL join.
-                if (ts, c) in transitions and not is_wl(name):
-                    continue
-
                 if c not in player_map:
                     if is_wl(name):
                         active_wl.append(c)
@@ -164,8 +165,24 @@ def parse_log(date_str: str) -> Optional[dict]:
                     p = {"name": c, "joined": fmt_ts(ts), "initial": initial,
                          "withdrew": False, "revs": []}
                     player_map[c] = p
+                    episode_history.setdefault(c, []).append((ts, p))
                     players.append(p)
-                elif not is_wl(name):
+                elif player_map[c].get("withdrew"):
+                    # A genuine withdrawal (drop-out) is already on this
+                    # player's current episode -- this join, whether a
+                    # direct rejoin or the "regular" half of a later
+                    # waitlist promotion, is a real sign-back-up and gets
+                    # its own row. A PURE promotion where the player never
+                    # actually withdrew does not land here at all (this
+                    # elif is false), and keeps updating the same row via
+                    # the code below, unchanged -- confirmed real cases:
+                    # Lidia Zolnierczyk (09-18 to 09-21 sheet, WD then
+                    # promoted off the waitlist) and Bill Pollock (09-07/
+                    # 08/09 sheet, same pattern). A mid-day sheet capacity
+                    # increase (e.g. 16->20) can also promote several
+                    # waitlisted players at once with no real withdrawal on
+                    # their episodes -- those still correctly fall through
+                    # to the comment below rather than this branch.
                     # NOTE (2026-09-23): a mid-day sheet capacity increase
                     # (e.g. 16->20) can cause several waitlisted players to
                     # be simultaneously reclassified from Wait List to
@@ -200,6 +217,7 @@ def parse_log(date_str: str) -> Optional[dict]:
                     p = {"name": c + " (rejoined)", "joined": fmt_ts(ts),
                          "initial": str(order), "withdrew": False, "revs": []}
                     player_map[c] = p
+                    episode_history.setdefault(c, []).append((ts, p))
                     players.append(p)
 
             elif action in ("withdrew", "removed_auto"):
@@ -267,6 +285,23 @@ def parse_log(date_str: str) -> Optional[dict]:
                 promo_names = f"{promoted[0]} +{len(promoted) - 1}"
             rev["header"] = f"{promo_names} promoted\n{fmt_date(rev['ts'])}"
 
+    def _episode_at(c, at_ts):
+        """The row that was actually open for canonical name c at at_ts --
+        the most recently started episode whose start_ts <= at_ts. Falls
+        back to player_map[c] (the current episode) if c has no recorded
+        episode history, which should not normally happen but keeps this
+        at least as safe as the old lookup in that edge case."""
+        eps = episode_history.get(c)
+        if not eps:
+            return player_map.get(c)
+        result = None
+        for start_ts, row in eps:
+            if start_ts <= at_ts:
+                result = row
+            else:
+                break
+        return result
+
     # ── Populate revision cells on each player row ────────────────────────────
     n = len(revisions)
     for p in players:
@@ -278,27 +313,30 @@ def parse_log(date_str: str) -> Optional[dict]:
         # trim, so the two very different situations aren't visually
         # conflated with each other.
         for wd_c in rev["withdrawals"]:
-            if wd_c in player_map:
+            wd_row = _episode_at(wd_c, rev["ts"])
+            if wd_row is not None:
                 if rev["withdrawal_action"].get(wd_c) == "removed_auto":
-                    player_map[wd_c]["revs"][ri] = {"t": "auto", "v": f"AUTO {fmt_ts(rev['ts'])}", "title": fmt_full_ts(rev['ts']) + " — removed by shootout launcher (court-count trim)"}
+                    wd_row["revs"][ri] = {"t": "auto", "v": f"AUTO {fmt_ts(rev['ts'])}", "title": fmt_full_ts(rev['ts']) + " — removed by shootout launcher (court-count trim)"}
                 else:
-                    player_map[wd_c]["revs"][ri] = {"t": "wd", "v": f"WD {fmt_ts(rev['ts'])}", "title": fmt_full_ts(rev['ts'])}
+                    wd_row["revs"][ri] = {"t": "wd", "v": f"WD {fmt_ts(rev['ts'])}", "title": fmt_full_ts(rev['ts'])}
 
         # Players who reordered due to this withdrawal (regular seat number,
         # or a live-tracked WL queue-position shift)
         for c, val in rev["reorders"].items():
-            if c not in player_map:
+            reorder_row = _episode_at(c, rev["ts"])
+            if reorder_row is None:
                 continue
             if isinstance(val, tuple) and val[0] == "wl":
-                player_map[c]["revs"][ri] = {"t": "rev", "v": f"WL{val[1]}"}
+                reorder_row["revs"][ri] = {"t": "rev", "v": f"WL{val[1]}"}
             else:
-                player_map[c]["revs"][ri] = {"t": "rev", "v": str(val)}
+                reorder_row["revs"][ri] = {"t": "rev", "v": str(val)}
 
         # Players promoted from WL to regular by this withdrawal — always a
         # real court seat, never re-labeled as WL regardless of position.
         for c, new_order in rev["transitions"].items():
-            if c in player_map:
-                player_map[c]["revs"][ri] = {"t": "promoted", "v": str(new_order)}
+            promo_row = _episode_at(c, rev["ts"])
+            if promo_row is not None:
+                promo_row["revs"][ri] = {"t": "promoted", "v": str(new_order)}
 
     return {
         "cols": [{"h": r["header"]} for r in revisions],

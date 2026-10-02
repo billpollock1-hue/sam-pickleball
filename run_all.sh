@@ -326,6 +326,7 @@ mkdir -p docs
 cp output/session_viewer.html docs/
 cp output/player_history.html docs/
 cp output/leaderboard.html docs/
+cp output/data_status.json docs/
 cp output/compare_ratings.html docs/
 cp output/bear_count.html docs/
 cp assignments/output/court_assignments_viewer.html docs/court_assignments.html

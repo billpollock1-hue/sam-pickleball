@@ -185,6 +185,22 @@ PB_RUNTIME = os.environ.get("PB_RUNTIME", str(Path.home() / "Library/Application
 STATE_PATH = Path(PB_RUNTIME) / "signup_monitor_state.json"
 
 
+def get_recorded_tryout_names():
+    """Read data/tryout_name_fixes.csv and return it sorted newest-first,
+    for the Identify Tryout Player page's log."""
+    entries = []
+    if TRYOUT_NAME_FIXES_CSV.exists():
+        lines = TRYOUT_NAME_FIXES_CSV.read_text().splitlines()[1:]  # skip header
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            date_str, real_name = line.split(",", 1)
+            entries.append({"date": date_str.strip(), "real_name": real_name.strip()})
+    entries.sort(key=lambda e: e["date"], reverse=True)
+    return entries[:10]  # most recent 10 only -- requested so this log stays short
+
+
 def get_recorded_dates():
     """Read both no-shootout and partial-shootout CSVs, tag each
     entry with its type, and return combined, sorted newest-first."""
@@ -322,6 +338,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(get_tryout_rebuild_status())
         elif self.path == "/api/record-date-status":
             self._send_json(get_record_date_status())
+        elif self.path == "/api/recorded-tryout-names":
+            self._send_json(get_recorded_tryout_names())
         elif self.path == "/dates" or self.path == "/dates.html":
             self._send_html(DATES_HTML_PATH)
         elif self.path == "/tryout-name" or self.path == "/tryout_name.html":

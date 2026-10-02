@@ -64,6 +64,23 @@
   #status.ok { display: block; background: #e6f4ea; color: #276221; border: 1px solid #b6dfc0; }
   #status.err { display: block; background: #fbe9e7; color: #9C3B1B; border: 1px solid #f2b8ad; }
   #status.pending { display: block; background: #fff8e1; color: #8a6d1a; border: 1px solid #f0dfa0; }
+
+  .log-card {
+    background: #fff;
+    border: 1px solid #dbe4ee;
+    border-radius: 8px;
+    padding: 20px;
+    margin-top: 20px;
+  }
+  .log-card h2 { font-size: 16px; color: var(--blue-dark); margin-bottom: 12px; }
+  table.log-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  table.log-table th {
+    text-align: left; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.03em; color: #888; border-bottom: 2px solid #eee;
+    padding: 5px 6px;
+  }
+  table.log-table td { padding: 6px; border-bottom: 1px solid #f0f0f0; }
+  #logEmpty { font-size: 13.5px; color: #777; }
 </style>
 </head>
 <body>
@@ -98,9 +115,56 @@
     <button id="submitBtn" onclick="submitFix()">Record</button>
     <div id="status"></div>
   </div>
+
+  <div class="log-card">
+    <h2>Previously Identified Players</h2>
+    <div id="logEmpty" style="display:none;">No tryout players recorded yet.</div>
+    <table class="log-table" id="logTable" style="display:none;">
+      <thead>
+        <tr><th>Date</th><th>Real Name</th></tr>
+      </thead>
+      <tbody id="logBody"></tbody>
+    </table>
+  </div>
 </main>
 
 <script>
+function formatDateDisplay(dateStr) {
+  // dateStr is "YYYY-MM-DD" -- parse as local, not UTC, to avoid an
+  // off-by-one-day display shift.
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  return dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+async function loadRecordedTryoutNames() {
+  try {
+    const resp = await fetch('/api/recorded-tryout-names');
+    const entries = await resp.json();
+    const tbody = document.getElementById('logBody');
+    const table = document.getElementById('logTable');
+    const empty = document.getElementById('logEmpty');
+
+    if (!entries.length) {
+      empty.style.display = 'block';
+      table.style.display = 'none';
+      return;
+    }
+
+    tbody.innerHTML = entries.map(e => `
+      <tr>
+        <td>${formatDateDisplay(e.date)}</td>
+        <td>${e.real_name}</td>
+      </tr>
+    `).join('');
+    table.style.display = 'table';
+    empty.style.display = 'none';
+  } catch (e) {
+    document.getElementById('logEmpty').textContent = 'Could not load recorded tryout names.';
+    document.getElementById('logEmpty').style.display = 'block';
+  }
+}
+
 async function submitFix() {
   const date = document.getElementById('dateInput').value;
   const real_name = document.getElementById('nameInput').value.trim();
@@ -127,6 +191,7 @@ async function submitFix() {
     if (resp.ok) {
       statusEl.className = 'pending';
       statusEl.textContent = `Saved: ${date}'s tryout slot recorded as "${real_name}". Rebuilding in the background — this message updates when it finishes (a few minutes)...`;
+      loadRecordedTryoutNames();
       pollRebuildStatus(date, real_name);
     } else {
       statusEl.className = 'err';
@@ -172,6 +237,8 @@ async function pollRebuildStatus(date, realName) {
   statusEl.className = 'err';
   statusEl.textContent = 'Saved, but the rebuild is taking longer than 15 minutes. The name is recorded; check the court-assignments page later.';
 }
+
+loadRecordedTryoutNames();
 </script>
 </body>
 </html>

@@ -72,6 +72,7 @@ from den_assignments import (
     extract_ratings_from_text,
     assign_courts_by_rating,
     load_player_ratings,
+    load_tryout_name_fix,
     ensure_model_current,
     clean_name,
     save_page_text,
@@ -688,7 +689,7 @@ def check_in_all(page):
     page.wait_for_timeout(1000)
 
 
-def read_ladder_step_grid(page, known_player_names):
+def read_ladder_step_grid(page, known_player_names, tryout_fix_name=None):
     """
     Scrape the current player-name -> Ladder Step box mapping from the
     Shootout Check-In screen.
@@ -742,6 +743,13 @@ def read_ladder_step_grid(page, known_player_names):
             continue
         if text and text in known_player_names:
             ordered_names.append(text)
+        elif tryout_fix_name and text.lower().startswith("den new player tryout"):
+            # Den's own page still shows the raw placeholder text for
+            # this row -- the real-name substitution only ever existed
+            # in our own computed data, never on Den's site. Record it
+            # under the substituted name so it lines up with
+            # computed_assignments exactly like every other row.
+            ordered_names.append(tryout_fix_name)
 
     print(f"  DIAGNOSTIC: matched {len(ordered_names)} player name(s) "
           f"against known_player_names: {ordered_names}")
@@ -777,7 +785,7 @@ def read_ladder_step_grid(page, known_player_names):
     return pd.DataFrame(grid)
 
 
-def cross_check_and_correct_seeding(page, computed_assignments):
+def cross_check_and_correct_seeding(page, computed_assignments, date_str=None):
     """
     computed_assignments: a DataFrame with at least ["Player", "Step"]
     columns representing the ground truth to seed courts by.
@@ -808,8 +816,9 @@ def cross_check_and_correct_seeding(page, computed_assignments):
 
     known_player_names = set(computed_assignments["Player"].apply(clean_name))
     expected_count = len(computed_assignments)
+    tryout_fix_name = load_tryout_name_fix(date_str) if date_str else None
 
-    grid = read_ladder_step_grid(page, known_player_names)
+    grid = read_ladder_step_grid(page, known_player_names, tryout_fix_name)
 
     attempts = 0
     while len(grid) < expected_count and attempts < 2:
@@ -837,7 +846,7 @@ def cross_check_and_correct_seeding(page, computed_assignments):
         except Exception as e:
             print(f"    (scroll attempt failed: {e})")
         page.wait_for_timeout(2000 + attempts * 1000)
-        grid = read_ladder_step_grid(page, known_player_names)
+        grid = read_ladder_step_grid(page, known_player_names, tryout_fix_name)
 
     if grid.empty:
         print("  ⚠ Could not read the Ladder Step grid -- skipping seeding audit.")
@@ -993,7 +1002,7 @@ def main():
 
             actual_shuffle_mode = create_shootout(page, num_courts)
             check_in_all(page)
-            cross_check_and_correct_seeding(page, computed_assignments)
+            cross_check_and_correct_seeding(page, computed_assignments, play_date_file)
             seed_players(page)
             start_event(page)
 

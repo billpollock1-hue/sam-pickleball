@@ -1,0 +1,95 @@
+# Secrets & sessions
+den_credentials.json
+den_session.json
+den_session*.json
+data/rescrape_verify_*.csv
+
+# Generated outputs — rebuilt on every run (docs/ is the exception — tracked for GitHub Pages)
+output/
+*.pdf
+
+# Live data files
+data/master_history_raw.csv
+data/latest_scrape.csv
+data/latest_scrape_standings.csv
+data/pool_standings.csv
+data/backfill_standings.csv
+data/backfill_matches.csv
+data/master_history_raw.csv.pre-backfill-*.bak
+
+# Virtual environment
+.venv/
+
+# Monitor runtime pointers (live files under ~/Library/Application Support/PBMonitor)
+signup-monitor/logs
+signup-monitor/signup_viewer.html
+signup_monitor_state.json
+
+# macOS
+.DS_Store
+data/backups/
+diag*.js
+scraper/*.bak
+scraper/*.bak2
+scraper/*.bak3
+
+# Launcher runtime state — not source code, changes constantly
+launcher/launch_log.jsonl
+launcher/launcher_config.json
+launcher/logs/
+data/den_current_members.csv
+launcher/format_tracker_data.json
+data/.last_successful_rebuild_hash
+__pycache__/
+
+# Node dependencies — regenerable via npm install, never belongs in git
+node_modules/
+
+# One-off backup snapshots made during manual data fixes
+data/master_history_raw.csv.pre-redate-backfill-*.bak
+data/master_history_raw.csv.pre-dedupe-*.bak
+data/master_history_raw.csv.backup_before_dedup
+launcher/launch_log.jsonl.backup_before_removing_*
+launcher/launch_log.jsonl.bak-*
+engine/*.bak_before_fallback_edit
+
+# Run logs
+*.log
+
+# Generated cache — rebuilt by engine/eod_rating_cache.py
+data/eod_rating_cache.json
+
+# Leftover scratch folder from a past Claude session
+Claude outputs/
+
+# Legacy/archived scripts kept on disk for reference only, not active source
+archive/
+engine/archive/
+
+# One-off diagnostic, sweep, and single-use patch scripts (not part of the
+# automated pipeline -- confirmed unreferenced by run_all.sh / launcher_*.py)
+/sam_*.py
+/extract_*.py
+/signup_behavior_summary.py
+/rating_movement_by_tier.py
+/backtest_rating_freeze_2026.py
+/sam_record_date_background_pipeline.py
+engine/validate_*.py
+engine/sweep_*.py
+engine/parameter_sweep*.py
+engine/diagnose_*.py
+engine/check_expectation_compression.py
+engine/trace_mike_lacey_return.py
+engine/explain_ludick_shift.py
+engine/recheck_players_restored_k.py
+engine/prototype_recency_weighted_elo.py
+engine/dump_all_quarters.py
+engine/patch_add_rating_history_refresh.py
+engine/patch_gap_distribution_buckets.py
+engine/build_summary.py
+assignments/sam_patch_*.py
+assignments/patch_*.py
+launcher/patch_*.py
+launcher/sam_patch_*.py
+signup-monitor/patch_*.py
+signup-monitor/sam_patch_*.py

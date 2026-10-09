@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Return Countdown">
+  <title>Return Countdown</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #000;
+      color: #fff;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+    }
+    
+    .screen-container {
+      width: 100%;
+      height: 100vh;
+    }
+    
+    .screen {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background-image: url('https://i.postimg.cc/xCXnCg89/Grand-Canyon-Background.jpg');
+      background-position: center;
+      background-size: cover;
+      background-attachment: fixed;
+      position: relative;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: max(0.5rem, env(safe-area-inset-top)) 0.5rem 0.5rem 0.5rem;
+    }
+    
+    .screen::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(180deg, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.4) 100%);
+      pointer-events: none;
+    }
+    
+    .content {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      width: 100%;
+    }
+    
+    .stats-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+    }
+    
+    .stat-box {
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      padding: 0.5rem;
+      text-align: center;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .stat-icon {
+      font-size: 18px;
+      margin-bottom: 0.2rem;
+    }
+    
+    .stat-label {
+      font-size: 9px;
+      opacity: 0.6;
+      margin-bottom: 0.2rem;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      line-height: 1.1;
+    }
+    
+    .stat-value {
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1.1;
+      animation: pulse 0.5s ease-in-out;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+    
+    
+    .stat-unit {
+      font-size: 9px;
+      opacity: 0.5;
+      margin-top: 0.1rem;
+    }
+    
+    .progress-section {
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      padding: 0.5rem;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .progress-title {
+      font-size: 9px;
+      opacity: 0.6;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      margin-bottom: 0.3rem;
+    }
+    
+    .progress-percentage {
+      font-size: 22px;
+      font-weight: 700;
+      color: #7fd900;
+      margin-bottom: 0.3rem;
+      text-align: center;
+    }
+    
+    .progress-bar {
+      width: 100%;
+      height: 16px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #7fd900, #5fa800);
+      border-radius: 7px;
+      transition: width 0.05s linear;
+    }
+    
+    .arrival-section {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+    }
+    
+    .arrival-box {
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      padding: 0.5rem;
+      text-align: center;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .arrival-icon {
+      font-size: 18px;
+      margin-bottom: 0.2rem;
+    }
+    
+    .arrival-label {
+      font-size: 9px;
+      opacity: 0.6;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      margin-bottom: 0.2rem;
+      line-height: 1.1;
+    }
+    
+    .arrival-value {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 0.1rem;
+      line-height: 1.1;
+    }
+    
+    .arrival-unit {
+      font-size: 9px;
+      opacity: 0.5;
+    }
+    
+    
+    @media (max-width: 480px) {
+      .stats-row, .arrival-section {
+        grid-template-columns: 1fr 1fr;
+      }
+      .stat-value {
+        font-size: 16px;
+      }
+      .arrival-value {
+        font-size: 15px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="screen-container" id="screenContainer">
+    <!-- Arizona Screen -->
+    <div class="screen" id="screen1">
+      <div class="content">
+        <div class="stats-row">
+          <div class="stat-box">
+            <div class="stat-icon">📅</div>
+            <div class="stat-label">Departed</div>
+            <div class="stat-value">June 3</div>
+            <div class="stat-unit">8:50 AM</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-icon">📆</div>
+            <div class="stat-label">Days Since</div>
+            <div class="stat-value" id="daysSinceAZ">0</div>
+            <div class="stat-unit">days</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-icon">⏱️</div>
+            <div class="stat-label">Minutes Since</div>
+            <div class="stat-value" id="minutesSinceAZ">0</div>
+            <div class="stat-unit">mins</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-icon">⏰</div>
+            <div class="stat-label">Seconds Since</div>
+            <div class="stat-value" id="secondsSinceAZ">0</div>
+            <div class="stat-unit">secs</div>
+          </div>
+        </div>
+        
+        <div class="progress-section">
+          <div class="progress-title">Progress</div>
+          <div class="progress-percentage" id="progressPercentAZ">0.000%</div>
+          <div class="progress-bar">
+            <div class="progress-fill" id="progressFillAZ" style="width: 0%"></div>
+          </div>
+        </div>
+        
+        <div class="arrival-section">
+          <div class="arrival-box">
+            <div class="arrival-icon">✈️</div>
+            <div class="arrival-label">Arrival</div>
+            <div class="arrival-value" id="arrivalDate" style="cursor: pointer; text-decoration: underline;">Sept 21</div>
+            <div class="arrival-unit" id="arrivalTime" style="cursor: pointer; text-decoration: underline;">4:00 PM</div>
+          </div>
+          <div class="arrival-box">
+            <div class="arrival-icon">📅</div>
+            <div class="arrival-label">Days Left</div>
+            <div class="arrival-value" id="daysToAZ">0</div>
+            <div class="arrival-unit">days</div>
+          </div>
+          <div class="arrival-box">
+            <div class="arrival-icon">⏱️</div>
+            <div class="arrival-label">Minutes Left</div>
+            <div class="arrival-value" id="minutesToAZ">0</div>
+            <div class="arrival-unit">mins</div>
+          </div>
+          <div class="arrival-box">
+            <div class="arrival-icon">⏰</div>
+            <div class="arrival-label">Seconds Left</div>
+            <div class="arrival-value" id="secondsToAZ">0</div>
+            <div class="arrival-unit">secs</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let countdown = {
+      start: new Date(2026, 5, 3, 8, 50, 0),
+      end: new Date(2026, 8, 21, 16, 0, 0)
+    };
+
+    // Load saved end date from localStorage
+    function loadSavedDate() {
+      const saved = localStorage.getItem('arrivalDateTime');
+      if (saved) {
+        countdown.end = new Date(saved);
+      }
+      updateArrivalDisplay();
+    }
+
+    function updateArrivalDisplay() {
+      const date = countdown.end;
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const dateStr = `${monthNames[date.getMonth()]} ${date.getDate()}`;
+      const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      
+      document.getElementById('arrivalDate').textContent = dateStr;
+      document.getElementById('arrivalTime').textContent = timeStr;
+    }
+
+    // Edit date
+    document.getElementById('arrivalDate').addEventListener('click', () => {
+      const newDate = prompt('Enter new arrival date (MM/DD/YYYY):', `${countdown.end.getMonth() + 1}/${countdown.end.getDate()}/${countdown.end.getFullYear()}`);
+      if (newDate) {
+        const [month, day, year] = newDate.split('/');
+        if (month && day && year) {
+          countdown.end = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), countdown.end.getHours(), countdown.end.getMinutes());
+          localStorage.setItem('arrivalDateTime', countdown.end.toISOString());
+          updateArrivalDisplay();
+        }
+      }
+    });
+
+    // Edit time
+    document.getElementById('arrivalTime').addEventListener('click', () => {
+      const newTime = prompt('Enter new arrival time (HH:MM AM/PM):', countdown.end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }));
+      if (newTime) {
+        const timeParts = newTime.match(/(\d+):(\d+)\s*(AM|PM)/i);
+        if (timeParts) {
+          let hour = parseInt(timeParts[1]);
+          const minute = parseInt(timeParts[2]);
+          const period = timeParts[3].toUpperCase();
+          
+          if (period === 'PM' && hour !== 12) hour += 12;
+          if (period === 'AM' && hour === 12) hour = 0;
+          
+          countdown.end = new Date(countdown.end.getFullYear(), countdown.end.getMonth(), countdown.end.getDate(), hour, minute);
+          localStorage.setItem('arrivalDateTime', countdown.end.toISOString());
+          updateArrivalDisplay();
+        }
+      }
+    });
+
+    function updateScreen() {
+      const now = new Date();
+      
+      const elapsedMs = now - countdown.start;
+      const elapsedSeconds = Math.floor(elapsedMs / 1000);
+      const daysSince = Math.floor(elapsedSeconds / 86400);
+      const minutesSince = Math.floor(elapsedSeconds / 60);
+      
+      const remainingMs = countdown.end - now;
+      const totalSecondsRemaining = Math.max(0, Math.floor(remainingMs / 1000));
+      const daysTo = Math.floor(totalSecondsRemaining / 86400);
+      const totalMinutesRemaining = Math.floor(totalSecondsRemaining / 60);
+      
+      const totalMs = countdown.end - countdown.start;
+      const elapsedPct = (elapsedMs / totalMs) * 100;
+      
+      document.getElementById('daysSinceAZ').textContent = daysSince;
+      document.getElementById('minutesSinceAZ').textContent = minutesSince;
+      document.getElementById('secondsSinceAZ').textContent = elapsedSeconds;
+      
+      document.getElementById('daysToAZ').textContent = daysTo;
+      document.getElementById('minutesToAZ').textContent = totalMinutesRemaining;
+      document.getElementById('secondsToAZ').textContent = totalSecondsRemaining;
+      
+      document.getElementById('progressPercentAZ').textContent = `${Math.max(0, Math.min(elapsedPct, 100)).toFixed(3)}%`;
+      document.getElementById('progressFillAZ').style.width = `${Math.max(0, Math.min(elapsedPct, 100))}%`;
+    }
+
+    // Load saved date and start updates
+    loadSavedDate();
+    updateScreen();
+    setInterval(updateScreen, 100);
+  </script>
+</body>
+</html>

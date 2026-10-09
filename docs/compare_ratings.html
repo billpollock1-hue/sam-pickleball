@@ -49,6 +49,14 @@
                           border: 1px solid #ccc; font-size: 13px; }
   .compare-status { font-size: 12px; color: #666; padding: 0 14px 10px; }
 
+  .quick-range { margin-top: 10px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .quick-range-label { font-weight: bold; color: var(--blue-dark); margin-right: 2px; font-size: 13px; }
+  .quick-range button { background: var(--blue-light); color: var(--blue-dark); border: 1px solid #c3d6e8;
+                          border-radius: 14px; padding: 5px 12px; font-size: 12.5px; cursor: pointer;
+                          font-family: Calibri, Arial, sans-serif; transition: background 0.15s; }
+  .quick-range button:hover { background: #c3d9ee; }
+  .quick-range button.active { background: var(--blue-mid); color: #fff; border-color: var(--blue-mid); }
+
   table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px;
            overflow: hidden; box-shadow: 0 1px 4px rgba(31,78,121,0.10); }
   th { background: var(--blue-mid); color: #fff; padding: 9px 8px; font-size: 12.5px;
@@ -90,9 +98,16 @@
     <div class="compare-bar">
       <span class="compare-label">Compare ratings:</span>
       <label for="fromDateSelect">From</label>
-      <select id="fromDateSelect" onchange="updateDeltaColumn()"></select>
+      <select id="fromDateSelect" onchange="clearQuickRangeActive(); updateDeltaColumn()"></select>
       <label for="toDateSelect">To</label>
-      <select id="toDateSelect" onchange="updateDeltaColumn()"></select>
+      <select id="toDateSelect" onchange="clearQuickRangeActive(); updateDeltaColumn()"></select>
+      <div class="quick-range">
+        <span class="quick-range-label">Quick range:</span>
+        <button type="button" onclick="setQuickRange(7, this)">Last 7 days</button>
+        <button type="button" onclick="setQuickRange(14, this)">Last 14 days</button>
+        <button type="button" onclick="setQuickRange(30, this)">Last 30 days</button>
+        <button type="button" onclick="setQuickRange(60, this)">Last 60 days</button>
+      </div>
     </div>
     <div id="coverageStatus" class="compare-status"></div>
 
@@ -603,6 +618,35 @@ function populateDateSelects() {
     fromSel.value = RATING_DATES[defaultFromIdx];
     toSel.value = usefulDates[usefulDates.length - 1];
   }
+}
+
+function clearQuickRangeActive() {
+  document.querySelectorAll('.quick-range button').forEach(b => b.classList.remove('active'));
+}
+
+function setQuickRange(days, btn) {
+  const fromSel = document.getElementById('fromDateSelect');
+  const toSel = document.getElementById('toDateSelect');
+  if (!fromSel.options.length || !toSel.options.length) return;
+
+  // toSel is populated most-recent-first, so its first option is the latest
+  // date with any rating data -- that's always the right default "To".
+  const latest = toSel.options[0].value;
+  toSel.value = latest;
+
+  // fromSel is populated oldest-first; walk forward and take the earliest
+  // date that still falls within the requested trailing window.
+  const targetTime = new Date(latest + 'T00:00:00Z').getTime() - days * 86400000;
+  const fromOptions = Array.from(fromSel.options).map(o => o.value);
+  let chosen = fromOptions[0];
+  for (const d of fromOptions) {
+    if (new Date(d + 'T00:00:00Z').getTime() >= targetTime) { chosen = d; break; }
+  }
+  fromSel.value = chosen;
+
+  clearQuickRangeActive();
+  if (btn) btn.classList.add('active');
+  updateDeltaColumn();
 }
 
 function deltaColor(delta) {

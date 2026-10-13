@@ -137,11 +137,24 @@ function hasRemainingPlayOpportunity(ratingsThroughDate, sessionDate) {
   return false;
 }
 
-function isPreliminary(dateStr, ratingsThrough) {
-  if (!ratingsThrough) return false;
+// Single source of truth for parsing the ratingsThrough "MM/DD/YY" string
+// into a Date -- used by both isPreliminary() and the "RATINGS MAY BE
+// STALE" check below so they can never drift apart. Always constructed
+// with an explicit time-of-day (not a bare YYYY-MM-DD string), since a
+// bare date string parses as UTC midnight while this parses as LOCAL
+// midnight -- in any timezone behind UTC (e.g. Arizona, UTC-7) those are
+// ~7 hours apart, enough to fabricate a phantom day between two literally
+// adjacent calendar dates and produce a false STALE warning.
+function parseRatingsThrough(ratingsThrough) {
+  if (!ratingsThrough) return null;
   const parts = ratingsThrough.split('/');
-  if (parts.length !== 3) return false;
-  const rDate = new Date('20' + parts[2] + '-' + parts[0].padStart(2,'0') + '-' + parts[1].padStart(2,'0') + 'T00:00:00');
+  if (parts.length !== 3) return null;
+  return new Date('20' + parts[2] + '-' + parts[0].padStart(2,'0') + '-' + parts[1].padStart(2,'0') + 'T00:00:00');
+}
+
+function isPreliminary(dateStr, ratingsThrough) {
+  const rDate = parseRatingsThrough(ratingsThrough);
+  if (!rDate) return false;
   const sDate = new Date(dateStr + 'T00:00:00');
 
   // PRELIMINARY is only meaningful if at least one in-between day is a
@@ -172,7 +185,7 @@ function pageHeader(d, extra, dateStr) {
       h += `<div class="pg-info">Den's Step/% ratings weren't available this cycle (login session needs a manual refresh) — SAM's own ratings below are unaffected.</div>`;
     }
     if (d.ratings_through) {
-      const ratingsDate = new Date(d.ratings_through.replace(/(\d+)\/(\d+)\/(\d+)/, '20$3-$1-$2'));
+      const ratingsDate = parseRatingsThrough(d.ratings_through);
       const sessionDate = dateStr ? new Date(dateStr + 'T00:00:00') : new Date();
       // Same day-walking rule as isPreliminary() -- a raw day-count gap
       // (the old "daysDiff > 1" check) fired even when the intervening

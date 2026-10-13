@@ -370,7 +370,10 @@ const cutoffPassed = (az.hour > 8) || (az.hour === 8 && az.minute >= 15);
 // (newest first) server-side, so we sort a local ascending copy just for
 // this lookup rather than relying on DATES' own order.
 const ascendingDates = [...DATES].sort();
-let defaultDate = ascendingDates.find(d => d > az.dateStr || (d === az.dateStr && !cutoffPassed));
+// Skip logged no-shootout dates: a cancelled day is never the "next play date",
+// even before the 8:15 AM cutoff.
+let defaultDate = ascendingDates.find(d => !NO_SHOOTOUT_DATES.has(d) &&
+  (d > az.dateStr || (d === az.dateStr && !cutoffPassed)));
 if (!defaultDate) {
   // No future date on file (e.g. history hasn't caught up yet) -- fall
   // back to the most recent date available (DATES[0], since it's

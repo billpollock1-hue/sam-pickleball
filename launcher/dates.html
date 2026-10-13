@@ -125,7 +125,7 @@
     <div id="logEmpty" style="display:none;">No dates recorded yet.</div>
     <table class="log-table" id="logTable" style="display:none;">
       <thead>
-        <tr><th>Date</th><th>Type</th></tr>
+        <tr><th>Date</th><th>Type</th><th></th></tr>
       </thead>
       <tbody id="logBody"></tbody>
     </table>
@@ -168,6 +168,7 @@ async function loadRecordedDates() {
       <tr>
         <td>${formatDateDisplay(e.date)}</td>
         <td><span class="type-badge ${e.type}">${e.type === 'none' ? 'No shootout' : 'Single shootout'}</span></td>
+        <td><button type="button" onclick="removeDate(this, '${e.date}', '${e.type}')" style="font-size:12px;padding:3px 8px;cursor:pointer;">Remove</button></td>
       </tr>
     `).join('');
     table.style.display = 'table';
@@ -176,6 +177,41 @@ async function loadRecordedDates() {
     document.getElementById('logEmpty').textContent = 'Could not load recorded dates.';
     document.getElementById('logEmpty').style.display = 'block';
   }
+}
+
+async function removeDate(btn, date, type) {
+  const statusEl = document.getElementById('status');
+  if (btn.dataset.armed !== '1') {
+    btn.dataset.armed = '1';
+    btn.textContent = 'Confirm remove?';
+    setTimeout(() => {
+      if (btn.isConnected) { btn.dataset.armed = ''; btn.textContent = 'Remove'; }
+    }, 4000);
+    return;
+  }
+  btn.disabled = true;
+  statusEl.className = 'pending';
+  statusEl.textContent = `Removing ${date}...`;
+  const label = type === 'none' ? 'no shootout' : 'single shootout';
+  try {
+    const resp = await fetch('/api/delete-recorded-date', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date, type }),
+    });
+    const data = await resp.json();
+    if (resp.ok) {
+      statusEl.className = 'ok';
+      statusEl.textContent = `Removed: ${date} is no longer recorded as "${label}" \u2014 ${data.status}.`;
+    } else {
+      statusEl.className = 'err';
+      statusEl.textContent = `Error: ${data.error || 'unknown error'}`;
+    }
+  } catch (e) {
+    statusEl.className = 'err';
+    statusEl.textContent = `Network error: ${e}`;
+  }
+  loadRecordedDates();
 }
 
 async function submitDate() {

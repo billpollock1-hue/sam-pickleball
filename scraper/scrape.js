@@ -18,6 +18,14 @@ const viewEventLib = require('./view_event_lib');
 
     const UNATTENDED = process.env.SCRAPE_UNATTENDED === '1';
     browser = await chromium.launch({ headless: UNATTENDED, slowMo: UNATTENDED ? 0 : 120 });
+    // Close the browser cleanly if the admin panel aborts this scrape (SIGTERM),
+    // so no orphaned Chromium is left behind.
+    for (const sig of ['SIGTERM', 'SIGINT']) {
+      process.on(sig, async () => {
+        try { if (browser) await browser.close(); } catch {}
+        process.exit(143);
+      });
+    }
     const context = hasSession
       ? await browser.newContext({ storageState: SESSION_FILE })
       : await browser.newContext();

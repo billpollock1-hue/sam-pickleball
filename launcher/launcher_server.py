@@ -115,7 +115,8 @@ def _run_single_shootout_pipeline(date_str, refresh_fn):
                     check=True,
                 )
                 refresh_fn()
-                result = ("ok", "scraped, merged, engine rebuilt, viewer refreshed")
+                _launch_update_cycle_now(False)
+                result = ("ok", "scraped, merged, engine rebuilt, viewer refreshed, update cycle started")
             except subprocess.CalledProcessError as e:
                 result = ("failed", f"pipeline step failed (exit {e.returncode}): {e}")
             except subprocess.TimeoutExpired as e:
@@ -199,6 +200,122 @@ def get_recorded_tryout_names():
             entries.append({"date": date_str.strip(), "real_name": real_name.strip()})
     entries.sort(key=lambda e: e["date"], reverse=True)
     return entries[:10]  # most recent 10 only -- requested so this log stays short
+
+
+# ---- Immediate update cycle helpers (admin "Adjust Shootouts for a Weekday") ----
+UPDATE_CYCLE_LABEL = "com.pickleballden.shootout-scraper"
+RUN_ALL_LOCKDIR = Path("/tmp/sam_pickleball_run_all.lockdir")
+
+
+def _ps_table():
+    """pid -> (ppid, command) for every process."""
+    out = subprocess.run(["ps", "-axo", "pid=,ppid=,command="],
+                         capture_output=True, text=True, timeout=10).stdout
+    table = {}
+    for line in out.splitlines():
+        parts = line.strip().split(None, 2)
+        if len(parts) == 3 and parts[0].isdigit() and parts[1].isdigit():
+            table[int(parts[0])] = (int(parts[1]), parts[2])
+    return table
+
+
+def _descends_from(pid, ancestor, table):
+    for _ in range(8):
+        if pid == ancestor:
+            return True
+        row = table.get(pid)
+        if not row:
+            return False
+        pid = row[0]
+    return False
+
+
+def _pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _run_all_lock_pid():
+    """PID of a live run_all.sh cycle, or None."""
+    try:
+        pid = int((RUN_ALL_LOCKDIR / "pid").read_text().strip())
+    except Exception:
+        return None
+    return pid if _pid_alive(pid) else None
+
+
+def _sweep_orphan_chromium():
+    """Kill Playwright Chromium main processes orphaned (ppid 1) by a killed
+    scrape. Their helper processes exit with them. A live scrape's browser
+    has a live parent, so it is never matched."""
+    import signal as _signal
+    killed = []
+    for pid, (ppid, cmd) in _ps_table().items():
+        if ppid == 1 and "playwright_chromiumdev_profile" in cmd and "--type=" not in cmd:
+            try:
+                os.kill(pid, _signal.SIGTERM)
+                killed.append(pid)
+            except OSError:
+                pass
+    if killed:
+        print(f"[update-cycle] swept orphaned Chromium pid(s) {killed}", flush=True)
+
+
+def _launch_update_cycle_now(abort_scrape):
+    """Start the launchd update cycle right now instead of waiting for its
+    15-minute interval. With abort_scrape, first kill an in-flight scrape
+    belonging to a running cycle -- but only if that cycle is still in its
+    scrape step; a cycle already building or publishing is left to finish.
+    Blocking (may wait ~45s): always call from a background thread."""
+    import signal as _signal
+    import time as _time
+    dry = os.environ.get("SAM_UPDATE_CYCLE_DRY_RUN") == "1"
+    tag = "[update-cycle]" + (" (DRY RUN)" if dry else "")
+    try:
+        if abort_scrape:
+            lock_pid = _run_all_lock_pid()
+            if lock_pid:
+                table = _ps_table()
+                targets = [pid for pid, (_pp, cmd) in table.items()
+                           if pid != lock_pid and "scraper/scrape.js" in cmd and _descends_from(pid, lock_pid, table)]
+                if targets:
+                    print(f"{tag} aborting in-flight scrape pid(s) {targets} of cycle {lock_pid}", flush=True)
+                    if not dry:
+                        for pid in targets:
+                            try:
+                                os.kill(pid, _signal.SIGTERM)
+                            except OSError:
+                                pass
+                        deadline = _time.time() + 15
+                        while _time.time() < deadline and any(_pid_alive(p) for p in targets):
+                            _time.sleep(0.5)
+                        for pid in targets:
+                            if _pid_alive(pid):
+                                try:
+                                    os.kill(pid, _signal.SIGKILL)
+                                except OSError:
+                                    pass
+                        _sweep_orphan_chromium()
+                        # run_all.sh exits on a scraper failure and its trap
+                        # releases the lock; wait for that, or the new cycle
+                        # would see "already running" and exit.
+                        deadline = _time.time() + 30
+                        while _time.time() < deadline and RUN_ALL_LOCKDIR.exists():
+                            _time.sleep(0.5)
+                else:
+                    print(f"{tag} cycle {lock_pid} is running but not in its scrape step -- leaving it to finish", flush=True)
+        label = f"gui/{os.getuid()}/{UPDATE_CYCLE_LABEL}"
+        if dry:
+            print(f"{tag} would run: launchctl kickstart {label}", flush=True)
+            return
+        r = subprocess.run(["launchctl", "kickstart", label],
+                           capture_output=True, text=True, timeout=20)
+        print(f"{tag} launchctl kickstart exit {r.returncode} {r.stderr.strip()}", flush=True)
+    except Exception as e:
+        print(f"{tag} failed: {e} (the normal 15-minute cycle will still run)", flush=True)
 
 
 def get_recorded_dates():
@@ -383,6 +500,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(cfg)
         elif self.path == "/api/record-date":
             self._handle_record_date(payload)
+        elif self.path == "/api/delete-recorded-date":
+            self._handle_delete_recorded_date(payload)
         elif self.path == "/api/record-tryout-name":
             self._handle_record_tryout_name(payload)
         elif self.path == "/api/resolve-shootout-tie":
@@ -407,11 +526,57 @@ class Handler(BaseHTTPRequestHandler):
             ["python3", "generate_assignments_viewer.py"],
             cwd=REPO_ROOT / "assignments", check=True, timeout=60,
         )
-        subprocess.run(
-            ["cp", str(REPO_ROOT / "assignments/output/court_assignments_viewer.html"),
-             str(REPO_ROOT / "docs/court_assignments.html")],
-            check=True,
-        )
+        # Copy to a temp name, then rename over the destination. A rename never
+        # has to read or rewrite the old file, so it works even when macOS has
+        # evicted docs/court_assignments.html to the cloud ("dataless"), where an
+        # in-place cp fails with "Resource deadlock avoided" (2026-10-13).
+        src = REPO_ROOT / "assignments/output/court_assignments_viewer.html"
+        tmp_dest = REPO_ROOT / "assignments/output/.court_assignments_docs.tmp"
+        subprocess.run(["cp", str(src), str(tmp_dest)], check=True)
+        os.replace(tmp_dest, REPO_ROOT / "docs/court_assignments.html")
+
+    def _handle_delete_recorded_date(self, payload):
+        date_str = str(payload.get("date", "")).strip()
+        date_type = payload.get("type")
+        if not date_str or date_type not in ("none", "single"):
+            self._send_json({"error": "date and type (none/single) required"}, status=400)
+            return
+        csv_path = NO_SHOOTOUT_CSV if date_type == "none" else PARTIAL_SHOOTOUT_CSV
+        if not csv_path.exists():
+            self._send_json({"error": f"{date_str} is not recorded"}, status=404)
+            return
+        lines = csv_path.read_text().splitlines()
+        if not lines:
+            self._send_json({"error": f"{date_str} is not recorded"}, status=404)
+            return
+        header, body = lines[0], lines[1:]
+        kept, removed = [], False
+        for line in body:
+            fields = [f.strip() for f in line.split(",")]
+            if fields and fields[0] == date_str:
+                source = fields[1] if len(fields) > 1 else ""
+                if date_type == "none" and source not in ("manual", ""):
+                    self._send_json({"error": f"{date_str} was logged automatically (source: {source}); "
+                                              "the signup monitor manages those itself"}, status=403)
+                    return
+                removed = True
+                continue
+            kept.append(line)
+        if not removed:
+            self._send_json({"error": f"{date_str} is not recorded"}, status=404)
+            return
+        tmp = csv_path.with_suffix(csv_path.suffix + ".tmp")
+        tmp.write_text("\n".join([header] + kept) + "\n")
+        os.replace(tmp, csv_path)
+        try:
+            self._refresh_court_assignments_viewer()
+        except Exception as e:
+            threading.Thread(target=_launch_update_cycle_now, args=(False,), daemon=True).start()
+            self._send_json({"error": f"Removed, but viewer refresh failed: {e} -- the update cycle was started and will rebuild it"}, status=500)
+            return
+        threading.Thread(target=_launch_update_cycle_now, args=(False,), daemon=True).start()
+        self._send_json({"date": date_str, "type": date_type,
+                         "status": "removed and viewer refreshed; update cycle starting now"})
 
     def _handle_record_date(self, payload):
         date_str = str(payload.get("date", "")).strip()
@@ -443,9 +608,12 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 self._refresh_court_assignments_viewer()
             except Exception as e:
-                self._send_json({"error": f"Recorded, but viewer refresh failed: {e}"}, status=500)
+                threading.Thread(target=_launch_update_cycle_now, args=(True,), daemon=True).start()
+                self._send_json({"error": f"Recorded, but viewer refresh failed: {e} -- the update cycle was started and will rebuild it"}, status=500)
                 return
-            self._send_json({"date": date_str, "type": "none", "status": "recorded and viewer refreshed"})
+            threading.Thread(target=_launch_update_cycle_now, args=(True,), daemon=True).start()
+            self._send_json({"date": date_str, "type": "none",
+                             "status": "recorded and viewer refreshed; update cycle starting now"})
             return
 
         # date_type == "single"

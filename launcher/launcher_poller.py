@@ -45,6 +45,10 @@ MST = ZoneInfo("America/Phoenix")  # Arizona, no DST — matches "MST" label use
 
 LOG_RETENTION_DAYS = 30
 
+# Last launch-failure detail, so main() can log a crash the launch script
+# itself never got to log (see main()).
+_LAST_FAILURE_DETAIL = {"msg": ""}
+
 # Absolute path -- this script always runs from the same fixed location
 # (~/Documents/SAM Pickleball/sam-pickleball/launcher/), unlike the
 # assignments/signup-monitor scripts that run from two different
@@ -200,8 +204,10 @@ def run_launch(mode):
             if not already_self_logs:
                 append_log("error", seeding_basis, players_removed, shootout2_shuffle_mode=shuffle_label,
                             message=result.stderr[-500:] if result.stderr else "non-zero exit")
+            _LAST_FAILURE_DETAIL["msg"] = (result.stderr[-500:] if result.stderr else "non-zero exit")
             return False
     except Exception as e:
+        _LAST_FAILURE_DETAIL["msg"] = str(e)
         append_log("error", seeding_basis, [], message=str(e))
         return False
 
@@ -242,7 +248,15 @@ def main():
             pass
 
     if now >= target_dt:
+        size_before = LOG_PATH.stat().st_size if LOG_PATH.exists() else 0
         succeeded = run_launch(mode)
+        if not succeeded and mode == "elo_autolaunch":
+            size_after = LOG_PATH.stat().st_size if LOG_PATH.exists() else 0
+            if size_after == size_before:
+                # The launch script failed without logging anything itself.
+                append_log("error", SEEDING_LABELS[mode], [],
+                           message="launch script failed before logging: "
+                                   + (_LAST_FAILURE_DETAIL["msg"] or "no error output"))
         if succeeded:
             cfg["last_autolaunch_date"] = today_str
             save_config(cfg)

@@ -147,6 +147,61 @@ def _confirm_yes(page, label_hint=""):
               f"-- it may not have required confirmation, or the popup text differs.")
 
 
+def ensure_signup_sheet_view(page):
+    """If DEN redirected to Home (no current club selected), open the SAM club's
+    Sign-Ups menu, choose the sign-up sheet item, and wait for the date fields.
+    Club card is matched by SAM_CLUB_HINT (regex, default matches 6AM/SAM/shootout/anthem)."""
+    import os as _os
+    import re as _re
+
+    start_field = page.get_by_label("Date Range Start", exact=True)
+    try:
+        start_field.wait_for(timeout=8000)
+        return
+    except Exception:
+        pass
+
+    print("Sign-up sheet view not showing (likely redirected to DEN Home); selecting club...")
+    hint = _re.compile(_os.environ.get("SAM_CLUB_HINT", r"6\s*-?\s*AM|SAM|shootout|anthem"), _re.I)
+    name_re = _re.compile(r"^\s*sign-?ups?\s*$", _re.I)
+    buttons = page.get_by_role("menuitem", name=name_re)
+    if buttons.count() == 0:
+        buttons = page.get_by_text(name_re)
+    n = buttons.count()
+    if n == 0:
+        raise RuntimeError("DEN Home has no Sign-Ups menu; url=" + page.url)
+
+    js = ("e => { let n = e; for (let i = 0; i < 8 && n.parentElement; i++) "
+          "{ n = n.parentElement; if ((n.innerText || '').length > 40) break; } "
+          "return n.innerText || ''; }")
+    chosen = None
+    seen = []
+    for i in range(n):
+        b = buttons.nth(i)
+        try:
+            ctx = b.evaluate(js)
+        except Exception:
+            ctx = ""
+        seen.append(ctx[:60].replace("\n", " | "))
+        if chosen is None and hint.search(ctx):
+            chosen = b
+    if chosen is None:
+        if n == 1:
+            chosen = buttons.first
+        else:
+            raise RuntimeError(f"{n} Sign-Ups menus, none matched club hint; cards: {seen}")
+    chosen.click()
+
+    item = page.get_by_role("menuitem", name=_re.compile(r"sign-?up sheet", _re.I)).first
+    try:
+        item.wait_for(timeout=4000)
+    except Exception:
+        items = page.get_by_role("menuitem").all_inner_texts()
+        raise RuntimeError("Sign-Ups menu opened but no sign-up sheet item; items: " + repr(items))
+    item.click()
+    start_field.wait_for(timeout=10000)
+
+
 def automate_signup_search_today(page):
     """
     Local replacement for den_assignments.automate_signup_search() --
@@ -174,6 +229,7 @@ def automate_signup_search_today(page):
         # count is not a reliable proxy for "the two visible date fields."
         # get_by_label resolves the correct field regardless of how many
         # other inputs exist elsewhere in the DOM.
+        ensure_signup_sheet_view(page)
         start_field = page.get_by_label("Date Range Start", exact=True)
         end_field = page.get_by_label("Date Range End", exact=True)
         start_field.wait_for(timeout=8000)

@@ -8,7 +8,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/Library/Developer/CommandLineTools/usr/bin/python3</string>
-        <string>/Users/billpollock/Documents/SAM Pickleball/sam-pickleball/launcher/launcher_poller.py</string>
+        <string>/Users/billpollock/sam-pickleball/launcher/launcher_poller.py</string>
     </array>
 
     <!-- Fires every 5 minutes. StartInterval, like StartCalendarInterval, is

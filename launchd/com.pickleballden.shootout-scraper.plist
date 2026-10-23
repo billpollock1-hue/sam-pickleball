@@ -9,7 +9,7 @@
     <array>
         <string>/bin/bash</string>
         <string>-c</string>
-        <string>cd "/Users/billpollock/Documents/SAM Pickleball/sam-pickleball" &amp;&amp; exec /bin/bash run_all.sh</string>
+        <string>cd "/Users/billpollock/sam-pickleball" &amp;&amp; exec /bin/bash run_all.sh</string>
     </array>
 
     <!-- Polls every 15 minutes, all day, same pattern as

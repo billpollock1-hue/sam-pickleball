@@ -50,15 +50,15 @@ LOG_RETENTION_DAYS = 30
 _LAST_FAILURE_DETAIL = {"msg": ""}
 
 # Absolute path -- this script always runs from the same fixed location
-# (~/Documents/SAM Pickleball/sam-pickleball/launcher/), unlike the
+# (~/sam-pickleball/launcher/), unlike the
 # assignments/signup-monitor scripts that run from two different
 # locations, so a single hardcoded path is safe here (matches the
 # existing SCRIPT_PATHS convention below).
-NO_SHOOTOUT_LOG = Path.home() / "Documents/SAM Pickleball/sam-pickleball/data/no_shootout_dates.csv"
+NO_SHOOTOUT_LOG = Path.home() / "sam-pickleball/data/no_shootout_dates.csv"
 
 SCRIPT_PATHS = {
-    "step_percent": str(Path.home() / "Documents/SAM Pickleball/sam-pickleball/assignments/create_shootout.py"),
-    "elo_autolaunch": str(Path.home() / "Documents/SAM Pickleball/sam-pickleball/assignments/create_shootout_rating_seeded.py"),
+    "step_percent": str(Path.home() / "sam-pickleball/assignments/create_shootout.py"),
+    "elo_autolaunch": str(Path.home() / "sam-pickleball/assignments/create_shootout_rating_seeded.py"),
 }
 
 SEEDING_LABELS = {

@@ -25,7 +25,7 @@ OUTPUT = LOGS_DIR / "signup_viewer.html"
 # Support/docs" folder, crashing with FileNotFoundError -- meaning the
 # automated sync to the live site had likely never actually worked.
 DOCS_OUTPUT = Path(
-    "/Users/billpollock/Documents/SAM Pickleball/sam-pickleball/docs/signup_viewer.html"
+    "/Users/billpollock/sam-pickleball/docs/signup_viewer.html"
 )
 
 

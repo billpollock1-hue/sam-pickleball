@@ -208,7 +208,7 @@ def sync_to_live_site():
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
-    repo_root = Path("/Users/billpollock/Documents/SAM Pickleball/sam-pickleball")
+    repo_root = Path("/Users/billpollock/sam-pickleball")
     local_viewer = Path("output") / "court_assignments_viewer.html"
     docs_target = repo_root / "docs" / "court_assignments.html"
 

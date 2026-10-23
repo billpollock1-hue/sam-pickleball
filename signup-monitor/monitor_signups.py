@@ -3,7 +3,7 @@ Signup sheet monitor for Pickleball Den.
 Run every 15 min via launchd. Tracks sign-ups and withdrawals per date.
 
 Single source of truth for both locations this script runs from:
-  repo copy      — ~/Documents/SAM Pickleball/sam-pickleball/signup-monitor/
+  repo copy      — ~/sam-pickleball/signup-monitor/
                    BASE_DIR resolves relative to this file.
   deployed copy  — ~/Library/Application Support/PBMonitor/
                    (launchd agents cannot access ~/Documents, so this is the
@@ -59,13 +59,13 @@ LOGS_DIR.mkdir(exist_ok=True)
 # BASE_DIR) since it must always point at the git-tracked location
 # regardless of which copy of this script is running, same reasoning as
 # refresh_assignments.py's sync_to_live_site() repo_root.
-REPO_ASSIGNMENTS_DIR = Path("/Users/billpollock/Documents/SAM Pickleball/sam-pickleball/assignments")
+REPO_ASSIGNMENTS_DIR = Path("/Users/billpollock/sam-pickleball/assignments")
 
 # Repo root itself -- used for the signup-viewer auto-push, same absolute-
 # path reasoning as REPO_ASSIGNMENTS_DIR above (this script runs from two
 # different locations, so a path derived from BASE_DIR would be wrong when
 # running from the deployed PBMonitor copy).
-REPO_ROOT = Path("/Users/billpollock/Documents/SAM Pickleball/sam-pickleball")
+REPO_ROOT = Path("/Users/billpollock/sam-pickleball")
 
 
 # ── Utilities ───────────────────────────────────────────────────────────────

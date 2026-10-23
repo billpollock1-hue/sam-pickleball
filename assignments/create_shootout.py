@@ -290,7 +290,7 @@ def _write_auto_removal_marker(play_date_file, names_removed):
     """
     if not names_removed:
         return
-    marker_path = Path("/Users/billpollock/Documents/SAM Pickleball/sam-pickleball/data/last_auto_removal.json")
+    marker_path = Path("/Users/billpollock/sam-pickleball/data/last_auto_removal.json")
     try:
         marker_path.parent.mkdir(parents=True, exist_ok=True)
         marker_path.write_text(json.dumps({
@@ -514,7 +514,7 @@ def _check_shootout_already_exists(page):
 # always runs from assignments/, but the launcher config always lives
 # in launcher/, regardless of which copy of this script is running.
 LAUNCHER_CONFIG_PATH = Path(
-    "/Users/billpollock/Documents/SAM Pickleball/sam-pickleball/launcher/launcher_config.json"
+    "/Users/billpollock/sam-pickleball/launcher/launcher_config.json"
 )
 
 

@@ -8,7 +8,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/Library/Developer/CommandLineTools/usr/bin/python3</string>
-        <string>/Users/billpollock/Documents/SAM Pickleball/sam-pickleball/launcher/launcher_server.py</string>
+        <string>/Users/billpollock/sam-pickleball/launcher/launcher_server.py</string>
     </array>
 
     <key>RunAtLoad</key>

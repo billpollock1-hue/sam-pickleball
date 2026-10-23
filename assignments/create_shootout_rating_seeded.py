@@ -358,7 +358,7 @@ def _write_auto_removal_marker(play_date_file, names_removed):
     """
     if not names_removed:
         return
-    marker_path = Path("/Users/billpollock/Documents/SAM Pickleball/sam-pickleball/data/last_auto_removal.json")
+    marker_path = Path("/Users/billpollock/sam-pickleball/data/last_auto_removal.json")
     try:
         marker_path.parent.mkdir(parents=True, exist_ok=True)
         marker_path.write_text(json.dumps({
@@ -494,6 +494,18 @@ def remove_excess_players(page, names_to_remove):
                     f"have genuinely registered with DEN."
                 )
 
+            # Wait for this toast to disappear before the next removal, so
+            # the next name's confirmation can't be satisfied by a stale
+            # toast left over from this one (Oct 23: Jay Mann's removal
+            # slipped through this way and was caught only by the final
+            # verification).
+            try:
+                page.get_by_text(
+                    "Player removed from Sign-Up Sheet", exact=False
+                ).first.wait_for(state="hidden", timeout=10000)
+            except PWTimeout:
+                pass
+
             page.wait_for_timeout(500)
 
         # Close the dialog (its own list is known-stale after removals --
@@ -535,7 +547,8 @@ def remove_excess_players(page, names_to_remove):
         _debug_screenshot(page, "remove_players_failure")
         raise RuntimeError(
             f"Could not remove excess players -- stopping rather than "
-            f"creating a shootout with the wrong player count."
+            f"creating a shootout with the wrong player count. "
+            f"Cause: {e}"
         )
 
 
@@ -544,7 +557,7 @@ def remove_excess_players(page, names_to_remove):
 # the launcher config always lives in launcher/, regardless of which
 # copy of this script is running.
 LAUNCHER_CONFIG_PATH = Path(
-    "/Users/billpollock/Documents/SAM Pickleball/sam-pickleball/launcher/launcher_config.json"
+    "/Users/billpollock/sam-pickleball/launcher/launcher_config.json"
 )
 
 
@@ -629,7 +642,7 @@ def set_move_players(page, shuffle_mode):
 # is running, and regardless of whether the poller or a person invoked
 # it directly.
 LAUNCH_LOG_PATH = Path(
-    "/Users/billpollock/Documents/SAM Pickleball/sam-pickleball/launcher/launch_log.jsonl"
+    "/Users/billpollock/sam-pickleball/launcher/launch_log.jsonl"
 )
 LOG_RETENTION_DAYS = 30  # matches launcher_poller.py's own retention window
 

@@ -19,6 +19,16 @@ acquire_lock() {
 if ! mkdir "$LOCKDIR" 2>/dev/null; then
   if [ -f "$LOCKPID" ] && kill -0 "$(cat "$LOCKPID")" 2>/dev/null; then
     echo "Another run_all.sh (PID $(cat "$LOCKPID")) is already running -- exiting."
+    python3 - "$(cd "$(dirname "$0")" && pwd)/launcher/cycle_log.jsonl" "$(cat "$LOCKPID")" <<'PY' >/dev/null 2>&1 || true
+import json, sys
+from datetime import datetime
+from zoneinfo import ZoneInfo
+ts = datetime.now(ZoneInfo("America/Phoenix")).strftime("%Y-%m-%d %H:%M:%S MST")
+with open(sys.argv[1], "a") as f:
+    f.write(json.dumps({"run_id": "busy-" + ts.replace(" ", "T").replace(":", ""), "event": "end",
+                        "timestamp": ts, "status": "busy", "exit_code": 0, "duration_s": 0,
+                        "blocked_by_pid": sys.argv[2]}) + "\n")
+PY
     exit 0
   fi
   echo "Stale lock found -- removing and continuing."
@@ -59,12 +69,14 @@ echo "=== Pickleball full update started ==="
 # end means the pass was killed mid-run (e.g. the Mac went to sleep). Records
 # whether a scrape was attempted, the target date and how many shootouts it
 # expected (2 normally, 1 on a day marked single-shootout), how many it found,
-# the outcome, and the actual error on failures. Logging can never fail the
-# cycle itself: every write is best-effort.
+# the outcome, the actual error on failures, and every step that ran or was
+# skipped with its duration (cycle_step / cycle_note). Logging can never fail
+# the cycle itself: every write is best-effort.
 CYCLE_LOG_FILE="$(cd "$(dirname "$0")" && pwd)/launcher/cycle_log.jsonl"
 CYCLE_RUN_ID="$(date +%Y%m%d%H%M%S)-$$"
 CYCLE_START_EPOCH=$(date +%s)
 CYCLE_CTX_FILE="/tmp/sam_cycle_ctx_${CYCLE_RUN_ID}.json"
+CYCLE_STEPS_FILE="/tmp/sam_cycle_steps_${CYCLE_RUN_ID}.tsv"
 export CYCLE_CTX_FILE
 CYCLE_STEP="starting"
 CYCLE_ATTEMPTED=""
@@ -76,10 +88,20 @@ CYCLE_ERROR=""
 CYCLE_SCRAPE="unknown"
 CYCLE_PUBLISH="unknown"
 
+# cycle_step "title" ["skipped: why"]  -- starts a step (ends the previous one)
+cycle_step() {
+  CYCLE_STEP="$1"
+  printf 'S\t%s\t%s\t%s\n' "$(date +%s)" "${1//$'\t'/ }" "${2//$'\t'/ }" >> "$CYCLE_STEPS_FILE" 2>/dev/null || true
+}
+# cycle_note "text"  -- attaches a note to the current step
+cycle_note() {
+  printf 'N\t%s\n' "${1//$'\t'/ }" >> "$CYCLE_STEPS_FILE" 2>/dev/null || true
+}
+
 cycle_log_event() {
   CYCLE_EVENT="$1" CYCLE_EXIT="${2:-}" CYCLE_LOG_FILE="$CYCLE_LOG_FILE" \
   CYCLE_RUN_ID="$CYCLE_RUN_ID" CYCLE_START_EPOCH="$CYCLE_START_EPOCH" \
-  CYCLE_CTX_FILE="$CYCLE_CTX_FILE" CYCLE_STEP="$CYCLE_STEP" \
+  CYCLE_CTX_FILE="$CYCLE_CTX_FILE" CYCLE_STEPS_FILE="$CYCLE_STEPS_FILE" CYCLE_STEP="$CYCLE_STEP" \
   CYCLE_ATTEMPTED="$CYCLE_ATTEMPTED" CYCLE_WINDOW="$CYCLE_WINDOW" \
   CYCLE_RESULT="$CYCLE_RESULT" CYCLE_FOUND="$CYCLE_FOUND" CYCLE_ROWS="$CYCLE_ROWS" \
   CYCLE_ERROR="$CYCLE_ERROR" CYCLE_SCRAPE="$CYCLE_SCRAPE" CYCLE_PUBLISH="$CYCLE_PUBLISH" \
@@ -126,6 +148,7 @@ if ev != "start":
             ctx = json.load(f)
     except Exception:
         pass
+    code = toint(E("CYCLE_EXIT")) or 0
     attempted = {"yes": True, "no": False}.get(E("CYCLE_ATTEMPTED", ""))
     window = None
     w = E("CYCLE_WINDOW", "")
@@ -144,6 +167,30 @@ if ev != "start":
             reason = (f"History has {len(present)} of {expected} shootouts for {required}, "
                       f"so it scraped {window or 'the latest window'}")
     err = E("CYCLE_ERROR", "")
+    steps = []
+    try:
+        rows = []
+        with open(E("CYCLE_STEPS_FILE", "")) as f:
+            for line in f:
+                parts = line.rstrip("\n").split("\t")
+                if parts[0] == "S" and len(parts) >= 3:
+                    rows.append({"t": int(parts[1]), "step": parts[2], "note": parts[3] if len(parts) > 3 else ""})
+                elif parts[0] == "N" and rows and len(parts) >= 2:
+                    rows[-1]["note"] = (rows[-1]["note"] + "; " if rows[-1]["note"] else "") + parts[1]
+        nowt = int(time.time())
+        for i, r in enumerate(rows):
+            t_end = rows[i + 1]["t"] if i + 1 < len(rows) else nowt
+            skipped = r["note"].startswith("skipped")
+            status = "skipped" if skipped else "ran"
+            if i == len(rows) - 1 and not skipped:
+                if ev == "end" and code != 0:
+                    status = "failed"
+                elif ev == "progress":
+                    status = "running"
+            steps.append({"step": r["step"], "status": status,
+                          "duration_s": max(0, t_end - r["t"]), "note": r["note"] or None})
+    except Exception:
+        pass
     rec.update({
         "attempted": attempted, "window": window, "target_date": required, "expected": expected,
         "in_history": len(present) if present is not None else None,
@@ -151,9 +198,9 @@ if ev != "start":
         "result": E("CYCLE_RESULT", "unknown"), "reason": reason,
         "error": err or None, "error_kind": classify(err) if err else None,
         "step": E("CYCLE_STEP"), "scrape": E("CYCLE_SCRAPE"), "publish": E("CYCLE_PUBLISH"),
+        "steps": steps or None,
     })
     if ev == "end":
-        code = int(E("CYCLE_EXIT") or 0)
         rec["exit_code"] = code
         rec["status"] = "completed" if code == 0 else "failed"
         rec["duration_s"] = int(time.time()) - int(E("CYCLE_START_EPOCH"))
@@ -165,7 +212,7 @@ PY
 cycle_finish() {
   local code=$?
   cycle_log_event end "$code"
-  rm -rf "$LOCKDIR" "$CYCLE_CTX_FILE"
+  rm -rf "$LOCKDIR" "$CYCLE_CTX_FILE" "$CYCLE_STEPS_FILE"
 }
 trap cycle_finish EXIT
 cycle_log_event start
@@ -180,8 +227,14 @@ NO_SHOOTOUT_LOG="data/no_shootout_dates.csv"
 
 echo ""
 echo "0. Checking today's signup count (minimum 8 players required for a shootout)..."
-CYCLE_STEP="0. Checking today's signup count (minimum 8 players required for a shootout)"
-(cd assignments && python3 check_no_shootout.py)
+cycle_step "0. Checking today's signup count (minimum 8 players required for a shootout)"
+set +e
+CHECK_OUT=$(cd assignments && python3 check_no_shootout.py 2>&1)
+CHECK_EXIT=$?
+set -e
+echo "$CHECK_OUT"
+cycle_note "$(printf '%s\n' "$CHECK_OUT" | grep -a -E '^(Current signup count|Result:)' | sed -E 's/^Current signup count for [0-9-]+: //' | tr '\n' ' ' | cut -c1-220)"
+if [ $CHECK_EXIT -ne 0 ]; then exit $CHECK_EXIT; fi
 
 # Hash master history before any scrape/merge attempt. Steps 3-5c (summary
 # workbook, rating engine, session viewer, storybook, leaderboard) are gated
@@ -319,13 +372,14 @@ if [ "$SHOULD_SKIP_SCRAPE" = "YES" ]; then
   echo ""
   echo "1. Skipping scrape and merge."
   CYCLE_SCRAPE="skipped (history current)"
+  cycle_step "1. Scrape Den" "skipped: history already complete"
   CYCLE_ATTEMPTED="no"
   CYCLE_RESULT="skipped"
   echo "Master history is already current through the most recent possible play date."
 else
   echo ""
   echo "1. Scraping latest shootout data..."
-  CYCLE_STEP="1. Scraping latest shootout data"
+  cycle_step "1. Scraping latest shootout data"
   CYCLE_ATTEMPTED="yes"
   echo "Date window: $START_DATE through $END_DATE"
   CYCLE_WINDOW="$START_DATE-$END_DATE"
@@ -350,6 +404,7 @@ else
   SHOOTOUT_COUNT=$(echo "$SCRAPE_OUTPUT" | grep -o "Collected [0-9]* shootout" | grep -o "[0-9]*" || echo "0")
   CYCLE_FOUND="${SHOOTOUT_COUNT:-0}"
   CYCLE_ROWS="$(printf '%s\n' "$SCRAPE_OUTPUT" | grep -ao 'Wrote [0-9]* rows' | grep -o '[0-9]*' | head -1 || true)"
+  cycle_note "found ${CYCLE_FOUND:-0} shootout(s), ${CYCLE_ROWS:-0} rows"
 
   # No automatic "give up and accept a partial day" logic. Recording a
   # date as no-shootout or single-shootout is always Bill's own manual
@@ -364,6 +419,7 @@ else
     echo "2. Skipping merge — no shootouts found in $START_DATE through $END_DATE."
     CYCLE_SCRAPE="no results posted yet"
     CYCLE_RESULT="no_results"
+    cycle_step "2. Merge into history" "skipped: no results posted yet"
     cycle_log_event progress
     echo "   Nothing new to merge; master history stays as-is. Will retry on next"
     echo "   scheduled run. If today was cancelled or ran as a single shootout,"
@@ -372,13 +428,14 @@ else
     echo "2. Skipping merge — only $SHOOTOUT_COUNT shootout(s) found for $START_DATE (need 2)."
     CYCLE_SCRAPE="partial results, waiting"
     CYCLE_RESULT="partial"
+    cycle_step "2. Merge into history" "skipped: only ${SHOOTOUT_COUNT:-0} of 2 shootouts posted"
     cycle_log_event progress
     echo "   Results may not be fully posted yet. Will retry on next scheduled run."
     echo "   If today ran as a genuine single-shootout day, record it via the"
     echo "   admin panel's Record a Date feature."
   else
     echo "2. Cleaning/deduping master history..."
-    CYCLE_STEP="2. Cleaning/deduping master history"
+    cycle_step "2. Cleaning/deduping master history"
     CYCLE_SCRAPE="merged new results"
     CYCLE_RESULT="merged"
     cycle_log_event progress
@@ -404,17 +461,18 @@ fi
 
 if [ "$DATA_CHANGED" = "NO" ]; then
   echo ""
-  echo "3-5c. Status quo — master history unchanged, skipping summary workbook,"
-  echo "      rating engine, session viewer, storybook, and leaderboard rebuild."
+  cycle_step "4-5c3. Rebuild ratings and pages" "skipped: history unchanged"
+  echo "4-5c3. Status quo -- master history unchanged, skipping rating engine,"
+  echo "      session viewer, storybook, leaderboard, and Ratings Change page rebuild."
 else
   echo ""
-  echo "3. Building 2026 summary workbook..."
-  CYCLE_STEP="3. Building 2026 summary workbook"
-  python3 engine/build_2026_summaries.py
+  # Step 3 (2026 summary workbook: engine/build_2026_summaries.py) retired 2026-10-26.
+  # Nothing read output/pickleball_2026_summary_report.xlsx (not published, not copied,
+  # no other script uses it). The script is kept in engine/ in case it is wanted again.
 
   echo ""
   echo "4. Running rating engine..."
-  CYCLE_STEP="4. Running rating engine"
+  cycle_step "4. Running rating engine"
   rm -f "$TEMP_OUTPUT"
 
   python3 engine/pickleball_engine_v2.py \
@@ -434,33 +492,38 @@ else
 
   echo ""
   echo "5. Building session viewer..."
-  CYCLE_STEP="5. Building session viewer"
+  cycle_step "5. Building session viewer"
   python3 engine/build_session_viewer.py
 
   echo ""
   echo "5a2. Building player history..."
-  CYCLE_STEP="5a2. Building player history"
+  cycle_step "5a2. Building player history"
   python3 engine/build_player_history.py
 
   echo ""
   echo "5b. Building storybook..."
-  CYCLE_STEP="5b. Building storybook"
+  cycle_step "5b. Building storybook"
   python3 engine/build_storybook.py
 
   echo ""
   echo "5c. Building slim leaderboard..."
-  CYCLE_STEP="5c. Building slim leaderboard"
+  cycle_step "5c. Building slim leaderboard"
   python3 engine/build_leaderboard_html.py
 
   echo ""
   echo "5c1. Building Bear Count..."
-  CYCLE_STEP="5c1. Building Bear Count"
+  cycle_step "5c1. Building Bear Count"
   python3 engine/build_bear_count.py
 
   echo ""
   echo "5c3. Updating Format Change Tracker data..."
-  CYCLE_STEP="5c3. Updating Format Change Tracker data"
+  cycle_step "5c3. Updating Format Change Tracker data"
   python3 compute_format_tracker_data.py
+
+  echo ""
+  echo "5c2. Building Ratings Change page..."
+  cycle_step "5c2. Building Ratings Change page"
+  python3 engine/build_compare_ratings_html.py
 
   # Only record success now that every rebuild step above has
   # actually completed -- if any step above failed, the script
@@ -470,23 +533,18 @@ else
 fi
 
 echo ""
-echo "5c2. Building Ratings Change page..."
-CYCLE_STEP="5c2. Building Ratings Change page"
-python3 engine/build_compare_ratings_html.py
-
-echo ""
 echo "5d. Refreshing court assignment snapshots..."
-CYCLE_STEP="5d. Refreshing court assignment snapshots"
+cycle_step "5d. Refreshing court assignment snapshots"
 (cd assignments && python3 refresh_assignments.py)
 
 echo ""
 echo "5e. Building court assignments viewer..."
-CYCLE_STEP="5e. Building court assignments viewer"
+cycle_step "5e. Building court assignments viewer"
 (cd assignments && python3 generate_assignments_viewer.py)
 
 echo ""
 echo "6. Updating docs/ for GitHub Pages..."
-CYCLE_STEP="6. Updating docs/ for GitHub Pages"
+cycle_step "6. Updating docs/ for GitHub Pages"
 mkdir -p docs
 cp output/session_viewer.html docs/
 cp output/player_history.html docs/
@@ -499,7 +557,7 @@ cp assignments/output/court_assignments_viewer.html docs/court_assignments.html
 
 echo ""
 echo "7. Committing and pushing docs/ to GitHub Pages..."
-CYCLE_STEP="7. Committing and pushing docs/ to GitHub Pages"
+cycle_step "7. Committing and pushing docs/ to GitHub Pages"
 if [ -n "$(git status --porcelain docs/)" ]; then
   git add docs/
   git commit -m "Auto-update GitHub Pages docs ($(TZ=America/Phoenix date '+%Y-%m-%d %H:%M') MST)"
@@ -519,5 +577,4 @@ echo ""
 echo "=== Done ==="
 echo "Outputs are in: output/"
 echo "Main ratings workbook: $FINAL_OUTPUT"
-echo "Summary workbook: output/pickleball_2026_summary_report.xlsx"
 echo "GitHub Pages files updated in: docs/"

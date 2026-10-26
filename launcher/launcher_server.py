@@ -394,7 +394,7 @@ def read_cycle_log(limit=100):
     if not CYCLE_LOG_PATH.exists():
         return []
     limit = max(1, min(int(limit), 2000))
-    tail_bytes = limit * 4 * 700 + 4096
+    tail_bytes = limit * 4 * 1500 + 4096
     with open(CYCLE_LOG_PATH, "rb") as f:
         f.seek(0, os.SEEK_END)
         size = f.tell()

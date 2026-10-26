@@ -34,6 +34,14 @@
   .pub { color: #4ade80; font-weight: 600; }
   .warn { color: #f87171; font-weight: 600; }
   .err { color: #c9a0a0; font-size: 12px; word-break: break-word; }
+  .caret { color: #6b7280; cursor: pointer; width: 14px; user-select: none; }
+  tr[data-id] { cursor: pointer; }
+  tr[data-id]:hover td { background: #1e222a; }
+  tr.detail-row td { background: #14171d; padding: 6px 10px 12px 34px; }
+  table.steps { width: auto; min-width: 560px; font-size: 12px; }
+  table.steps th, table.steps td { padding: 4px 14px 4px 0; border-bottom: 1px solid #23262e; position: static; background: none; }
+  .badge.ran { background: #113a22; color: #4ade80; }
+  .badge.busy { background: #23262e; color: #9aa0a6; }
   .note { color: #9aa0a6; font-size: 12px; margin-top: 12px; line-height: 1.5; }
 </style>
 </head>
@@ -61,14 +69,15 @@
   <div class="scroll">
   <table>
     <thead>
-      <tr><th>Started (MST)</th><th>Finished</th><th>Pass</th><th>Scrape</th><th>Looking for</th><th>Found</th><th>What happened</th><th>Publish</th></tr>
+      <tr><th></th><th>Started (MST)</th><th>Finished</th><th>Pass</th><th>Scrape</th><th>Looking for</th><th>Found</th><th>What happened</th><th>Publish</th></tr>
     </thead>
-    <tbody id="body"><tr><td colspan="8">Loading&hellip;</td></tr></tbody>
+    <tbody id="body"><tr><td colspan="9">Loading&hellip;</td></tr></tbody>
   </table>
   </div>
   <div class="note">
     &ldquo;Did not finish&rdquo; means a pass started but never recorded an ending (for example the Mac went to sleep or the process was killed mid-run).
     A &ldquo;skipped&rdquo; scrape means history was already complete for the date it needed, so there was nothing to fetch.
+    Click a row to see every step of that pass, whether it ran or was skipped, and how long it took.
     Logging began Oct 26, 2026; earlier history is not available.
   </div>
 </div>
@@ -94,7 +103,7 @@ function fmtAgo(min) {
 function shortTime(ts) { return ts ? ts.replace(' MST', '') : null; }
 
 function passBadge(r) {
-  const label = { completed: 'completed', failed: 'failed', running: 'running', unfinished: 'did not finish' }[r.status] || r.status;
+  const label = { completed: 'completed', failed: 'failed', running: 'running', unfinished: 'did not finish', busy: 'overlap' }[r.status] || r.status;
   return `<span class="badge ${esc(r.status)}">${label}</span>` +
     (r.status !== 'running' && r.duration_s != null ? ` <span class="muted">${fmtDur(r.duration_s)}</span>` : '');
 }
@@ -122,6 +131,7 @@ function foundCell(r) {
 }
 function whatHappened(r) {
   const out = [];
+  if (r.status === 'busy') return `<span class="muted">Skipped \u2014 the previous pass (PID ${esc(r.blocked_by_pid)}) was still running.</span>`;
   if (r.result === 'scrape_failed' || (r.status === 'failed' && r.error)) {
     out.push(`<span class="warn">${esc(r.error_kind || 'Scrape failed')}</span>`);
     if (r.error) out.push(`<div class="err">${esc(r.error)}</div>`);
@@ -151,6 +161,17 @@ function isProblem(r) {
   return r.status === 'failed' || r.status === 'unfinished' || r.result === 'scrape_failed' || /FAILED/.test(r.publish || '');
 }
 
+// STEP_DETAIL: per-step list shown when a row is expanded
+const OPEN = new Set();
+function stepRows(r) {
+  const badge = s => ({ ran: '<span class="badge ran">ran</span>', skipped: '<span class="badge skipped">skipped</span>',
+    failed: '<span class="badge failed">failed</span>', running: '<span class="badge running">running</span>' }[s] || esc(s));
+  const rows = r.steps.map(s => `<tr><td>${esc(s.step)}</td><td>${badge(s.status)}</td>
+    <td class="nw">${s.status === 'skipped' ? dash : fmtDur(s.duration_s)}</td><td class="muted">${s.note ? esc(s.note) : ''}</td></tr>`).join('');
+  return `<tr class="detail-row"><td></td><td colspan="8"><table class="steps">
+    <thead><tr><th>Step</th><th>Result</th><th>Time</th><th>Note</th></tr></thead><tbody>${rows}</tbody></table></td></tr>`;
+}
+
 function render() {
   const onlyAttempts = document.getElementById('only-attempts').checked;
   const onlyProblems = document.getElementById('only-problems').checked;
@@ -160,11 +181,15 @@ function render() {
   document.getElementById('count').textContent = `Showing ${rows.length} of ${RUNS.length} recent passes`;
   const body = document.getElementById('body');
   if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="8">' +
+    body.innerHTML = '<tr><td colspan="9">' +
       (RUNS.length ? 'Nothing matches this filter.' : 'No cycle runs logged yet — the first entry appears after the next pass starts.') + '</td></tr>';
     return;
   }
-  body.innerHTML = rows.map(r => `<tr class="${r.attempted === false ? 'skipped' : ''}">
+  body.innerHTML = rows.map(r => {
+    const open = OPEN.has(r.run_id) && r.steps && r.steps.length;
+    const caret = (r.steps && r.steps.length) ? (open ? '\u25be' : '\u25b8') : '';
+    const main = `<tr data-id="${esc(r.run_id)}" class="${r.attempted === false ? 'skipped' : ''}">
+    <td class="caret">${caret}</td>
     <td class="nw">${r.started ? esc(shortTime(r.started)) : dash}</td>
     <td class="nw">${r.finished ? esc(shortTime(r.finished).slice(11)) : dash}</td>
     <td class="nw">${passBadge(r)}</td>
@@ -173,7 +198,9 @@ function render() {
     <td class="nw">${foundCell(r)}</td>
     <td class="detail">${whatHappened(r)}</td>
     <td class="nw">${pubCell(r)}</td>
-  </tr>`).join('');
+  </tr>`;
+    return open ? main + stepRows(r) : main;
+  }).join('');
 }
 
 function tile(id, run, text) {
@@ -186,7 +213,7 @@ async function load() {
     const res = await fetch('/api/cycle-log?limit=1500');
     RUNS = await res.json();
   } catch (e) {
-    document.getElementById('body').innerHTML = '<tr><td colspan="8">Could not load the cycle log.</td></tr>';
+    document.getElementById('body').innerHTML = '<tr><td colspan="9">Could not load the cycle log.</td></tr>';
     return;
   }
   tile('completed', RUNS.find(r => r.status === 'completed'), r => fmtAgo(r.finished_ago_min));
@@ -200,6 +227,15 @@ async function load() {
   render();
 }
 
+document.getElementById('body').addEventListener('click', e => {
+  const tr = e.target.closest('tr[data-id]');
+  if (!tr) return;
+  const id = tr.getAttribute('data-id');
+  const run = RUNS.find(r => String(r.run_id) === id);
+  if (!run || !run.steps || !run.steps.length) return;
+  if (OPEN.has(id)) OPEN.delete(id); else OPEN.add(id);
+  render();
+});
 document.getElementById('only-attempts').addEventListener('change', render);
 document.getElementById('only-problems').addEventListener('change', render);
 load();

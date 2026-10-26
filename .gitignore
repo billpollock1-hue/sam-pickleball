@@ -93,3 +93,8 @@ launcher/patch_*.py
 launcher/sam_patch_*.py
 signup-monitor/patch_*.py
 signup-monitor/sam_patch_*.py
+
+# Scrape/refresh cycle log (written by run_all.sh, read by the admin panel)
+launcher/cycle_log.jsonl
+run_all.sh.bak_*
+launcher/*.bak_cycle_log

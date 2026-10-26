@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAM Scrape &amp; Refresh Cycle Log</title>
+<style>
+  body { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; background: #0f1115; color: #e6e6e6; margin: 0; padding: 24px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: #9aa0a6; font-size: 13px; margin-bottom: 6px; }
+  .back { color: #4f8cff; font-size: 13px; text-decoration: none; display: inline-block; margin-bottom: 14px; }
+  .summary { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0 20px; }
+  .tile { background: #1a1d24; border: 1px solid #2a2e37; border-radius: 10px; padding: 12px 16px; min-width: 200px; flex: 1; }
+  .tile .label { color: #9aa0a6; font-size: 11px; text-transform: uppercase; font-weight: 600; }
+  .tile .value { font-size: 15px; font-weight: 600; margin-top: 4px; }
+  .tile .note { color: #9aa0a6; font-size: 12px; margin-top: 2px; }
+  .card { background: #1a1d24; border: 1px solid #2a2e37; border-radius: 10px; padding: 20px; margin-bottom: 20px; overflow-x: auto; }
+  .toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 13px; color: #9aa0a6; }
+  .toolbar label { cursor: pointer; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #2a2e37; vertical-align: top; white-space: nowrap; }
+  th { color: #9aa0a6; font-weight: 600; font-size: 11px; text-transform: uppercase;
+       position: sticky; top: 0; background: #1a1d24; z-index: 1; }
+  .scroll { max-height: 65vh; overflow: auto; border: 1px solid #2a2e37; border-radius: 8px; }
+  .scroll table { border-collapse: separate; border-spacing: 0; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .badge.completed { background: #113a22; color: #4ade80; }
+  .badge.failed { background: #3a1111; color: #f87171; }
+  .badge.running { background: #172a46; color: #7aa7ff; }
+  .badge.unfinished { background: #3a2f11; color: #f0b429; }
+  .muted { color: #5c6270; }
+  .pub { color: #4ade80; font-weight: 600; }
+  .warn { color: #f87171; font-weight: 600; }
+  .note { color: #9aa0a6; font-size: 12px; margin-top: 12px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<a class="back" href="/">&larr; Admin</a>
+<h1>Scrape &amp; Refresh Cycle Log</h1>
+<div class="sub">Every pass of the 15-minute cycle (run_all.sh): when it started, when it finished, and what it did. Times shown in MST.</div>
+
+<div class="summary">
+  <div class="tile"><div class="label">Last completed</div><div class="value" id="t-completed">loading&hellip;</div><div class="note" id="t-completed-note"></div></div>
+  <div class="tile"><div class="label">Last scrape with new results</div><div class="value" id="t-scrape">loading&hellip;</div><div class="note" id="t-scrape-note"></div></div>
+  <div class="tile"><div class="label">Last publish to GitHub Pages</div><div class="value" id="t-publish">loading&hellip;</div><div class="note" id="t-publish-note"></div></div>
+</div>
+
+<div class="card">
+  <div class="toolbar">
+    <span id="count"></span>
+    <label><input type="checkbox" id="hide-idle"> Hide idle passes (nothing scraped, nothing published)</label>
+  </div>
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr><th>Started (MST)</th><th>Finished (MST)</th><th>Duration</th><th>Status</th><th>Scrape</th><th>Publish</th></tr>
+    </thead>
+    <tbody id="body"><tr><td colspan="6">Loading&hellip;</td></tr></tbody>
+  </table>
+  </div>
+  <div class="note">
+    &ldquo;Did not finish&rdquo; means a pass started but never recorded an ending (for example the Mac went to sleep or the process was killed mid-run).
+    Passes before this log was added are not included.
+  </div>
+</div>
+
+<script>
+let RUNS = [];
+
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function fmtDur(s) {
+  if (s == null) return '—';
+  if (s < 60) return s + 's';
+  return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+}
+function fmtAgo(min) {
+  if (min == null) return '';
+  if (min < 1) return 'just now';
+  if (min < 60) return Math.round(min) + ' min ago';
+  if (min < 1440) return (min / 60).toFixed(1) + ' h ago';
+  return (min / 1440).toFixed(1) + ' days ago';
+}
+function isIdle(r) {
+  const noScrape = !r.scrape || /^skipped|no results|partial/.test(r.scrape);
+  const noPublish = !r.publish || r.publish === 'no changes' || r.publish === 'unknown';
+  return r.status === 'completed' && noScrape && noPublish;
+}
+function badge(r) {
+  const label = { completed: 'completed', failed: 'failed', running: 'running', unfinished: 'did not finish' }[r.status] || r.status;
+  return `<span class="badge ${esc(r.status)}">${label}</span>`;
+}
+function pubCell(r) {
+  if (!r.publish || r.publish === 'unknown') return '<span class="muted">—</span>';
+  if (/FAILED/.test(r.publish)) return `<span class="warn">${esc(r.publish)}</span>`;
+  if (r.publish === 'no changes') return '<span class="muted">no changes</span>';
+  return `<span class="pub">${esc(r.publish)}</span>`;
+}
+
+function render() {
+  const hide = document.getElementById('hide-idle').checked;
+  const rows = hide ? RUNS.filter(r => !isIdle(r)) : RUNS;
+  document.getElementById('count').textContent =
+    `Showing ${rows.length} of ${RUNS.length} recent passes`;
+  const body = document.getElementById('body');
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="6">' +
+      (RUNS.length ? 'No non-idle passes in this window.' : 'No cycle runs logged yet — the first entry appears after the next pass starts.') +
+      '</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map(r => `<tr>
+    <td>${esc(r.started)}</td>
+    <td>${r.finished ? esc(r.finished) : '<span class="muted">—</span>'}</td>
+    <td>${fmtDur(r.duration_s)}</td>
+    <td>${badge(r)}</td>
+    <td>${r.scrape ? esc(r.scrape) : '<span class="muted">—</span>'}</td>
+    <td>${pubCell(r)}</td>
+  </tr>`).join('');
+}
+
+function tile(idPrefix, run, text) {
+  document.getElementById('t-' + idPrefix).textContent = run ? (run.finished || run.started) : 'none yet';
+  document.getElementById('t-' + idPrefix + '-note').textContent = run ? text(run) : '';
+}
+
+async function load() {
+  try {
+    const res = await fetch('/api/cycle-log?limit=200');
+    RUNS = await res.json();
+  } catch (e) {
+    document.getElementById('body').innerHTML = '<tr><td colspan="6">Could not load the cycle log.</td></tr>';
+    return;
+  }
+  tile('completed', RUNS.find(r => r.status === 'completed'), r => fmtAgo(r.finished_ago_min));
+  tile('scrape', RUNS.find(r => r.status === 'completed' && r.scrape === 'merged new results'), r => fmtAgo(r.finished_ago_min));
+  tile('publish', RUNS.find(r => r.publish === 'pushed to GitHub'), r => fmtAgo(r.finished_ago_min));
+  render();
+}
+
+document.getElementById('hide-idle').addEventListener('change', render);
+load();
+setInterval(load, 30000);
+</script>
+</body>
+</html>

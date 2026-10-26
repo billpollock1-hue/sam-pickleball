@@ -48,6 +48,8 @@ CONFIG_PATH = BASE_DIR / "launcher_config.json"
 LOG_PATH = BASE_DIR / "launch_log.jsonl"
 HTML_PATH = BASE_DIR / "control_panel.html"
 ADMIN_INDEX_PATH = BASE_DIR / "admin_index.html"
+CYCLE_LOG_PATH = BASE_DIR / "cycle_log.jsonl"
+CYCLE_LOG_HTML_PATH = BASE_DIR / "cycle_log.html"
 DATES_HTML_PATH = BASE_DIR / "dates.html"
 TRYOUT_NAME_HTML_PATH = BASE_DIR / "tryout_name.html"
 FORMAT_TRACKER_HTML_PATH = BASE_DIR / "format_tracker.html"
@@ -381,6 +383,76 @@ def read_log(limit=50):
     return list(reversed(entries))[:limit]
 
 
+def read_cycle_log(limit=100):
+    """Join start/end records from cycle_log.jsonl (written by run_all.sh) into
+    one row per pass, newest first.
+
+    A start with no end that is older than 45 minutes is reported as
+    "unfinished" (killed mid-run, e.g. the Mac went to sleep); a younger one
+    is "running". Only the tail of the file is read, so the page stays fast
+    as the log grows.
+    """
+    if not CYCLE_LOG_PATH.exists():
+        return []
+    limit = max(1, min(int(limit), 500))
+    tail_bytes = limit * 2 * 400 + 4096
+    with open(CYCLE_LOG_PATH, "rb") as f:
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        f.seek(max(0, size - tail_bytes))
+        raw = f.read().decode("utf-8", errors="replace")
+    runs = {}
+    order = []
+    for line in raw.splitlines():
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            continue  # partial first line from the tail read, or a bad line
+        rid = rec.get("run_id")
+        if not rid:
+            continue
+        if rid not in runs:
+            runs[rid] = {"run_id": rid, "started": None, "finished": None,
+                         "status": "running", "duration_s": None,
+                         "scrape": None, "publish": None, "exit_code": None}
+            order.append(rid)
+        r = runs[rid]
+        if rec.get("event") == "start":
+            r["started"] = rec.get("timestamp")
+        elif rec.get("event") == "end":
+            r["finished"] = rec.get("timestamp")
+            r["status"] = rec.get("status", "completed")
+            r["duration_s"] = rec.get("duration_s")
+            r["scrape"] = rec.get("scrape")
+            r["publish"] = rec.get("publish")
+            r["exit_code"] = rec.get("exit_code")
+
+    def _parse(ts):
+        try:
+            return datetime.strptime(ts.replace(" MST", ""), "%Y-%m-%d %H:%M:%S").replace(tzinfo=MST)
+        except (AttributeError, ValueError):
+            return None
+
+    now = datetime.now(MST)
+    out = []
+    for rid in order:
+        r = runs[rid]
+        started_dt = _parse(r["started"])
+        finished_dt = _parse(r["finished"])
+        if r["started"] is None and finished_dt and r["duration_s"] is not None:
+            # start record fell outside the tail window; reconstruct it
+            started_dt = finished_dt - timedelta(seconds=r["duration_s"])
+            r["started"] = started_dt.strftime("%Y-%m-%d %H:%M:%S MST")
+        if r["finished"] is None and started_dt:
+            age_min = (now - started_dt).total_seconds() / 60
+            r["status"] = "unfinished" if age_min > 45 else "running"
+        ref = finished_dt or started_dt
+        r["finished_ago_min"] = round((now - ref).total_seconds() / 60, 1) if ref else None
+        out.append(r)
+    out.sort(key=lambda r: r["started"] or "", reverse=True)
+    return out[:limit]
+
+
 def _next_weekday_fallback():
     """Used only if signup_monitor_state.json is missing/unreadable."""
     now = datetime.now(MST)
@@ -447,6 +519,16 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError:
                     pass
             self._send_json(read_log(limit))
+        elif self.path == "/cycle-log" or self.path == "/cycle_log.html":
+            self._send_html(CYCLE_LOG_HTML_PATH)
+        elif self.path.startswith("/api/cycle-log"):
+            limit = 100
+            if "limit=" in self.path:
+                try:
+                    limit = int(self.path.split("limit=")[1].split("&")[0])
+                except ValueError:
+                    pass
+            self._send_json(read_cycle_log(limit))
         elif self.path == "/api/next-shootout":
             self._send_json({"display": get_next_shootout_display()})
         elif self.path == "/api/recorded-dates":

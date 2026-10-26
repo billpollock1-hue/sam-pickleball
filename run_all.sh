@@ -54,6 +54,50 @@ fi
 echo ""
 echo "=== Pickleball full update started ==="
 
+# --- Cycle log (feeds the admin panel's "Cycle Log" card) ------------------
+# One "start" record when a pass begins and one "end" record when it exits
+# (success or failure), joined by CYCLE_RUN_ID. A start with no end means the
+# pass was killed mid-run (e.g. the Mac went to sleep). Logging can never
+# fail the cycle itself: every write is best-effort.
+CYCLE_LOG_FILE="$(cd "$(dirname "$0")" && pwd)/launcher/cycle_log.jsonl"
+CYCLE_RUN_ID="$(date +%Y%m%d%H%M%S)-$$"
+CYCLE_START_EPOCH=$(date +%s)
+CYCLE_SCRAPE="unknown"
+CYCLE_PUBLISH="unknown"
+
+cycle_log_event() {
+  CYCLE_EVENT="$1" CYCLE_EXIT="${2:-}" CYCLE_LOG_FILE="$CYCLE_LOG_FILE" \
+  CYCLE_RUN_ID="$CYCLE_RUN_ID" CYCLE_START_EPOCH="$CYCLE_START_EPOCH" \
+  CYCLE_SCRAPE="$CYCLE_SCRAPE" CYCLE_PUBLISH="$CYCLE_PUBLISH" \
+  python3 - <<'PY' >/dev/null 2>&1 || true
+import json, os, time
+from datetime import datetime
+from zoneinfo import ZoneInfo
+now = datetime.now(ZoneInfo("America/Phoenix"))
+ev = os.environ["CYCLE_EVENT"]
+rec = {"run_id": os.environ["CYCLE_RUN_ID"], "event": ev,
+       "timestamp": now.strftime("%Y-%m-%d %H:%M:%S MST")}
+if ev == "end":
+    code = int(os.environ.get("CYCLE_EXIT") or 0)
+    rec["exit_code"] = code
+    rec["status"] = "completed" if code == 0 else "failed"
+    rec["duration_s"] = int(time.time()) - int(os.environ["CYCLE_START_EPOCH"])
+    rec["scrape"] = os.environ.get("CYCLE_SCRAPE", "unknown")
+    rec["publish"] = os.environ.get("CYCLE_PUBLISH", "unknown")
+with open(os.environ["CYCLE_LOG_FILE"], "a") as f:
+    f.write(json.dumps(rec) + "\n")
+PY
+}
+
+cycle_finish() {
+  local code=$?
+  cycle_log_event end "$code"
+  rm -rf "$LOCKDIR"
+}
+trap cycle_finish EXIT
+cycle_log_event start
+# -------------------------------------------------------------------------
+
 MASTER_FILE="data/master_history_raw.csv"
 LATEST_FILE="data/latest_scrape.csv"
 STATE_FILE="data/.last_successful_rebuild_hash"
@@ -189,6 +233,7 @@ PY
 if [ "$SHOULD_SKIP_SCRAPE" = "YES" ]; then
   echo ""
   echo "1. Skipping scrape and merge."
+  CYCLE_SCRAPE="skipped (history current)"
   echo "Master history is already current through the most recent possible play date."
 else
   echo ""
@@ -219,16 +264,19 @@ else
   echo ""
   if [ "${SHOOTOUT_COUNT:-0}" -eq 0 ]; then
     echo "2. Skipping merge — no shootouts found in $START_DATE through $END_DATE."
+    CYCLE_SCRAPE="no results posted yet"
     echo "   Nothing new to merge; master history stays as-is. Will retry on next"
     echo "   scheduled run. If today was cancelled or ran as a single shootout,"
     echo "   record it via the admin panel's Record a Date feature."
   elif [ "$START_DATE" = "$END_DATE" ] && [ "${SHOOTOUT_COUNT:-0}" -lt 2 ]; then
     echo "2. Skipping merge — only $SHOOTOUT_COUNT shootout(s) found for $START_DATE (need 2)."
+    CYCLE_SCRAPE="partial results, waiting"
     echo "   Results may not be fully posted yet. Will retry on next scheduled run."
     echo "   If today ran as a genuine single-shootout day, record it via the"
     echo "   admin panel's Record a Date feature."
   else
     echo "2. Cleaning/deduping master history..."
+    CYCLE_SCRAPE="merged new results"
     python3 scraper/merge_csv.py
   fi
 fi
@@ -339,11 +387,14 @@ if [ -n "$(git status --porcelain docs/)" ]; then
   git commit -m "Auto-update GitHub Pages docs ($(TZ=America/Phoenix date '+%Y-%m-%d %H:%M') MST)"
   if git push origin main; then
     echo "Pushed docs/ updates to GitHub."
+    CYCLE_PUBLISH="pushed to GitHub"
   else
     echo "⚠ git push failed — docs/ changes committed locally but NOT pushed. Manual attention needed."
+    CYCLE_PUBLISH="push FAILED"
   fi
 else
   echo "No changes in docs/ — skipping commit."
+  CYCLE_PUBLISH="no changes"
 fi
 
 echo ""

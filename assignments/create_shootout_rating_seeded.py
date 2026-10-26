@@ -202,6 +202,133 @@ def ensure_signup_sheet_view(page):
     start_field.wait_for(timeout=10000)
 
 
+# --- DEN auto-login (added 2026-10-26) ------------------------------------
+# The launcher used to load the saved session file and had no way to recover if
+# DEN stopped accepting it (scraper/scrape.js always could). If DEN shows its
+# login form instead of the app, sign in with scraper/den_credentials.json,
+# refresh the session file, and carry on. Sign-in happens in a separate,
+# untraced browser context so the credentials never land in the diagnostic
+# trace saved on failures. Credentials are never printed.
+DEN_LOGIN_URL = "https://app.pickleballden.com"
+DEN_CREDENTIALS_PATH = Path(__file__).resolve().parent.parent / "scraper" / "den_credentials.json"
+
+
+def _den_credentials():
+    import json as _json
+    try:
+        d = _json.loads(DEN_CREDENTIALS_PATH.read_text())
+    except Exception:
+        return None
+    return d if d.get("email") and d.get("password") else None
+
+
+def den_page_state(page, timeout_s=15):
+    """'login' if DEN is showing its login form, 'app' if the signed-in app has
+    rendered, 'unknown' if neither showed up in time."""
+    import re as _re
+    waited = 0.0
+    while waited < timeout_s:
+        try:
+            if page.locator('input[type="password"], vaadin-password-field input').count() > 0:
+                return "login"
+            body = page.locator("body").inner_text(timeout=2000)
+            if ("Date Range Start" in body or "Club Play List" in body
+                    or ("Friends" in body and "Timeline" in body)):
+                return "app"
+        except Exception:
+            pass
+        page.wait_for_timeout(500)
+        waited += 0.5
+    return "unknown"
+
+
+def ensure_den_login(page, context, browser):
+    """If DEN is showing its login form, sign in and refresh the saved session.
+    Returns True if it had to sign in. Does nothing if already signed in, and
+    carries on as before if the page state can't be determined."""
+    import re as _re
+    try:
+        state = den_page_state(page)
+    except Exception as e:
+        print(f"  (DEN login check skipped: {e})")
+        return False
+    if state != "login":
+        if state == "unknown":
+            print("  (DEN page state unclear; continuing without a login check)")
+        return False
+
+    print("DEN is showing its login form (saved session not accepted); signing in...")
+    creds = _den_credentials()
+    if not creds:
+        raise RuntimeError("DEN session expired and scraper/den_credentials.json is missing "
+                           "or incomplete -- cannot sign in automatically.")
+
+    login_ctx = browser.new_context(viewport={"width": 1920, "height": 1080})
+    try:
+        lp = login_ctx.new_page()
+        lp.goto(DEN_LOGIN_URL, wait_until="domcontentloaded")
+        try:
+            lp.wait_for_selector("input", timeout=15000)
+        except Exception:
+            pass
+
+        def first_present(selectors):
+            for sel in selectors:
+                loc = lp.locator(sel).first
+                if loc.count() > 0:
+                    return loc
+            return None
+
+        email = first_present(['vaadin-text-field input', 'vaadin-email-field input',
+                               'input[type="email"]', 'input[name="email"]',
+                               'input[placeholder*="email" i]', 'input[autocomplete*="email" i]', 'input'])
+        if email is None:
+            raise RuntimeError("DEN auto-login: could not find the email field on the login page.")
+        email.click()
+        email.fill(creds["email"])
+
+        pw = first_present(['vaadin-password-field input', 'input[type="password"]', 'input[name="password"]'])
+        if pw is None:
+            raise RuntimeError("DEN auto-login: could not find the password field on the login page.")
+        pw.click()
+        pw.fill(creds["password"])
+        lp.wait_for_timeout(500)
+
+        submitted = False
+        for sel in ['button[type="submit"]', 'vaadin-button[theme*="primary"]', 'vaadin-button']:
+            btns = lp.locator(sel)
+            for i in range(btns.count()):
+                try:
+                    txt = (btns.nth(i).inner_text() or "").lower()
+                except Exception:
+                    txt = ""
+                if _re.search(r"sign in|log in|login|submit|continue", txt) or sel == 'button[type="submit"]':
+                    btns.nth(i).click()
+                    submitted = True
+                    break
+            if submitted:
+                break
+        if not submitted:
+            pw.press("Enter")
+        lp.wait_for_timeout(5000)
+
+        if den_page_state(lp, timeout_s=15) != "app":
+            try:
+                _debug_screenshot(lp, "den_login_failure")
+            except Exception:
+                pass
+            raise RuntimeError("DEN auto-login failed -- credentials may be wrong or the login page changed.")
+
+        new_state = login_ctx.storage_state(path=SESSION_FILE)
+    finally:
+        login_ctx.close()
+
+    context.add_cookies(new_state.get("cookies", []))
+    page.goto(SIGNUP_URL, wait_until="domcontentloaded")
+    print("  \u2713 Signed in to DEN; saved session refreshed.")
+    return True
+
+
 def automate_signup_search_today(page):
     """
     Local replacement for den_assignments.automate_signup_search() --
@@ -1015,6 +1142,7 @@ def main():
         try:
             print("Opening signup sheet...")
             page.goto(SIGNUP_URL, wait_until="domcontentloaded")
+            ensure_den_login(page, context, browser)
             automate_signup_search_today(page)
 
             signup_text = save_page_text(page, "signup_page_create.txt")

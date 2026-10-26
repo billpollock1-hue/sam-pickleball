@@ -55,36 +55,109 @@ echo ""
 echo "=== Pickleball full update started ==="
 
 # --- Cycle log (feeds the admin panel's "Cycle Log" card) ------------------
-# One "start" record when a pass begins and one "end" record when it exits
-# (success or failure), joined by CYCLE_RUN_ID. A start with no end means the
-# pass was killed mid-run (e.g. the Mac went to sleep). Logging can never
-# fail the cycle itself: every write is best-effort.
+# "start" / "progress" / "end" records joined by CYCLE_RUN_ID. A start with no
+# end means the pass was killed mid-run (e.g. the Mac went to sleep). Records
+# whether a scrape was attempted, the target date and how many shootouts it
+# expected (2 normally, 1 on a day marked single-shootout), how many it found,
+# the outcome, and the actual error on failures. Logging can never fail the
+# cycle itself: every write is best-effort.
 CYCLE_LOG_FILE="$(cd "$(dirname "$0")" && pwd)/launcher/cycle_log.jsonl"
 CYCLE_RUN_ID="$(date +%Y%m%d%H%M%S)-$$"
 CYCLE_START_EPOCH=$(date +%s)
+CYCLE_CTX_FILE="/tmp/sam_cycle_ctx_${CYCLE_RUN_ID}.json"
+export CYCLE_CTX_FILE
+CYCLE_STEP="starting"
+CYCLE_ATTEMPTED=""
+CYCLE_WINDOW=""
+CYCLE_RESULT="unknown"
+CYCLE_FOUND=""
+CYCLE_ROWS=""
+CYCLE_ERROR=""
 CYCLE_SCRAPE="unknown"
 CYCLE_PUBLISH="unknown"
 
 cycle_log_event() {
   CYCLE_EVENT="$1" CYCLE_EXIT="${2:-}" CYCLE_LOG_FILE="$CYCLE_LOG_FILE" \
   CYCLE_RUN_ID="$CYCLE_RUN_ID" CYCLE_START_EPOCH="$CYCLE_START_EPOCH" \
-  CYCLE_SCRAPE="$CYCLE_SCRAPE" CYCLE_PUBLISH="$CYCLE_PUBLISH" \
+  CYCLE_CTX_FILE="$CYCLE_CTX_FILE" CYCLE_STEP="$CYCLE_STEP" \
+  CYCLE_ATTEMPTED="$CYCLE_ATTEMPTED" CYCLE_WINDOW="$CYCLE_WINDOW" \
+  CYCLE_RESULT="$CYCLE_RESULT" CYCLE_FOUND="$CYCLE_FOUND" CYCLE_ROWS="$CYCLE_ROWS" \
+  CYCLE_ERROR="$CYCLE_ERROR" CYCLE_SCRAPE="$CYCLE_SCRAPE" CYCLE_PUBLISH="$CYCLE_PUBLISH" \
   python3 - <<'PY' >/dev/null 2>&1 || true
 import json, os, time
 from datetime import datetime
 from zoneinfo import ZoneInfo
+E = os.environ.get
 now = datetime.now(ZoneInfo("America/Phoenix"))
-ev = os.environ["CYCLE_EVENT"]
-rec = {"run_id": os.environ["CYCLE_RUN_ID"], "event": ev,
+ev = E("CYCLE_EVENT")
+rec = {"run_id": E("CYCLE_RUN_ID"), "event": ev,
        "timestamp": now.strftime("%Y-%m-%d %H:%M:%S MST")}
-if ev == "end":
-    code = int(os.environ.get("CYCLE_EXIT") or 0)
-    rec["exit_code"] = code
-    rec["status"] = "completed" if code == 0 else "failed"
-    rec["duration_s"] = int(time.time()) - int(os.environ["CYCLE_START_EPOCH"])
-    rec["scrape"] = os.environ.get("CYCLE_SCRAPE", "unknown")
-    rec["publish"] = os.environ.get("CYCLE_PUBLISH", "unknown")
-with open(os.environ["CYCLE_LOG_FILE"], "a") as f:
+
+def toint(x):
+    try:
+        return int(x)
+    except (TypeError, ValueError):
+        return None
+
+def iso(d):
+    try:
+        return datetime.strptime(d, "%m%d%y").strftime("%Y-%m-%d")
+    except ValueError:
+        return None
+
+def classify(msg):
+    m = msg.lower()
+    if any(k in m for k in ("err_internet_disconnected", "err_name_not_resolved", "err_network_changed",
+                            "err_connection", "err_address_unreachable", "err_timed_out",
+                            "enotfound", "econnreset", "etimedout", "net::err")):
+        return "Network problem \u2014 Mac offline, asleep, or Den unreachable"
+    if "auto-login failed" in m or "credentials" in m or "not logged in" in m:
+        return "Den login failed \u2014 session expired and auto-login did not work"
+    if "timeout" in m or "timed out" in m:
+        return "Timed out waiting for a Den page to load"
+    if "browser" in m and ("closed" in m or "crash" in m):
+        return "Browser crashed or was closed mid-scrape"
+    return "Unexpected scraper error"
+
+if ev != "start":
+    ctx = {}
+    try:
+        with open(E("CYCLE_CTX_FILE", "")) as f:
+            ctx = json.load(f)
+    except Exception:
+        pass
+    attempted = {"yes": True, "no": False}.get(E("CYCLE_ATTEMPTED", ""))
+    window = None
+    w = E("CYCLE_WINDOW", "")
+    if "-" in w:
+        a, b = (iso(x) for x in w.split("-", 1))
+        if a and b:
+            window = a if a == b else f"{a} to {b}"
+    required, expected = ctx.get("required_date"), ctx.get("expected")
+    present = ctx.get("in_history")
+    reason = None
+    if required and present is not None and expected:
+        if attempted is False:
+            reason = (f"History already complete for {required} ({len(present)} of {expected} "
+                      f"shootouts); newest data {ctx.get('latest_date')}")
+        elif attempted:
+            reason = (f"History has {len(present)} of {expected} shootouts for {required}, "
+                      f"so it scraped {window or 'the latest window'}")
+    err = E("CYCLE_ERROR", "")
+    rec.update({
+        "attempted": attempted, "window": window, "target_date": required, "expected": expected,
+        "in_history": len(present) if present is not None else None,
+        "found": toint(E("CYCLE_FOUND")), "rows": toint(E("CYCLE_ROWS")),
+        "result": E("CYCLE_RESULT", "unknown"), "reason": reason,
+        "error": err or None, "error_kind": classify(err) if err else None,
+        "step": E("CYCLE_STEP"), "scrape": E("CYCLE_SCRAPE"), "publish": E("CYCLE_PUBLISH"),
+    })
+    if ev == "end":
+        code = int(E("CYCLE_EXIT") or 0)
+        rec["exit_code"] = code
+        rec["status"] = "completed" if code == 0 else "failed"
+        rec["duration_s"] = int(time.time()) - int(E("CYCLE_START_EPOCH"))
+with open(E("CYCLE_LOG_FILE"), "a") as f:
     f.write(json.dumps(rec) + "\n")
 PY
 }
@@ -92,7 +165,7 @@ PY
 cycle_finish() {
   local code=$?
   cycle_log_event end "$code"
-  rm -rf "$LOCKDIR"
+  rm -rf "$LOCKDIR" "$CYCLE_CTX_FILE"
 }
 trap cycle_finish EXIT
 cycle_log_event start
@@ -107,6 +180,7 @@ NO_SHOOTOUT_LOG="data/no_shootout_dates.csv"
 
 echo ""
 echo "0. Checking today's signup count (minimum 8 players required for a shootout)..."
+CYCLE_STEP="0. Checking today's signup count (minimum 8 players required for a shootout)"
 (cd assignments && python3 check_no_shootout.py)
 
 # Hash master history before any scrape/merge attempt. Steps 3-5c (summary
@@ -221,6 +295,17 @@ if today in no_shootout_dates:
 # date presence alone let a partial day (only 1 of 2 shootouts scraped)
 # permanently block every later cycle that day from re-checking, even
 # though the missing shootout was sitting on Den's site all along.
+# --- cycle log context (best-effort; never affects the decision) ---
+try:
+    import json, os
+    _present = sorted({int(x) for x in df.loc[dates.dt.date == required_date, "shootout"].dropna().unique()})
+    with open(os.environ["CYCLE_CTX_FILE"], "w") as _f:
+        json.dump({"latest_date": str(latest_date), "required_date": str(required_date),
+                   "expected": 1 if required_date in partial_shootout_dates else 2,
+                   "in_history": _present}, _f)
+except Exception:
+    pass
+# ---------------------------------------------------------------------
 if latest_date > required_date:
     print("YES")
 elif latest_date == required_date and required_date_is_complete(required_date):
@@ -234,11 +319,17 @@ if [ "$SHOULD_SKIP_SCRAPE" = "YES" ]; then
   echo ""
   echo "1. Skipping scrape and merge."
   CYCLE_SCRAPE="skipped (history current)"
+  CYCLE_ATTEMPTED="no"
+  CYCLE_RESULT="skipped"
   echo "Master history is already current through the most recent possible play date."
 else
   echo ""
   echo "1. Scraping latest shootout data..."
+  CYCLE_STEP="1. Scraping latest shootout data"
+  CYCLE_ATTEMPTED="yes"
   echo "Date window: $START_DATE through $END_DATE"
+  CYCLE_WINDOW="$START_DATE-$END_DATE"
+  cycle_log_event progress
   echo "Update rule: scrape only when master history is behind the most recent possible play date."
 
   set +e
@@ -247,11 +338,18 @@ else
   set -e
   echo "$SCRAPE_OUTPUT"
   if [ $SCRAPE_EXIT -ne 0 ]; then
+    CYCLE_RESULT="scrape_failed"
+    CYCLE_ERROR="$(printf '%s\n' "$SCRAPE_OUTPUT" | grep -a 'Script failed' | tail -1 | cut -c1-400)"
+    if [ -z "$CYCLE_ERROR" ]; then
+      CYCLE_ERROR="exit code $SCRAPE_EXIT: $(printf '%s\n' "$SCRAPE_OUTPUT" | tail -3 | tr '\n' ' ' | cut -c1-300)"
+    fi
     echo "⚠ Scraper exited with code $SCRAPE_EXIT — see output above for the actual error."
     exit $SCRAPE_EXIT
   fi
 
   SHOOTOUT_COUNT=$(echo "$SCRAPE_OUTPUT" | grep -o "Collected [0-9]* shootout" | grep -o "[0-9]*" || echo "0")
+  CYCLE_FOUND="${SHOOTOUT_COUNT:-0}"
+  CYCLE_ROWS="$(printf '%s\n' "$SCRAPE_OUTPUT" | grep -ao 'Wrote [0-9]* rows' | grep -o '[0-9]*' | head -1 || true)"
 
   # No automatic "give up and accept a partial day" logic. Recording a
   # date as no-shootout or single-shootout is always Bill's own manual
@@ -265,18 +363,25 @@ else
   if [ "${SHOOTOUT_COUNT:-0}" -eq 0 ]; then
     echo "2. Skipping merge — no shootouts found in $START_DATE through $END_DATE."
     CYCLE_SCRAPE="no results posted yet"
+    CYCLE_RESULT="no_results"
+    cycle_log_event progress
     echo "   Nothing new to merge; master history stays as-is. Will retry on next"
     echo "   scheduled run. If today was cancelled or ran as a single shootout,"
     echo "   record it via the admin panel's Record a Date feature."
   elif [ "$START_DATE" = "$END_DATE" ] && [ "${SHOOTOUT_COUNT:-0}" -lt 2 ]; then
     echo "2. Skipping merge — only $SHOOTOUT_COUNT shootout(s) found for $START_DATE (need 2)."
     CYCLE_SCRAPE="partial results, waiting"
+    CYCLE_RESULT="partial"
+    cycle_log_event progress
     echo "   Results may not be fully posted yet. Will retry on next scheduled run."
     echo "   If today ran as a genuine single-shootout day, record it via the"
     echo "   admin panel's Record a Date feature."
   else
     echo "2. Cleaning/deduping master history..."
+    CYCLE_STEP="2. Cleaning/deduping master history"
     CYCLE_SCRAPE="merged new results"
+    CYCLE_RESULT="merged"
+    cycle_log_event progress
     python3 scraper/merge_csv.py
   fi
 fi
@@ -304,10 +409,12 @@ if [ "$DATA_CHANGED" = "NO" ]; then
 else
   echo ""
   echo "3. Building 2026 summary workbook..."
+  CYCLE_STEP="3. Building 2026 summary workbook"
   python3 engine/build_2026_summaries.py
 
   echo ""
   echo "4. Running rating engine..."
+  CYCLE_STEP="4. Running rating engine"
   rm -f "$TEMP_OUTPUT"
 
   python3 engine/pickleball_engine_v2.py \
@@ -327,26 +434,32 @@ else
 
   echo ""
   echo "5. Building session viewer..."
+  CYCLE_STEP="5. Building session viewer"
   python3 engine/build_session_viewer.py
 
   echo ""
   echo "5a2. Building player history..."
+  CYCLE_STEP="5a2. Building player history"
   python3 engine/build_player_history.py
 
   echo ""
   echo "5b. Building storybook..."
+  CYCLE_STEP="5b. Building storybook"
   python3 engine/build_storybook.py
 
   echo ""
   echo "5c. Building slim leaderboard..."
+  CYCLE_STEP="5c. Building slim leaderboard"
   python3 engine/build_leaderboard_html.py
 
   echo ""
   echo "5c1. Building Bear Count..."
+  CYCLE_STEP="5c1. Building Bear Count"
   python3 engine/build_bear_count.py
 
   echo ""
   echo "5c3. Updating Format Change Tracker data..."
+  CYCLE_STEP="5c3. Updating Format Change Tracker data"
   python3 compute_format_tracker_data.py
 
   # Only record success now that every rebuild step above has
@@ -358,18 +471,22 @@ fi
 
 echo ""
 echo "5c2. Building Ratings Change page..."
+CYCLE_STEP="5c2. Building Ratings Change page"
 python3 engine/build_compare_ratings_html.py
 
 echo ""
 echo "5d. Refreshing court assignment snapshots..."
+CYCLE_STEP="5d. Refreshing court assignment snapshots"
 (cd assignments && python3 refresh_assignments.py)
 
 echo ""
 echo "5e. Building court assignments viewer..."
+CYCLE_STEP="5e. Building court assignments viewer"
 (cd assignments && python3 generate_assignments_viewer.py)
 
 echo ""
 echo "6. Updating docs/ for GitHub Pages..."
+CYCLE_STEP="6. Updating docs/ for GitHub Pages"
 mkdir -p docs
 cp output/session_viewer.html docs/
 cp output/player_history.html docs/
@@ -382,6 +499,7 @@ cp assignments/output/court_assignments_viewer.html docs/court_assignments.html
 
 echo ""
 echo "7. Committing and pushing docs/ to GitHub Pages..."
+CYCLE_STEP="7. Committing and pushing docs/ to GitHub Pages"
 if [ -n "$(git status --porcelain docs/)" ]; then
   git add docs/
   git commit -m "Auto-update GitHub Pages docs ($(TZ=America/Phoenix date '+%Y-%m-%d %H:%M') MST)"

@@ -7,30 +7,33 @@
 <style>
   body { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; background: #0f1115; color: #e6e6e6; margin: 0; padding: 24px; }
   h1 { font-size: 20px; margin: 0 0 4px; }
-  .sub { color: #9aa0a6; font-size: 13px; margin-bottom: 6px; }
+  .sub { color: #9aa0a6; font-size: 13px; margin-bottom: 6px; max-width: 900px; line-height: 1.45; }
   .back { color: #4f8cff; font-size: 13px; text-decoration: none; display: inline-block; margin-bottom: 14px; }
   .summary { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0 20px; }
-  .tile { background: #1a1d24; border: 1px solid #2a2e37; border-radius: 10px; padding: 12px 16px; min-width: 200px; flex: 1; }
+  .tile { background: #1a1d24; border: 1px solid #2a2e37; border-radius: 10px; padding: 12px 16px; min-width: 210px; flex: 1; }
   .tile .label { color: #9aa0a6; font-size: 11px; text-transform: uppercase; font-weight: 600; }
   .tile .value { font-size: 15px; font-weight: 600; margin-top: 4px; }
   .tile .note { color: #9aa0a6; font-size: 12px; margin-top: 2px; }
-  .card { background: #1a1d24; border: 1px solid #2a2e37; border-radius: 10px; padding: 20px; margin-bottom: 20px; overflow-x: auto; }
-  .toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 13px; color: #9aa0a6; }
-  .toolbar label { cursor: pointer; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #2a2e37; vertical-align: top; white-space: nowrap; }
-  th { color: #9aa0a6; font-weight: 600; font-size: 11px; text-transform: uppercase;
-       position: sticky; top: 0; background: #1a1d24; z-index: 1; }
-  .scroll { max-height: 65vh; overflow: auto; border: 1px solid #2a2e37; border-radius: 8px; }
-  .scroll table { border-collapse: separate; border-spacing: 0; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
-  .badge.completed { background: #113a22; color: #4ade80; }
-  .badge.failed { background: #3a1111; color: #f87171; }
+  .card { background: #1a1d24; border: 1px solid #2a2e37; border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+  .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; font-size: 13px; color: #9aa0a6; }
+  .toolbar label { cursor: pointer; margin-left: 14px; }
+  table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 8px; border-bottom: 1px solid #2a2e37; vertical-align: top; }
+  th { color: #9aa0a6; font-weight: 600; font-size: 11px; text-transform: uppercase; position: sticky; top: 0; background: #1a1d24; z-index: 1; white-space: nowrap; }
+  td.nw { white-space: nowrap; }
+  td.detail { min-width: 320px; max-width: 520px; line-height: 1.4; }
+  .scroll { max-height: 68vh; overflow: auto; border: 1px solid #2a2e37; border-radius: 8px; }
+  tr.skipped td { opacity: 0.62; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .badge.completed, .badge.merged { background: #113a22; color: #4ade80; }
+  .badge.failed, .badge.scrape_failed { background: #3a1111; color: #f87171; }
   .badge.running { background: #172a46; color: #7aa7ff; }
-  .badge.unfinished { background: #3a2f11; color: #f0b429; }
-  .muted { color: #5c6270; }
+  .badge.unfinished, .badge.no_results, .badge.partial { background: #3a2f11; color: #f0b429; }
+  .badge.skipped { background: #23262e; color: #9aa0a6; }
+  .muted { color: #6b7280; }
   .pub { color: #4ade80; font-weight: 600; }
   .warn { color: #f87171; font-weight: 600; }
+  .err { color: #c9a0a0; font-size: 12px; word-break: break-word; }
   .note { color: #9aa0a6; font-size: 12px; margin-top: 12px; line-height: 1.5; }
 </style>
 </head>
@@ -38,30 +41,35 @@
 
 <a class="back" href="/">&larr; Admin</a>
 <h1>Scrape &amp; Refresh Cycle Log</h1>
-<div class="sub">Every pass of the 15-minute cycle (run_all.sh): when it started, when it finished, and what it did. Times shown in MST.</div>
+<div class="sub">Every pass of the 15-minute cycle: when it ran, whether it tried to scrape Den, which date and how many shootouts it was looking for (2 normally, 1 on a single-shootout day), what it found, and why it failed if it did. Times in MST.</div>
 
 <div class="summary">
-  <div class="tile"><div class="label">Last completed</div><div class="value" id="t-completed">loading&hellip;</div><div class="note" id="t-completed-note"></div></div>
-  <div class="tile"><div class="label">Last scrape with new results</div><div class="value" id="t-scrape">loading&hellip;</div><div class="note" id="t-scrape-note"></div></div>
+  <div class="tile"><div class="label">Last pass completed</div><div class="value" id="t-completed">loading&hellip;</div><div class="note" id="t-completed-note"></div></div>
+  <div class="tile"><div class="label">Last scrape attempt</div><div class="value" id="t-attempt">loading&hellip;</div><div class="note" id="t-attempt-note"></div></div>
+  <div class="tile"><div class="label">Last successful scrape</div><div class="value" id="t-success">loading&hellip;</div><div class="note" id="t-success-note"></div></div>
   <div class="tile"><div class="label">Last publish to GitHub Pages</div><div class="value" id="t-publish">loading&hellip;</div><div class="note" id="t-publish-note"></div></div>
 </div>
 
 <div class="card">
   <div class="toolbar">
     <span id="count"></span>
-    <label><input type="checkbox" id="hide-idle"> Hide idle passes (nothing scraped, nothing published)</label>
+    <span>
+      <label><input type="checkbox" id="only-attempts"> Scrape attempts only</label>
+      <label><input type="checkbox" id="only-problems"> Problems only</label>
+    </span>
   </div>
   <div class="scroll">
   <table>
     <thead>
-      <tr><th>Started (MST)</th><th>Finished (MST)</th><th>Duration</th><th>Status</th><th>Scrape</th><th>Publish</th></tr>
+      <tr><th>Started (MST)</th><th>Finished</th><th>Pass</th><th>Scrape</th><th>Looking for</th><th>Found</th><th>What happened</th><th>Publish</th></tr>
     </thead>
-    <tbody id="body"><tr><td colspan="6">Loading&hellip;</td></tr></tbody>
+    <tbody id="body"><tr><td colspan="8">Loading&hellip;</td></tr></tbody>
   </table>
   </div>
   <div class="note">
     &ldquo;Did not finish&rdquo; means a pass started but never recorded an ending (for example the Mac went to sleep or the process was killed mid-run).
-    Passes before this log was added are not included.
+    A &ldquo;skipped&rdquo; scrape means history was already complete for the date it needed, so there was nothing to fetch.
+    Logging began Oct 26, 2026; earlier history is not available.
   </div>
 </div>
 
@@ -69,9 +77,10 @@
 let RUNS = [];
 
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+const dash = '<span class="muted">—</span>';
 
 function fmtDur(s) {
-  if (s == null) return '—';
+  if (s == null) return dash;
   if (s < 60) return s + 's';
   return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
 }
@@ -82,64 +91,117 @@ function fmtAgo(min) {
   if (min < 1440) return (min / 60).toFixed(1) + ' h ago';
   return (min / 1440).toFixed(1) + ' days ago';
 }
-function isIdle(r) {
-  const noScrape = !r.scrape || /^skipped|no results|partial/.test(r.scrape);
-  const noPublish = !r.publish || r.publish === 'no changes' || r.publish === 'unknown';
-  return r.status === 'completed' && noScrape && noPublish;
-}
-function badge(r) {
+function shortTime(ts) { return ts ? ts.replace(' MST', '') : null; }
+
+function passBadge(r) {
   const label = { completed: 'completed', failed: 'failed', running: 'running', unfinished: 'did not finish' }[r.status] || r.status;
-  return `<span class="badge ${esc(r.status)}">${label}</span>`;
+  return `<span class="badge ${esc(r.status)}">${label}</span>` +
+    (r.status !== 'running' && r.duration_s != null ? ` <span class="muted">${fmtDur(r.duration_s)}</span>` : '');
+}
+function scrapeBadge(r) {
+  if (r.attempted === false) return '<span class="badge skipped">skipped</span>';
+  if (r.attempted !== true) return dash;
+  if (r.status === 'unfinished') return '<span class="badge unfinished">interrupted</span>';
+  const m = {
+    merged: ['merged', 'success'], no_results: ['no_results', 'no results yet'], partial: ['partial', 'partial'],
+    scrape_failed: ['scrape_failed', 'failed']
+  }[r.result];
+  if (m) return `<span class="badge ${m[0]}">${m[1]}</span>`;
+  return '<span class="badge running">in progress</span>';
+}
+function lookingFor(r) {
+  if (!r.target_date) return dash;
+  const n = r.expected;
+  let s = `${esc(r.target_date)}<br><span class="muted">${n === 1 ? '1 shootout (single-shootout day)' : (n || 2) + ' shootouts'}`;
+  if (r.window && r.attempted && r.window !== r.target_date) s += `; window ${esc(r.window)}`;
+  return s + '</span>';
+}
+function foundCell(r) {
+  if (r.attempted !== true || r.found == null) return dash;
+  return `${r.found} of ${r.expected || 2}` + (r.rows != null ? `<br><span class="muted">${r.rows} rows</span>` : '');
+}
+function whatHappened(r) {
+  const out = [];
+  if (r.result === 'scrape_failed' || (r.status === 'failed' && r.error)) {
+    out.push(`<span class="warn">${esc(r.error_kind || 'Scrape failed')}</span>`);
+    if (r.error) out.push(`<div class="err">${esc(r.error)}</div>`);
+  } else if (r.status === 'failed') {
+    out.push(`<span class="warn">Failed during: ${esc(r.step || 'unknown step')}</span> <span class="muted">(exit ${esc(r.exit_code)})</span>`);
+  } else if (r.status === 'unfinished') {
+    out.push(`<span class="warn">Started but never finished</span> <span class="muted">— last step: ${esc(r.step || 'unknown')}. Mac likely slept or the process was killed.</span>`);
+  } else if (r.result === 'no_results') {
+    out.push(`Den has no results posted yet for ${esc(r.target_date)}. Will retry next pass.`);
+  } else if (r.result === 'partial') {
+    out.push(`Only ${esc(r.found)} of ${esc(r.expected || 2)} shootouts posted so far. Will retry next pass.`);
+  } else if (r.result === 'merged') {
+    out.push(`New results merged into history; ratings rebuilt.`);
+  } else if (r.attempted === false && r.reason) {
+    out.push(`<span class="muted">${esc(r.reason)}</span>`);
+  }
+  if (r.attempted === true && r.reason && r.result !== 'scrape_failed') out.push(`<div class="muted">${esc(r.reason)}</div>`);
+  return out.length ? out.join('') : dash;
 }
 function pubCell(r) {
-  if (!r.publish || r.publish === 'unknown') return '<span class="muted">—</span>';
+  if (!r.publish || r.publish === 'unknown') return dash;
   if (/FAILED/.test(r.publish)) return `<span class="warn">${esc(r.publish)}</span>`;
   if (r.publish === 'no changes') return '<span class="muted">no changes</span>';
   return `<span class="pub">${esc(r.publish)}</span>`;
 }
+function isProblem(r) {
+  return r.status === 'failed' || r.status === 'unfinished' || r.result === 'scrape_failed' || /FAILED/.test(r.publish || '');
+}
 
 function render() {
-  const hide = document.getElementById('hide-idle').checked;
-  const rows = hide ? RUNS.filter(r => !isIdle(r)) : RUNS;
-  document.getElementById('count').textContent =
-    `Showing ${rows.length} of ${RUNS.length} recent passes`;
+  const onlyAttempts = document.getElementById('only-attempts').checked;
+  const onlyProblems = document.getElementById('only-problems').checked;
+  let rows = RUNS;
+  if (onlyAttempts) rows = rows.filter(r => r.attempted === true);
+  if (onlyProblems) rows = rows.filter(isProblem);
+  document.getElementById('count').textContent = `Showing ${rows.length} of ${RUNS.length} recent passes`;
   const body = document.getElementById('body');
   if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="6">' +
-      (RUNS.length ? 'No non-idle passes in this window.' : 'No cycle runs logged yet — the first entry appears after the next pass starts.') +
-      '</td></tr>';
+    body.innerHTML = '<tr><td colspan="8">' +
+      (RUNS.length ? 'Nothing matches this filter.' : 'No cycle runs logged yet — the first entry appears after the next pass starts.') + '</td></tr>';
     return;
   }
-  body.innerHTML = rows.map(r => `<tr>
-    <td>${esc(r.started)}</td>
-    <td>${r.finished ? esc(r.finished) : '<span class="muted">—</span>'}</td>
-    <td>${fmtDur(r.duration_s)}</td>
-    <td>${badge(r)}</td>
-    <td>${r.scrape ? esc(r.scrape) : '<span class="muted">—</span>'}</td>
-    <td>${pubCell(r)}</td>
+  body.innerHTML = rows.map(r => `<tr class="${r.attempted === false ? 'skipped' : ''}">
+    <td class="nw">${r.started ? esc(shortTime(r.started)) : dash}</td>
+    <td class="nw">${r.finished ? esc(shortTime(r.finished).slice(11)) : dash}</td>
+    <td class="nw">${passBadge(r)}</td>
+    <td class="nw">${scrapeBadge(r)}</td>
+    <td>${lookingFor(r)}</td>
+    <td class="nw">${foundCell(r)}</td>
+    <td class="detail">${whatHappened(r)}</td>
+    <td class="nw">${pubCell(r)}</td>
   </tr>`).join('');
 }
 
-function tile(idPrefix, run, text) {
-  document.getElementById('t-' + idPrefix).textContent = run ? (run.finished || run.started) : 'none yet';
-  document.getElementById('t-' + idPrefix + '-note').textContent = run ? text(run) : '';
+function tile(id, run, text) {
+  document.getElementById('t-' + id).textContent = run ? (run.finished || run.started) : 'none yet';
+  document.getElementById('t-' + id + '-note').textContent = run ? text(run) : '';
 }
 
 async function load() {
   try {
-    const res = await fetch('/api/cycle-log?limit=200');
+    const res = await fetch('/api/cycle-log?limit=1500');
     RUNS = await res.json();
   } catch (e) {
-    document.getElementById('body').innerHTML = '<tr><td colspan="6">Could not load the cycle log.</td></tr>';
+    document.getElementById('body').innerHTML = '<tr><td colspan="8">Could not load the cycle log.</td></tr>';
     return;
   }
   tile('completed', RUNS.find(r => r.status === 'completed'), r => fmtAgo(r.finished_ago_min));
-  tile('scrape', RUNS.find(r => r.status === 'completed' && r.scrape === 'merged new results'), r => fmtAgo(r.finished_ago_min));
-  tile('publish', RUNS.find(r => r.publish === 'pushed to GitHub'), r => fmtAgo(r.finished_ago_min));
+  tile('attempt', RUNS.find(r => r.attempted === true), r => {
+    const o = { merged: 'succeeded', no_results: 'no results yet', partial: 'partial results', scrape_failed: 'FAILED' }[r.result] || 'in progress';
+    return `${o} · ${fmtAgo(r.finished_ago_min)}`;
+  });
+  tile('success', RUNS.find(r => r.result === 'merged' && r.status === 'completed'),
+    r => `${r.found} of ${r.expected || 2} shootouts for ${r.target_date} · ${fmtAgo(r.finished_ago_min)}`);
+  tile('publish', RUNS.find(r => (r.publish || '').startsWith('pushed')), r => fmtAgo(r.finished_ago_min));
   render();
 }
 
-document.getElementById('hide-idle').addEventListener('change', render);
+document.getElementById('only-attempts').addEventListener('change', render);
+document.getElementById('only-problems').addEventListener('change', render);
 load();
 setInterval(load, 30000);
 </script>

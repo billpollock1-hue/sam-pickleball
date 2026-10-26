@@ -384,18 +384,17 @@ def read_log(limit=50):
 
 
 def read_cycle_log(limit=100):
-    """Join start/end records from cycle_log.jsonl (written by run_all.sh) into
-    one row per pass, newest first.
+    """Join start/progress/end records from cycle_log.jsonl (written by run_all.sh)
+    into one row per pass, newest first.
 
-    A start with no end that is older than 45 minutes is reported as
-    "unfinished" (killed mid-run, e.g. the Mac went to sleep); a younger one
-    is "running". Only the tail of the file is read, so the page stays fast
-    as the log grows.
+    A start with no end older than 45 minutes is "unfinished" (killed mid-run,
+    e.g. the Mac went to sleep); a younger one is "running". Only the tail of
+    the file is read, so the page stays fast as the log grows.
     """
     if not CYCLE_LOG_PATH.exists():
         return []
-    limit = max(1, min(int(limit), 500))
-    tail_bytes = limit * 2 * 400 + 4096
+    limit = max(1, min(int(limit), 2000))
+    tail_bytes = limit * 4 * 700 + 4096
     with open(CYCLE_LOG_PATH, "rb") as f:
         f.seek(0, os.SEEK_END)
         size = f.tell()
@@ -413,19 +412,18 @@ def read_cycle_log(limit=100):
             continue
         if rid not in runs:
             runs[rid] = {"run_id": rid, "started": None, "finished": None,
-                         "status": "running", "duration_s": None,
-                         "scrape": None, "publish": None, "exit_code": None}
+                         "status": "running", "duration_s": None}
             order.append(rid)
         r = runs[rid]
-        if rec.get("event") == "start":
+        ev = rec.get("event")
+        if ev == "start":
             r["started"] = rec.get("timestamp")
-        elif rec.get("event") == "end":
-            r["finished"] = rec.get("timestamp")
-            r["status"] = rec.get("status", "completed")
-            r["duration_s"] = rec.get("duration_s")
-            r["scrape"] = rec.get("scrape")
-            r["publish"] = rec.get("publish")
-            r["exit_code"] = rec.get("exit_code")
+        elif ev in ("progress", "end"):
+            for k, v in rec.items():
+                if k not in ("run_id", "event", "timestamp") and v is not None:
+                    r[k] = v
+            if ev == "end":
+                r["finished"] = rec.get("timestamp")
 
     def _parse(ts):
         try:
@@ -439,8 +437,7 @@ def read_cycle_log(limit=100):
         r = runs[rid]
         started_dt = _parse(r["started"])
         finished_dt = _parse(r["finished"])
-        if r["started"] is None and finished_dt and r["duration_s"] is not None:
-            # start record fell outside the tail window; reconstruct it
+        if r["started"] is None and finished_dt and r.get("duration_s") is not None:
             started_dt = finished_dt - timedelta(seconds=r["duration_s"])
             r["started"] = started_dt.strftime("%Y-%m-%d %H:%M:%S MST")
         if r["finished"] is None and started_dt:
@@ -449,7 +446,7 @@ def read_cycle_log(limit=100):
         ref = finished_dt or started_dt
         r["finished_ago_min"] = round((now - ref).total_seconds() / 60, 1) if ref else None
         out.append(r)
-    out.sort(key=lambda r: r["started"] or "", reverse=True)
+    out.sort(key=lambda r: r["started"] or r["finished"] or "", reverse=True)
     return out[:limit]
 
 

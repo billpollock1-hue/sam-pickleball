@@ -65,6 +65,40 @@
   .card.group-c { border-left-color: var(--rust); background: rgba(179, 84, 58, 0.16); }
   .card.group-d { border-left-color: var(--gold); background: rgba(201, 168, 76, 0.16); }
 
+  .badge-new {
+    display: inline-block;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    color: #fff;
+    background: var(--rust);
+    border-radius: 4px;
+    padding: 2px 6px;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .card.coming-soon { cursor: default; }
+
+  .subcards { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+  .subcard {
+    display: block;
+    background: rgba(255, 255, 255, 0.75);
+    border: 1px solid rgba(201, 168, 76, 0.55);
+    border-left: 4px solid var(--gold);
+    border-radius: 6px;
+    padding: 11px 14px;
+    text-decoration: none;
+    color: var(--text);
+    transition: box-shadow 0.15s, transform 0.15s;
+  }
+  a.subcard:hover {
+    box-shadow: 0 3px 10px rgba(31, 78, 121, 0.15);
+    transform: translateY(-1px);
+  }
+  .subcard h3 { font-size: 15px; color: var(--blue-dark); margin-bottom: 3px; }
+  .subcard p  { font-size: 13px; color: #555; line-height: 1.4; }
+  .stamp { font-size: 11.5px; color: #8a6d1f; font-weight: 600; margin-top: 5px; }
+
   footer {
     text-align: center;
     font-size: 12px;
@@ -94,19 +128,9 @@
 <div id="freshness-hint">💡 Tap Refresh anytime to make sure you're seeing the latest menu.</div>
 
 <main>
-<a class="card group-a" href="leaderboard.html">
+  <a class="card group-a" href="leaderboard.html">
     <h2>Leaderboard</h2>
     <p>Current ratings at a glance — rank, rating, record, and win percentage for every qualified player. Search for your name.</p>
-  </a>
-
-  <a class="card group-a" href="compare_ratings.html">
-    <h2>Ratings Change</h2>
-    <p>See how ratings have changed between two dates for all leaderboard players. Pick a From and To date to compare the whole field at once.</p>
-  </a>
-
-  <a class="card group-a" href="bear_count.html">
-    <h2>Bear Count</h2>
-    <p>Track bears earned since Aug 24, 2026: 11-0 wins, and finishing on top of your shootout pool. See who's leading the pack.</p>
   </a>
 
   <a class="card group-c" href="court_assignments.html">
@@ -114,14 +138,24 @@
     <p>Shootout 1 court assignments for the next play date (and projected Shootout 1 court assignments for other upcoming play dates) under Modified ELO ratings, the Den's default rating system, and the difference between the 2 methods. Also contains historical archive back to July 2, 2026.</p>
   </a>
 
-  <a class="card group-d" href="your_questions.html">
-    <h2>Your Questions</h2>
-    <p>Straight answers to the questions we hear most about how ratings work.</p>
-  </a>
-
   <a class="card group-b" href="session_viewer.html">
     <h2>Session Viewer</h2>
     <p>Game-by-game results and rating changes for any play date. Pick a date, see every game, every score, and how each player's rating moved.</p>
+  </a>
+
+  <div class="card group-b coming-soon">
+    <h2>History File Adjustments<span class="badge-new">NEW</span></h2>
+    <p>Corrections and adjustments made to the underlying game history file, such as name fixes, so you can see exactly what was changed and why. Page coming soon.</p>
+  </div>
+
+  <a class="card group-a" href="bear_count.html">
+    <h2>Bear Count</h2>
+    <p>Track bears earned since Aug 24, 2026: 11-0 wins, and finishing on top of your shootout pool. See who's leading the pack.</p>
+  </a>
+
+  <a class="card group-a" href="compare_ratings.html">
+    <h2>Ratings Change</h2>
+    <p>See how ratings have changed between two dates for all leaderboard players. Pick a From and To date to compare the whole field at once.</p>
   </a>
 
   <a class="card group-b" href="player_history.html">
@@ -129,15 +163,28 @@
     <p>Every game a player has ever played, in one place. Pick a player, filter by year, see the full record.</p>
   </a>
 
-  <a class="card group-d" href="highlights.html">
-    <h2>What We're Changing</h2>
-    <p>The short version: the problem, the evidence, and the two-phase plan to make court assignments fairer.</p>
-  </a>
+  <div class="card group-d">
+    <h2>Library</h2>
+    <p>Background reading on how ratings work and why we're changing how courts get assigned.</p>
+    <div class="subcards">
+      <a class="subcard" href="your_questions.html">
+        <h3>Your Questions</h3>
+        <p>Straight answers to the questions we hear most about how ratings work.</p>
+      </a>
 
-  <a class="card group-d" href="storybook.html">
-    <h2>The Case for Change</h2>
-    <p>The full story behind how courts get assigned — the evidence, the ratings math, and what we tested to make Shootout 2 fairer.</p>
-  </a>
+      <a class="subcard" href="highlights.html">
+        <h3>What We're Changing</h3>
+        <p>The short version: the problem, the evidence, and the two-phase plan to make court assignments fairer.</p>
+        <div class="stamp">Dated 8/18/26</div>
+      </a>
+
+      <a class="subcard" href="storybook.html">
+        <h3>The Case for Change</h3>
+        <p>The full story behind how courts get assigned — the evidence, the ratings math, and what we tested to make Shootout 2 fairer.</p>
+        <div class="stamp">Dated 8/18/26</div>
+      </a>
+    </div>
+  </div>
 </main>
 
 <footer>

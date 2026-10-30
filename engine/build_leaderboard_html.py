@@ -380,6 +380,7 @@ html = f"""<!DOCTYPE html>
 <header>
   <h1>SAM Leaderboard</h1>
   <p>Modified Elo ratings &middot; through {data_through}</p>
+  <p>Shown for current DEN members active in the last 6 months &middot; ratings for players under 60 games are credibility-adjusted toward 1000</p>
 </header>
 <div id="freshness-hint">💡 Tap Refresh anytime to make sure you're seeing the latest data.</div>
 

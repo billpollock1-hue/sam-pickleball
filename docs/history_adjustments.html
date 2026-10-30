@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>History File Adjustments -- SAM Pickleball</title>
+<style>
+  :root {
+    --blue-dark: #1F4E79;
+    --blue-mid:  #2E75B6;
+    --teal:      #2A9D8F;
+    --rust:      #b3543a;
+    --text:      #333333;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Calibri, Arial, sans-serif; color: var(--text); background: #f7f9fc; }
+  header { background: var(--blue-dark); color: #fff; padding: 22px 18px; text-align: center; }
+  header h1 { font-size: 22px; }
+  header p { font-size: 13.5px; opacity: 0.85; margin-top: 6px; }
+  header a { color: #cfe0f2; font-size: 12.5px; }
+  main { max-width: 760px; margin: 0 auto; padding: 20px 16px 48px; display: flex; flex-direction: column; gap: 18px; }
+  .entry { background: #fff; border: 1px solid #dbe4ee; border-left: 5px solid var(--teal); border-radius: 8px; padding: 16px 18px; }
+  .entry-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+  .entry h2 { font-size: 16.5px; color: var(--blue-dark); }
+  .logged { font-size: 11.5px; color: #8a97a8; white-space: nowrap; }
+  .meta { font-size: 12.5px; color: #666; margin-top: 6px; }
+  .desc { font-size: 13.5px; line-height: 1.5; margin-top: 10px; }
+  .impact-summary { font-size: 12.5px; color: #555; margin-top: 10px; }
+  table.impact { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+  table.impact th { text-align: left; font-size: 11.5px; color: #8a97a8; font-weight: 600; padding: 6px 8px; border-bottom: 1px solid #e4eaf1; }
+  table.impact td { padding: 6px 8px; border-bottom: 1px solid #eef2f7; }
+  table.impact td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.impact td.pos { color: #1b7a4b; font-weight: 600; }
+  table.impact td.neg { color: var(--rust); font-weight: 600; }
+  table.impact td.zero { color: #999; }
+  .tag { font-size: 10px; font-weight: 700; letter-spacing: 0.3px; border-radius: 4px; padding: 2px 6px; white-space: nowrap; }
+  .tag-direct { background: rgba(42, 157, 143, 0.18); color: #1d7267; }
+  .tag-ripple { background: rgba(136, 136, 136, 0.15); color: #777; }
+  .empty { text-align: center; color: #888; padding: 40px 0; }
+  footer { text-align: center; font-size: 12px; color: #8a97a8; padding: 16px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>History File Adjustments</h1>
+  <p>Corrections made to the underlying game history, and exactly how each one moved ratings.</p>
+  <p><a href="index.html">&larr; Back to SAM Pickleball</a></p>
+</header>
+<main>
+
+  <section class="entry">
+    <div class="entry-head">
+      <h2>Player substitution: Dwight Christensen played for Neal Whitson on 10/22/26</h2>
+      <span class="logged">Logged Oct 29, 2026</span>
+    </div>
+    <p class="meta">Affected play date: <strong>Oct 22, 2026</strong>
+      &nbsp;.&nbsp; 6 game(s) changed
+      &nbsp;.&nbsp; requested by Bill Pollock</p>
+    <p class="desc">Confirmed that Dwight Christensen substituted in for Neal Whitson for all 6 of "Neal's" games on 10/22/26 (Pool 2, both shootouts). The history file had originally recorded all 6 games under Neal Whitson's name; corrected so those games are credited to Dwight Christensen instead.</p>
+    <p class="impact-summary">Rating impact: <strong>7</strong> player(s) were actually on
+      court in a changed game; <strong>24</strong> more moved only as a downstream ripple
+      through later games. Changes under 0.05 are not shown.</p>
+    <table class="impact">
+      <thead><tr><th>Player</th><th></th><th>Before</th><th>After</th><th>Change</th></tr></thead>
+      <tbody>
+<tr><td>Dwight Christensen</td><td><span class="tag tag-direct">on court</span></td><td class='num'>1014.4</td><td class='num'>961.0</td><td class='num neg'>-53.4</td></tr>
+<tr><td>Neal Whitson</td><td><span class="tag tag-direct">on court</span></td><td class='num'>876.3</td><td class='num'>903.2</td><td class='num pos'>+26.9</td></tr>
+<tr><td>Lidia Zolnierczyk</td><td><span class="tag tag-direct">on court</span></td><td class='num'>1071.9</td><td class='num'>1079.3</td><td class='num pos'>+7.4</td></tr>
+<tr><td>Wayne Carroll</td><td><span class="tag tag-direct">on court</span></td><td class='num'>812.9</td><td class='num'>819.2</td><td class='num pos'>+6.3</td></tr>
+<tr><td>Alena Nagyova</td><td><span class="tag tag-direct">on court</span></td><td class='num'>1251.5</td><td class='num'>1254.8</td><td class='num pos'>+3.3</td></tr>
+<tr><td>Steve Ludick</td><td><span class="tag tag-direct">on court</span></td><td class='num'>971.9</td><td class='num'>974.7</td><td class='num pos'>+2.8</td></tr>
+<tr><td>Steve Terpstra</td><td><span class="tag tag-ripple">ripple</span></td><td class='num'>807.5</td><td class='num'>805.8</td><td class='num neg'>-1.7</td></tr>
+<tr><td>Tom Flynn</td><td><span class="tag tag-ripple">ripple</span></td><td class='num'>803.8</td><td class='num'>805.2</td><td class='num pos'>+1.4</td></tr>
+<tr><td>Brian Seganti</td><td><span class="tag tag-direct">on court</span></td><td class='num'>1031.3</td><td class='num'>1032.6</td><td class='num pos'>+1.4</td></tr>
+<tr><td>Cary McCormick</td><td><span class="tag tag-ripple">ripple</span></td><td class='num'>1138.5</td><td class='num'>1139.6</td><td class='num pos'>+1.2</td></tr>
+<tr><td>Debbie Witulski</td><td><span class="tag tag-ripple">ripple</span></td><td class='num'>702.9</td><td class='num'>702.0</td><td class='num neg'>-0.8</td></tr>
+<tr><td>Jorge Barroso</td><td><span class="tag tag-ripple">ripple</span></td><td class='num'>1266.4</td><td class='num'>1267.2</td><td class='num pos'>+0.8</td></tr>
+<tr><td>Paul Batie</td><td><span class="tag tag-ripple">ripple</span></td><td class='num'>297.1</td><td class='num'>297.9</td><td class='num pos'>+0.8</td></tr>
+<tr><td>Jackie Maniaci</td><td><span class="tag tag-ripple">ripple</span></td><td class='num'>752.0</td><td class='num'>751.2</td><td class='num neg'>-0.7</td></tr>
+<tr><td>Bill Pollock</td><td><span class="tag tag-ripple">ripple</span></td><td class='num'>1167.8</td><td class='num'>1168.4</td><td class='num pos'>+0.7</td></tr>
+<tr><td>Peter Rillero</td><td><span class="tag tag-ripple">ripple</span></td><td class='num'>1254.7</td><td class='num'>1255.4</td><td class='num pos'>+0.6</td></tr>
+<tr><td>Richard Bartell</td><td><span class="tag tag-ripple">ripple</span></td><td class='num'>672.9</td><td class='num'>673.3</td><td class='num pos'>+0.5</td></tr>
+<tr><td>Donna Cantrell</td><td><span class="tag tag-ripple">ripple</span></td><td class='num'>921.0</td><td class='num'>921.5</td><td class='num pos'>+0.4</td></tr>
+<tr><td>Michael McSharry</td><td><span class="tag tag-ripple">ripple</span></td><td class='num'>1078.8</td><td class='num'>1079.3</td><td class='num pos'>+0.4</td></tr>
+<tr><td>David Roming</td><td><span class="tag tag-ripple">ripple</span></td><td class='num'>1308.9</td><td class='num'>1309.3</td><td class='num pos'>+0.4</td></tr>
+<tr><td>Russell Matros</td><td><span class="tag tag-ripple">ripple</span></td><td class='num'>1493.6</td><td class='num'>1493.9</td><td class='num pos'>+0.2</td></tr>
+<tr><td>Paula Pearson</td><td><span class="tag tag-ripple">ripple</span></td><td class='num'>127.6</td><td class='num'>127.8</td><td class='num pos'>+0.2</td></tr>
+<tr><td>Colin Smith</td><td><span class="tag tag-ripple">ripple</span></td><td class='num'>921.9</td><td class='num'>922.1</td><td class='num pos'>+0.2</td></tr>
+<tr><td>Amber Tinstman</td><td><span class="tag tag-ripple">ripple</span></td><td class='num'>1002.1</td><td class='num'>1002.3</td><td class='num pos'>+0.1</td></tr>
+<tr><td>Dave Grubb</td><td><span class="tag tag-ripple">ripple</span></td><td class='num'>1415.9</td><td class='num'>1416.1</td><td class='num pos'>+0.1</td></tr>
+<tr><td>Brad Caskey</td><td><span class="tag tag-ripple">ripple</span></td><td class='num'>1464.1</td><td class='num'>1464.2</td><td class='num pos'>+0.1</td></tr>
+<tr><td>Peter Barnett</td><td><span class="tag tag-ripple">ripple</span></td><td class='num'>1319.1</td><td class='num'>1319.2</td><td class='num pos'>+0.1</td></tr>
+<tr><td>Helena Niblett</td><td><span class="tag tag-ripple">ripple</span></td><td class='num'>967.4</td><td class='num'>967.5</td><td class='num pos'>+0.1</td></tr>
+<tr><td>Lynnie McKee</td><td><span class="tag tag-ripple">ripple</span></td><td class='num'>381.4</td><td class='num'>381.5</td><td class='num pos'>+0.1</td></tr>
+<tr><td>Elizabeth Flynn</td><td><span class="tag tag-ripple">ripple</span></td><td class='num'>19.1</td><td class='num'>19.2</td><td class='num zero'>0.0</td></tr>
+<tr><td>Eric Kramer</td><td><span class="tag tag-ripple">ripple</span></td><td class='num'>1773.4</td><td class='num'>1773.4</td><td class='num zero'>0.0</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+</main>
+<footer>SAM Pickleball -- History File Adjustments</footer>
+</body>
+</html>

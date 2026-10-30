@@ -430,7 +430,7 @@ html = f"""<!DOCTYPE html>
   <div class="decoder">
     <div class="dc-card">
       <div class="dc-title">How to Earn a Bear</div>
-      <div class="dc-row"><span class="dc-icon">🥒</span><span><b>Pickle bear</b> — win a game 11-0. Every player on the winning team earns one.</span></div>
+      <div class="dc-row"><span class="dc-icon">🥒</span><span><b>Pickle bear</b> — win a game 11-0. Both players on the winning team earn one.</span></div>
       <div class="dc-row"><span class="dc-icon">🏆</span><span><b>Shootout bear (women)</b> — finish on top of your 4-player pool (most game wins, ties broken by point differential). Any win count qualifies.</span></div>
       <div class="dc-row"><span class="dc-icon">🏆</span><span><b>Shootout bear (men)</b> — finish on top of your pool by winning all 3 games. Leading with only 2 wins does not earn a bear (although it is tracked).</span></div>
     </div>

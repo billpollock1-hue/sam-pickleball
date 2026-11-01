@@ -14,7 +14,7 @@ import generate_assignments_viewer
 RATINGS_URL = "https://app.pickleballden.com/ShootoutViewInternal"
 SIGNUP_URL = "https://app.pickleballden.com/clubSignUpSheetView"
 
-STARTING_COURT = 3
+STARTING_COURT = 6
 PLAYERS_PER_COURT = 4
 
 # Repo root is the parent of this file's directory (assignments/).

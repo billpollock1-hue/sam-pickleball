@@ -37,12 +37,49 @@ STATE_FILE = Path.home() / "Library" / "Application Support" / "PBMonitor" / "si
 MT = ZoneInfo("America/Denver")
 SHEET_CLOSE = dtime(8, 0)  # monitor stops tracking a date after 8 AM MT that day
 
+# Shared with create_shootout_rating_seeded.py (see its own LAUNCH_LOG_PATH
+# comment) -- always lives in launcher/ regardless of which copy of this
+# script is running or which mode (repo/runtime) invoked it.
+LAUNCH_LOG_PATH = Path("/Users/billpollock/sam-pickleball/launcher/launch_log.jsonl")
+
+
+def _already_launched(date_str):
+    """True if todays shootout for date_str has already been successfully
+    launched. Once launched, re-fetching Den/refreshing the court-assignment
+    snapshot serves no purpose -- the assignment is final -- and repeating it
+    every ~15 min cycle until SHEET_CLOSE only risks a later cycle hitting a
+    transient Den session failure and overwriting a good snapshot with an
+    empty one. Checked in addition to, not instead of, SHEET_CLOSE: a date
+    that never successfully launches still keeps refreshing as a fallback
+    until 8 AM."""
+    if not LAUNCH_LOG_PATH.exists():
+        return False
+    try:
+        with LAUNCH_LOG_PATH.open() as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                entry = json.loads(line)
+                if entry.get("status") != "success":
+                    continue
+                ts = entry.get("timestamp", "")
+                if ts[:10] == date_str:
+                    return True
+    except Exception:
+        # Never let a launch-log read problem block the refresh fallback --
+        # worst case we fall back to the old SHEET_CLOSE-only behavior.
+        return False
+    return False
+
 
 def sheet_is_open(date_str):
     d = datetime.strptime(date_str, "%Y-%m-%d").date()
     now = datetime.now(MT)
     if d > now.date():
         return True
+    if d == now.date() and _already_launched(date_str):
+        return False
     return d == now.date() and now.time() < SHEET_CLOSE
 
 
@@ -75,10 +112,29 @@ def fetch_den_ratings():
         page.goto(da.RATINGS_URL, wait_until="domcontentloaded")
         page.wait_for_timeout(2500)
         text = page.locator("body").inner_text()
+        final_url = page.url
         # Persist any refreshed cookies for the next run
         context.storage_state(path=session)
         browser.close()
     ratings = da.extract_ratings_from_text(text)
+
+    # TEMP DIAGNOSTIC (added 2026-11-04, remove once den-ratings-empty bug is
+    # found) -- always dump exactly what this run saw, success or failure,
+    # so a real automated-run failure can be inspected after the fact
+    # instead of only being reproducible by a one-off manual test.
+    try:
+        import datetime as _dt
+        _dbg_path = da.OUT_DIR / "den_fetch_debug.log"
+        with open(_dbg_path, "a", encoding="utf-8") as _dbg:
+            _dbg.write("\n=== " + _dt.datetime.now().isoformat() + " ===\n")
+            _dbg.write("final_url: " + str(final_url) + "\n")
+            _dbg.write("text_len: " + str(len(text)) + "\n")
+            _dbg.write("rows_parsed: " + str(len(ratings)) + "\n")
+            _dbg.write("--- first 1500 chars of page text ---\n")
+            _dbg.write(text[:1500])
+            _dbg.write("\n")
+    except Exception as _dbg_err:
+        print(f"diagnostic logging failed (non-fatal): {_dbg_err}")
 
     # Rolling membership snapshot (added 2026-07-21): unconditional save on
     # every run of this file's 15-minute refresh cycle, unlike the older

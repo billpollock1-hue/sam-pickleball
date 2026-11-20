@@ -84,6 +84,8 @@
 
   .bear-log-link { cursor: pointer; font-size: 12px; opacity: 0.55; }
   .bear-log-link:hover { opacity: 1; }
+  .player-link { opacity: 1; font-size: inherit; color: var(--blue-mid); text-decoration: none; }
+  .player-link:hover { text-decoration: underline; }
 
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2000;
                      display: flex; align-items: center; justify-content: center; padding: 16px; }
@@ -97,7 +99,9 @@
                    color: #8a97a8; cursor: pointer; padding: 0 4px; }
   .modal-close:hover { color: var(--blue-dark); }
   .modal-body { padding: 12px 18px 18px; }
-  .modal-body .no-data { font-size: 13px; color: #8a97a8; text-align: center; padding: 20px 0; }
+  .modal-body .no-data { font-size: 13px; color: #8a97a8; text-align: center; padding: 8px 0 16px; }
+  .bear-log-section { font-size: 13px; font-weight: 700; color: var(--blue-dark); margin: 14px 0 6px; }
+  .bear-log-section:first-child { margin-top: 0; }
 
   .hist-table { width: 100%; border-collapse: collapse; font-size: 12.5px; box-shadow: none; }
   .hist-table th { background: var(--blue-light); color: var(--blue-dark); position: static;
@@ -148,7 +152,7 @@
       <tbody id="body">
       <tr>
         <td class="rk">1</td>
-        <td class="nm">Alena Nagyova <span class="bear-log-link" data-player="Alena Nagyova" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Alena Nagyova" title="Bears earned">Alena Nagyova</span> <span class="bear-log-link" data-player="Alena Nagyova" title="Bears earned">📋</span></td>
         <td>42</td>
         <td>8</td>
         <td>13</td>
@@ -158,7 +162,7 @@
       </tr>
       <tr>
         <td class="rk">2</td>
-        <td class="nm">Jorge Barroso <span class="bear-log-link" data-player="Jorge Barroso" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Jorge Barroso" title="Bears earned">Jorge Barroso</span> <span class="bear-log-link" data-player="Jorge Barroso" title="Bears earned">📋</span></td>
         <td>55</td>
         <td>12</td>
         <td>20</td>
@@ -168,7 +172,7 @@
       </tr>
       <tr>
         <td class="rk">3</td>
-        <td class="nm">Eric Kramer <span class="bear-log-link" data-player="Eric Kramer" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Eric Kramer" title="Bears earned">Eric Kramer</span> <span class="bear-log-link" data-player="Eric Kramer" title="Bears earned">📋</span></td>
         <td>31</td>
         <td>15</td>
         <td>21</td>
@@ -178,7 +182,7 @@
       </tr>
       <tr>
         <td class="rk">4</td>
-        <td class="nm">Lidia Zolnierczyk <span class="bear-log-link" data-player="Lidia Zolnierczyk" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Lidia Zolnierczyk" title="Bears earned">Lidia Zolnierczyk</span> <span class="bear-log-link" data-player="Lidia Zolnierczyk" title="Bears earned">📋</span></td>
         <td>32</td>
         <td>10</td>
         <td>9</td>
@@ -188,7 +192,7 @@
       </tr>
       <tr>
         <td class="rk">5</td>
-        <td class="nm">Jackie Maniaci <span class="bear-log-link" data-player="Jackie Maniaci" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Jackie Maniaci" title="Bears earned">Jackie Maniaci</span> <span class="bear-log-link" data-player="Jackie Maniaci" title="Bears earned">📋</span></td>
         <td>25</td>
         <td>9</td>
         <td>5</td>
@@ -198,7 +202,7 @@
       </tr>
       <tr>
         <td class="rk">6</td>
-        <td class="nm">Jill Peterson <span class="bear-log-link" data-player="Jill Peterson" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Jill Peterson" title="Bears earned">Jill Peterson</span> <span class="bear-log-link" data-player="Jill Peterson" title="Bears earned">📋</span></td>
         <td>22</td>
         <td>8</td>
         <td>4</td>
@@ -208,7 +212,7 @@
       </tr>
       <tr>
         <td class="rk">7</td>
-        <td class="nm">Bill Pollock <span class="bear-log-link" data-player="Bill Pollock" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Bill Pollock" title="Bears earned">Bill Pollock</span> <span class="bear-log-link" data-player="Bill Pollock" title="Bears earned">📋</span></td>
         <td>29</td>
         <td>7</td>
         <td>11</td>
@@ -218,7 +222,7 @@
       </tr>
       <tr>
         <td class="rk">8</td>
-        <td class="nm">Neal Whitson <span class="bear-log-link" data-player="Neal Whitson" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Neal Whitson" title="Bears earned">Neal Whitson</span> <span class="bear-log-link" data-player="Neal Whitson" title="Bears earned">📋</span></td>
         <td>33</td>
         <td>12</td>
         <td>9</td>
@@ -228,7 +232,7 @@
       </tr>
       <tr>
         <td class="rk">9</td>
-        <td class="nm">Steve Ludick <span class="bear-log-link" data-player="Steve Ludick" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Steve Ludick" title="Bears earned">Steve Ludick</span> <span class="bear-log-link" data-player="Steve Ludick" title="Bears earned">📋</span></td>
         <td>38</td>
         <td>9</td>
         <td>9</td>
@@ -238,7 +242,7 @@
       </tr>
       <tr>
         <td class="rk">10</td>
-        <td class="nm">Wayne Carroll <span class="bear-log-link" data-player="Wayne Carroll" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Wayne Carroll" title="Bears earned">Wayne Carroll</span> <span class="bear-log-link" data-player="Wayne Carroll" title="Bears earned">📋</span></td>
         <td>24</td>
         <td>4</td>
         <td>7</td>
@@ -248,7 +252,7 @@
       </tr>
       <tr>
         <td class="rk">11</td>
-        <td class="nm">Peter Barnett <span class="bear-log-link" data-player="Peter Barnett" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Peter Barnett" title="Bears earned">Peter Barnett</span> <span class="bear-log-link" data-player="Peter Barnett" title="Bears earned">📋</span></td>
         <td>26</td>
         <td>2</td>
         <td>6</td>
@@ -258,7 +262,7 @@
       </tr>
       <tr>
         <td class="rk">12</td>
-        <td class="nm">Donna Cantrell <span class="bear-log-link" data-player="Donna Cantrell" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Donna Cantrell" title="Bears earned">Donna Cantrell</span> <span class="bear-log-link" data-player="Donna Cantrell" title="Bears earned">📋</span></td>
         <td>19</td>
         <td>6</td>
         <td>3</td>
@@ -268,7 +272,7 @@
       </tr>
       <tr>
         <td class="rk">13</td>
-        <td class="nm">Amber Tinstman <span class="bear-log-link" data-player="Amber Tinstman" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Amber Tinstman" title="Bears earned">Amber Tinstman</span> <span class="bear-log-link" data-player="Amber Tinstman" title="Bears earned">📋</span></td>
         <td>10</td>
         <td>6</td>
         <td>1</td>
@@ -278,7 +282,7 @@
       </tr>
       <tr>
         <td class="rk">14</td>
-        <td class="nm">Dwight Christensen <span class="bear-log-link" data-player="Dwight Christensen" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Dwight Christensen" title="Bears earned">Dwight Christensen</span> <span class="bear-log-link" data-player="Dwight Christensen" title="Bears earned">📋</span></td>
         <td>28</td>
         <td>9</td>
         <td>6</td>
@@ -288,7 +292,7 @@
       </tr>
       <tr>
         <td class="rk">15</td>
-        <td class="nm">Dave Grubb <span class="bear-log-link" data-player="Dave Grubb" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Dave Grubb" title="Bears earned">Dave Grubb</span> <span class="bear-log-link" data-player="Dave Grubb" title="Bears earned">📋</span></td>
         <td>19</td>
         <td>4</td>
         <td>7</td>
@@ -298,7 +302,7 @@
       </tr>
       <tr>
         <td class="rk">16</td>
-        <td class="nm">Cary McCormick <span class="bear-log-link" data-player="Cary McCormick" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Cary McCormick" title="Bears earned">Cary McCormick</span> <span class="bear-log-link" data-player="Cary McCormick" title="Bears earned">📋</span></td>
         <td>25</td>
         <td>9</td>
         <td>5</td>
@@ -308,7 +312,7 @@
       </tr>
       <tr>
         <td class="rk">17</td>
-        <td class="nm">Bruce Blair <span class="bear-log-link" data-player="Bruce Blair" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Bruce Blair" title="Bears earned">Bruce Blair</span> <span class="bear-log-link" data-player="Bruce Blair" title="Bears earned">📋</span></td>
         <td>10</td>
         <td>3</td>
         <td>4</td>
@@ -318,7 +322,7 @@
       </tr>
       <tr>
         <td class="rk">18</td>
-        <td class="nm">Brad Caskey <span class="bear-log-link" data-player="Brad Caskey" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Brad Caskey" title="Bears earned">Brad Caskey</span> <span class="bear-log-link" data-player="Brad Caskey" title="Bears earned">📋</span></td>
         <td>17</td>
         <td>8</td>
         <td>4</td>
@@ -328,7 +332,7 @@
       </tr>
       <tr>
         <td class="rk">19</td>
-        <td class="nm">David Roming <span class="bear-log-link" data-player="David Roming" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="David Roming" title="Bears earned">David Roming</span> <span class="bear-log-link" data-player="David Roming" title="Bears earned">📋</span></td>
         <td>9</td>
         <td>6</td>
         <td>4</td>
@@ -338,7 +342,7 @@
       </tr>
       <tr>
         <td class="rk">20</td>
-        <td class="nm">Peter Rillero <span class="bear-log-link" data-player="Peter Rillero" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Peter Rillero" title="Bears earned">Peter Rillero</span> <span class="bear-log-link" data-player="Peter Rillero" title="Bears earned">📋</span></td>
         <td>28</td>
         <td>4</td>
         <td>3</td>
@@ -348,7 +352,7 @@
       </tr>
       <tr>
         <td class="rk">21</td>
-        <td class="nm">Steve Terpstra <span class="bear-log-link" data-player="Steve Terpstra" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Steve Terpstra" title="Bears earned">Steve Terpstra</span> <span class="bear-log-link" data-player="Steve Terpstra" title="Bears earned">📋</span></td>
         <td>16</td>
         <td>3</td>
         <td>3</td>
@@ -358,7 +362,7 @@
       </tr>
       <tr>
         <td class="rk">22</td>
-        <td class="nm">Joe McKamey <span class="bear-log-link" data-player="Joe McKamey" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Joe McKamey" title="Bears earned">Joe McKamey</span> <span class="bear-log-link" data-player="Joe McKamey" title="Bears earned">📋</span></td>
         <td>11</td>
         <td>2</td>
         <td>3</td>
@@ -368,7 +372,7 @@
       </tr>
       <tr>
         <td class="rk">23</td>
-        <td class="nm">Lynnie McKee <span class="bear-log-link" data-player="Lynnie McKee" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Lynnie McKee" title="Bears earned">Lynnie McKee</span> <span class="bear-log-link" data-player="Lynnie McKee" title="Bears earned">📋</span></td>
         <td>14</td>
         <td>1</td>
         <td>0</td>
@@ -378,7 +382,7 @@
       </tr>
       <tr>
         <td class="rk">24</td>
-        <td class="nm">Steve Fahrenkrog <span class="bear-log-link" data-player="Steve Fahrenkrog" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Steve Fahrenkrog" title="Bears earned">Steve Fahrenkrog</span> <span class="bear-log-link" data-player="Steve Fahrenkrog" title="Bears earned">📋</span></td>
         <td>3</td>
         <td>0</td>
         <td>2</td>
@@ -388,7 +392,7 @@
       </tr>
       <tr>
         <td class="rk">25</td>
-        <td class="nm">Tonya Carroll <span class="bear-log-link" data-player="Tonya Carroll" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Tonya Carroll" title="Bears earned">Tonya Carroll</span> <span class="bear-log-link" data-player="Tonya Carroll" title="Bears earned">📋</span></td>
         <td>9</td>
         <td>2</td>
         <td>0</td>
@@ -398,7 +402,7 @@
       </tr>
       <tr>
         <td class="rk">26</td>
-        <td class="nm">Kara Rice <span class="bear-log-link" data-player="Kara Rice" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Kara Rice" title="Bears earned">Kara Rice</span> <span class="bear-log-link" data-player="Kara Rice" title="Bears earned">📋</span></td>
         <td>1</td>
         <td>0</td>
         <td>1</td>
@@ -408,7 +412,7 @@
       </tr>
       <tr>
         <td class="rk">27</td>
-        <td class="nm">Paula Pearson <span class="bear-log-link" data-player="Paula Pearson" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Paula Pearson" title="Bears earned">Paula Pearson</span> <span class="bear-log-link" data-player="Paula Pearson" title="Bears earned">📋</span></td>
         <td>9</td>
         <td>1</td>
         <td>0</td>
@@ -418,7 +422,7 @@
       </tr>
       <tr>
         <td class="rk">28</td>
-        <td class="nm">Russell Matros <span class="bear-log-link" data-player="Russell Matros" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Russell Matros" title="Bears earned">Russell Matros</span> <span class="bear-log-link" data-player="Russell Matros" title="Bears earned">📋</span></td>
         <td>14</td>
         <td>7</td>
         <td>4</td>
@@ -428,7 +432,7 @@
       </tr>
       <tr>
         <td class="rk">29</td>
-        <td class="nm">Stacy Kramer <span class="bear-log-link" data-player="Stacy Kramer" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Stacy Kramer" title="Bears earned">Stacy Kramer</span> <span class="bear-log-link" data-player="Stacy Kramer" title="Bears earned">📋</span></td>
         <td>22</td>
         <td>0</td>
         <td>0</td>
@@ -438,7 +442,7 @@
       </tr>
       <tr>
         <td class="rk">30</td>
-        <td class="nm">Angie McKamey <span class="bear-log-link" data-player="Angie McKamey" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Angie McKamey" title="Bears earned">Angie McKamey</span> <span class="bear-log-link" data-player="Angie McKamey" title="Bears earned">📋</span></td>
         <td>3</td>
         <td>0</td>
         <td>1</td>
@@ -448,7 +452,7 @@
       </tr>
       <tr>
         <td class="rk">31</td>
-        <td class="nm">Greg Egli <span class="bear-log-link" data-player="Greg Egli" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Greg Egli" title="Bears earned">Greg Egli</span> <span class="bear-log-link" data-player="Greg Egli" title="Bears earned">📋</span></td>
         <td>8</td>
         <td>1</td>
         <td>1</td>
@@ -458,7 +462,7 @@
       </tr>
       <tr>
         <td class="rk">32</td>
-        <td class="nm">Paul Batie <span class="bear-log-link" data-player="Paul Batie" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Paul Batie" title="Bears earned">Paul Batie</span> <span class="bear-log-link" data-player="Paul Batie" title="Bears earned">📋</span></td>
         <td>19</td>
         <td>2</td>
         <td>1</td>
@@ -468,7 +472,7 @@
       </tr>
       <tr>
         <td class="rk">33</td>
-        <td class="nm">Debbie Witulski <span class="bear-log-link" data-player="Debbie Witulski" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Debbie Witulski" title="Bears earned">Debbie Witulski</span> <span class="bear-log-link" data-player="Debbie Witulski" title="Bears earned">📋</span></td>
         <td>9</td>
         <td>0</td>
         <td>1</td>
@@ -478,7 +482,7 @@
       </tr>
       <tr>
         <td class="rk">34</td>
-        <td class="nm">Helena Niblett <span class="bear-log-link" data-player="Helena Niblett" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Helena Niblett" title="Bears earned">Helena Niblett</span> <span class="bear-log-link" data-player="Helena Niblett" title="Bears earned">📋</span></td>
         <td>9</td>
         <td>2</td>
         <td>3</td>
@@ -488,7 +492,7 @@
       </tr>
       <tr>
         <td class="rk">35</td>
-        <td class="nm">Michael McSharry <span class="bear-log-link" data-player="Michael McSharry" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Michael McSharry" title="Bears earned">Michael McSharry</span> <span class="bear-log-link" data-player="Michael McSharry" title="Bears earned">📋</span></td>
         <td>17</td>
         <td>5</td>
         <td>5</td>
@@ -498,7 +502,7 @@
       </tr>
       <tr>
         <td class="rk">36</td>
-        <td class="nm">Mike Lacey <span class="bear-log-link" data-player="Mike Lacey" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Mike Lacey" title="Bears earned">Mike Lacey</span> <span class="bear-log-link" data-player="Mike Lacey" title="Bears earned">📋</span></td>
         <td>7</td>
         <td>3</td>
         <td>0</td>
@@ -508,7 +512,7 @@
       </tr>
       <tr>
         <td class="rk">37</td>
-        <td class="nm">Pam Olson <span class="bear-log-link" data-player="Pam Olson" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Pam Olson" title="Bears earned">Pam Olson</span> <span class="bear-log-link" data-player="Pam Olson" title="Bears earned">📋</span></td>
         <td>3</td>
         <td>0</td>
         <td>1</td>
@@ -518,7 +522,7 @@
       </tr>
       <tr>
         <td class="rk">38</td>
-        <td class="nm">Richard Bartell <span class="bear-log-link" data-player="Richard Bartell" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Richard Bartell" title="Bears earned">Richard Bartell</span> <span class="bear-log-link" data-player="Richard Bartell" title="Bears earned">📋</span></td>
         <td>6</td>
         <td>0</td>
         <td>0</td>
@@ -528,7 +532,7 @@
       </tr>
       <tr>
         <td class="rk">39</td>
-        <td class="nm">Tron Brinkmann <span class="bear-log-link" data-player="Tron Brinkmann" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Tron Brinkmann" title="Bears earned">Tron Brinkmann</span> <span class="bear-log-link" data-player="Tron Brinkmann" title="Bears earned">📋</span></td>
         <td>4</td>
         <td>2</td>
         <td>0</td>
@@ -538,7 +542,7 @@
       </tr>
       <tr>
         <td class="rk">40</td>
-        <td class="nm">Brian Seganti <span class="bear-log-link" data-player="Brian Seganti" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Brian Seganti" title="Bears earned">Brian Seganti</span> <span class="bear-log-link" data-player="Brian Seganti" title="Bears earned">📋</span></td>
         <td>5</td>
         <td>1</td>
         <td>1</td>
@@ -548,7 +552,7 @@
       </tr>
       <tr>
         <td class="rk">41</td>
-        <td class="nm">Camie Smith <span class="bear-log-link" data-player="Camie Smith" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Camie Smith" title="Bears earned">Camie Smith</span> <span class="bear-log-link" data-player="Camie Smith" title="Bears earned">📋</span></td>
         <td>1</td>
         <td>1</td>
         <td>0</td>
@@ -558,7 +562,7 @@
       </tr>
       <tr>
         <td class="rk">42</td>
-        <td class="nm">Cheryl Barnett <span class="bear-log-link" data-player="Cheryl Barnett" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Cheryl Barnett" title="Bears earned">Cheryl Barnett</span> <span class="bear-log-link" data-player="Cheryl Barnett" title="Bears earned">📋</span></td>
         <td>1</td>
         <td>0</td>
         <td>0</td>
@@ -568,7 +572,7 @@
       </tr>
       <tr>
         <td class="rk">43</td>
-        <td class="nm">Colin Smith <span class="bear-log-link" data-player="Colin Smith" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Colin Smith" title="Bears earned">Colin Smith</span> <span class="bear-log-link" data-player="Colin Smith" title="Bears earned">📋</span></td>
         <td>5</td>
         <td>0</td>
         <td>3</td>
@@ -578,7 +582,7 @@
       </tr>
       <tr>
         <td class="rk">44</td>
-        <td class="nm">Dean Parks <span class="bear-log-link" data-player="Dean Parks" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Dean Parks" title="Bears earned">Dean Parks</span> <span class="bear-log-link" data-player="Dean Parks" title="Bears earned">📋</span></td>
         <td>2</td>
         <td>1</td>
         <td>0</td>
@@ -588,7 +592,7 @@
       </tr>
       <tr>
         <td class="rk">45</td>
-        <td class="nm">Debbie Lacey <span class="bear-log-link" data-player="Debbie Lacey" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Debbie Lacey" title="Bears earned">Debbie Lacey</span> <span class="bear-log-link" data-player="Debbie Lacey" title="Bears earned">📋</span></td>
         <td>1</td>
         <td>0</td>
         <td>0</td>
@@ -598,7 +602,7 @@
       </tr>
       <tr>
         <td class="rk">46</td>
-        <td class="nm">Dirk Olsen <span class="bear-log-link" data-player="Dirk Olsen" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Dirk Olsen" title="Bears earned">Dirk Olsen</span> <span class="bear-log-link" data-player="Dirk Olsen" title="Bears earned">📋</span></td>
         <td>1</td>
         <td>0</td>
         <td>1</td>
@@ -608,7 +612,7 @@
       </tr>
       <tr>
         <td class="rk">47</td>
-        <td class="nm">Elizabeth Flynn <span class="bear-log-link" data-player="Elizabeth Flynn" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Elizabeth Flynn" title="Bears earned">Elizabeth Flynn</span> <span class="bear-log-link" data-player="Elizabeth Flynn" title="Bears earned">📋</span></td>
         <td>3</td>
         <td>0</td>
         <td>0</td>
@@ -618,7 +622,7 @@
       </tr>
       <tr>
         <td class="rk">48</td>
-        <td class="nm">Jay Mann <span class="bear-log-link" data-player="Jay Mann" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Jay Mann" title="Bears earned">Jay Mann</span> <span class="bear-log-link" data-player="Jay Mann" title="Bears earned">📋</span></td>
         <td>7</td>
         <td>3</td>
         <td>0</td>
@@ -628,7 +632,7 @@
       </tr>
       <tr>
         <td class="rk">49</td>
-        <td class="nm">Jennifer Hartenbower <span class="bear-log-link" data-player="Jennifer Hartenbower" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Jennifer Hartenbower" title="Bears earned">Jennifer Hartenbower</span> <span class="bear-log-link" data-player="Jennifer Hartenbower" title="Bears earned">📋</span></td>
         <td>5</td>
         <td>0</td>
         <td>0</td>
@@ -638,7 +642,7 @@
       </tr>
       <tr>
         <td class="rk">50</td>
-        <td class="nm">Jim Pearson <span class="bear-log-link" data-player="Jim Pearson" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Jim Pearson" title="Bears earned">Jim Pearson</span> <span class="bear-log-link" data-player="Jim Pearson" title="Bears earned">📋</span></td>
         <td>4</td>
         <td>1</td>
         <td>0</td>
@@ -648,7 +652,7 @@
       </tr>
       <tr>
         <td class="rk">51</td>
-        <td class="nm">John Entreken <span class="bear-log-link" data-player="John Entreken" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="John Entreken" title="Bears earned">John Entreken</span> <span class="bear-log-link" data-player="John Entreken" title="Bears earned">📋</span></td>
         <td>1</td>
         <td>0</td>
         <td>0</td>
@@ -658,7 +662,7 @@
       </tr>
       <tr>
         <td class="rk">52</td>
-        <td class="nm">Jose L Valdez R <span class="bear-log-link" data-player="Jose L Valdez R" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Jose L Valdez R" title="Bears earned">Jose L Valdez R</span> <span class="bear-log-link" data-player="Jose L Valdez R" title="Bears earned">📋</span></td>
         <td>1</td>
         <td>1</td>
         <td>0</td>
@@ -668,7 +672,7 @@
       </tr>
       <tr>
         <td class="rk">53</td>
-        <td class="nm">Joseph Rosales <span class="bear-log-link" data-player="Joseph Rosales" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Joseph Rosales" title="Bears earned">Joseph Rosales</span> <span class="bear-log-link" data-player="Joseph Rosales" title="Bears earned">📋</span></td>
         <td>4</td>
         <td>0</td>
         <td>0</td>
@@ -678,7 +682,7 @@
       </tr>
       <tr>
         <td class="rk">54</td>
-        <td class="nm">Karen Carter <span class="bear-log-link" data-player="Karen Carter" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Karen Carter" title="Bears earned">Karen Carter</span> <span class="bear-log-link" data-player="Karen Carter" title="Bears earned">📋</span></td>
         <td>1</td>
         <td>0</td>
         <td>0</td>
@@ -688,7 +692,7 @@
       </tr>
       <tr>
         <td class="rk">55</td>
-        <td class="nm">Kindi Backstrom <span class="bear-log-link" data-player="Kindi Backstrom" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Kindi Backstrom" title="Bears earned">Kindi Backstrom</span> <span class="bear-log-link" data-player="Kindi Backstrom" title="Bears earned">📋</span></td>
         <td>2</td>
         <td>0</td>
         <td>0</td>
@@ -698,7 +702,7 @@
       </tr>
       <tr>
         <td class="rk">56</td>
-        <td class="nm">Marcos Figueroa <span class="bear-log-link" data-player="Marcos Figueroa" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Marcos Figueroa" title="Bears earned">Marcos Figueroa</span> <span class="bear-log-link" data-player="Marcos Figueroa" title="Bears earned">📋</span></td>
         <td>1</td>
         <td>0</td>
         <td>0</td>
@@ -708,7 +712,7 @@
       </tr>
       <tr>
         <td class="rk">57</td>
-        <td class="nm">Ron Kelly <span class="bear-log-link" data-player="Ron Kelly" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Ron Kelly" title="Bears earned">Ron Kelly</span> <span class="bear-log-link" data-player="Ron Kelly" title="Bears earned">📋</span></td>
         <td>1</td>
         <td>1</td>
         <td>0</td>
@@ -718,7 +722,7 @@
       </tr>
       <tr>
         <td class="rk">58</td>
-        <td class="nm">Todd Park <span class="bear-log-link" data-player="Todd Park" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Todd Park" title="Bears earned">Todd Park</span> <span class="bear-log-link" data-player="Todd Park" title="Bears earned">📋</span></td>
         <td>3</td>
         <td>1</td>
         <td>0</td>
@@ -728,7 +732,7 @@
       </tr>
       <tr>
         <td class="rk">59</td>
-        <td class="nm">Tom Flynn <span class="bear-log-link" data-player="Tom Flynn" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="Tom Flynn" title="Bears earned">Tom Flynn</span> <span class="bear-log-link" data-player="Tom Flynn" title="Bears earned">📋</span></td>
         <td>1</td>
         <td>0</td>
         <td>0</td>
@@ -782,32 +786,51 @@ const PLAYER_DETAIL = {"Alena Nagyova":[{"date":"2026-08-25","shootout":1,"pool"
 
 function showHistory(name) {
   const rows = (PLAYER_DETAIL[name] || []).slice().reverse();
-  document.getElementById('historyModalTitle').textContent = name + ' — Bear Log';
+  document.getElementById('historyModalTitle').textContent = name + ' — Bears Earned';
 
-  const body = document.getElementById('historyModalBody');
-  if (rows.length === 0) {
-    body.innerHTML = '<p class="no-data">No pool data available yet.</p>';
+  // "Actual bears earned" only -- pickle bears listed separately from shootout
+  // bears, and a male pool leader with only 2 wins (shootout_bear == false)
+  // is excluded entirely rather than shown as an informational non-bear row.
+  const pickleRows = rows.filter(r => r.pickle_bears > 0);
+  const shootoutRows = rows.filter(r => r.shootout_bear);
+
+  let h = '<h4 class="bear-log-section">🥒 Pickle Bears</h4>';
+  if (pickleRows.length === 0) {
+    h += '<p class="no-data">No pickle bears yet.</p>';
   } else {
-    let h = `<table class="hist-table"><thead><tr>
-      <th>Date</th><th>Sht</th><th>Pool</th><th>Wins</th><th>Pool Leader</th><th>Bears</th>
+    h += `<table class="hist-table"><thead><tr>
+      <th>Date</th><th>Sht</th><th>Pool</th><th>Pickle Bears</th>
     </tr></thead><tbody>`;
-    rows.forEach(r => {
-      let bears = '';
-      if (r.pickle_bears > 0) bears += '🥒'.repeat(r.pickle_bears);
-      if (r.shootout_bear) bears += `<span class="tr-badge">🏆<span class="tr-num">${r.wins}</span></span>`;
-      if (!bears) bears = '—';
+    pickleRows.forEach(r => {
+      h += `<tr>
+        <td>${r.date}</td>
+        <td>${r.shootout}</td>
+        <td>${r.pool}</td>
+        <td>${'🥒'.repeat(r.pickle_bears)}</td>
+      </tr>`;
+    });
+    h += '</tbody></table>';
+  }
+
+  h += '<h4 class="bear-log-section">🏆 Shootout Bears</h4>';
+  if (shootoutRows.length === 0) {
+    h += '<p class="no-data">No shootout bears yet.</p>';
+  } else {
+    h += `<table class="hist-table"><thead><tr>
+      <th>Date</th><th>Sht</th><th>Pool</th><th>Wins</th>
+    </tr></thead><tbody>`;
+    shootoutRows.forEach(r => {
       h += `<tr>
         <td>${r.date}</td>
         <td>${r.shootout}</td>
         <td>${r.pool}</td>
         <td>${r.wins}/3</td>
-        <td>${r.leader ? 'Yes' : '—'}</td>
-        <td>${bears}</td>
       </tr>`;
     });
     h += '</tbody></table>';
-    body.innerHTML = h;
   }
+
+  document.getElementById('historyModalBody').innerHTML = h;
   document.getElementById('historyModal').style.display = 'flex';
 }
 

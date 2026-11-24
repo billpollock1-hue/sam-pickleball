@@ -678,12 +678,28 @@ class Handler(BaseHTTPRequestHandler):
                     if line.strip()
                 }
             if date_str in existing_dates:
-                self._send_json({"error": f"{date_str} is already recorded"}, status=409)
-                return
-            if not NO_SHOOTOUT_CSV.exists():
-                NO_SHOOTOUT_CSV.write_text("date,source\n")
-            with open(NO_SHOOTOUT_CSV, "a") as f:
-                f.write(f"{date_str},manual\n")
+                # An "auto" entry (written by check_no_shootout.py) can be
+                # promoted to "manual" so the self-correction never erases it.
+                # An entry that is already manual is still a duplicate.
+                promoted = False
+                out_lines = []
+                for line in NO_SHOOTOUT_CSV.read_text().splitlines():
+                    fields = [f.strip() for f in line.split(",")]
+                    if fields and fields[0] == date_str and (len(fields) < 2 or fields[1] != "manual"):
+                        line = f"{date_str},manual"
+                        promoted = True
+                    out_lines.append(line)
+                if not promoted:
+                    self._send_json({"error": f"{date_str} is already recorded"}, status=409)
+                    return
+                tmp = NO_SHOOTOUT_CSV.with_suffix(NO_SHOOTOUT_CSV.suffix + ".tmp")
+                tmp.write_text("\n".join(out_lines) + "\n")
+                os.replace(tmp, NO_SHOOTOUT_CSV)
+            else:
+                if not NO_SHOOTOUT_CSV.exists():
+                    NO_SHOOTOUT_CSV.write_text("date,source\n")
+                with open(NO_SHOOTOUT_CSV, "a") as f:
+                    f.write(f"{date_str},manual\n")
             try:
                 self._refresh_court_assignments_viewer()
             except Exception as e:

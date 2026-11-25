@@ -26,6 +26,12 @@ OUTPUT = OUT_DIR / "court_assignments_viewer.html"
 # (the same bug already fixed in check_no_shootout.py).
 NO_SHOOTOUT_LOG = Path(__file__).resolve().parent.parent / "data" / "no_shootout_dates.csv"
 
+# Sidecar written by build_session_viewer.py earlier in the same run_all.sh
+# cycle: the most recent date we actually have real (played) results for.
+# Lets the default-date logic below roll forward based on real data instead
+# of guessing by wall-clock time.
+LATEST_RESULTS_FILE = Path(__file__).resolve().parent.parent / "output" / "latest_results_date.txt"
+
 
 HTML_TEMPLATE = """\
 <!DOCTYPE html>
@@ -138,6 +144,7 @@ td { padding: 4px 9px; border: 1px solid #e4e4e4; overflow-wrap: break-word; }
 const DATA = %%JSON%%;
 const DATES = %%DATES%%;
 const NO_SHOOTOUT_DATES = new Set(%%NO_SHOOTOUT_DATES%%);
+const LATEST_RESULTS_DATE = %%LATEST_RESULTS_DATE%%;
 const MIN_PLAYERS_FOR_SHOOTOUT = 8;
 
 function isWeekend(dateObj) {
@@ -341,12 +348,28 @@ document.querySelectorAll('.tab-btn').forEach(b => {
 
 const sel = document.getElementById('date-select');
 
-// Determine "today" and whether the 8:15 AM cutoff has passed, in Mountain
-// Standard Time (MST — America/Phoenix, no DST, matches the run_all.sh scrape cutoff).
-// Before 8:15 AM on a play date, that date's session hasn't been played yet,
-// so it still counts as the next play date. After 8:15 AM, it's considered
-// played and the default should roll forward to the following date.
-function arizonaNow() {
+// Determine the true "next play date" as the default selection, WITHOUT
+// removing any dates from the dropdown -- full history stays browsable,
+// same convention as the Session Viewer. DATES is sorted descending
+// (newest first) server-side, so we sort a local ascending copy just for
+// this lookup rather than relying on DATES' own order.
+const ascendingDates = [...DATES].sort();
+
+let defaultDate;
+if (LATEST_RESULTS_DATE) {
+  // Data-driven rollover: once real results exist for a date (the same
+  // "latest results" value the Leaderboard/Session Viewer roll forward on),
+  // the default jumps to the next play date after it. Matches those pages'
+  // behavior instead of guessing by wall-clock time, so all three roll
+  // forward together the moment a day's results actually land -- whether
+  // that's 7:05 AM or 9 AM -- rather than waiting on a fixed cutoff.
+  // Skip logged no-shootout dates: a cancelled day is never the "next play date".
+  defaultDate = ascendingDates.find(d => !NO_SHOOTOUT_DATES.has(d) && d > LATEST_RESULTS_DATE);
+} else {
+  // Sidecar file missing/empty (e.g. build_session_viewer.py hasn't run yet
+  // this cycle) -- fall back to the old wall-clock heuristic (8:15 AM MST,
+  // matching the run_all.sh scrape-availability cutoff) so the page still
+  // picks a sensible default instead of breaking.
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Phoenix',
     year: 'numeric', month: '2-digit', day: '2-digit',
@@ -354,26 +377,13 @@ function arizonaNow() {
   }).formatToParts(new Date());
   const map = {};
   parts.forEach(p => { map[p.type] = p.value; });
-  return {
-    dateStr: `${map.year}-${map.month}-${map.day}`,
-    hour: parseInt(map.hour, 10),
-    minute: parseInt(map.minute, 10)
-  };
+  const azDateStr = `${map.year}-${map.month}-${map.day}`;
+  const azHour = parseInt(map.hour, 10);
+  const azMinute = parseInt(map.minute, 10);
+  const cutoffPassed = (azHour > 8) || (azHour === 8 && azMinute >= 15);
+  defaultDate = ascendingDates.find(d => !NO_SHOOTOUT_DATES.has(d) &&
+    (d > azDateStr || (d === azDateStr && !cutoffPassed)));
 }
-
-const az = arizonaNow();
-const cutoffPassed = (az.hour > 8) || (az.hour === 8 && az.minute >= 15);
-
-// Determine the true "next play date" as the default selection, WITHOUT
-// removing any dates from the dropdown -- full history stays browsable,
-// same convention as the Session Viewer. DATES is sorted descending
-// (newest first) server-side, so we sort a local ascending copy just for
-// this lookup rather than relying on DATES' own order.
-const ascendingDates = [...DATES].sort();
-// Skip logged no-shootout dates: a cancelled day is never the "next play date",
-// even before the 8:15 AM cutoff.
-let defaultDate = ascendingDates.find(d => !NO_SHOOTOUT_DATES.has(d) &&
-  (d > az.dateStr || (d === az.dateStr && !cutoffPassed)));
 if (!defaultDate) {
   // No future date on file (e.g. history hasn't caught up yet) -- fall
   // back to the most recent date available (DATES[0], since it's
@@ -448,6 +458,11 @@ def generate_viewer() -> Optional[Path]:
             no_shootout_dates = [row["date"] for row in reader if row.get("date")]
 
     html = html.replace("%%NO_SHOOTOUT_DATES%%", json.dumps(no_shootout_dates))
+
+    latest_results_date = ""
+    if LATEST_RESULTS_FILE.exists():
+        latest_results_date = LATEST_RESULTS_FILE.read_text(encoding="utf-8").strip()
+    html = html.replace("%%LATEST_RESULTS_DATE%%", json.dumps(latest_results_date))
 
     # Inject dropdown options via the empty <select> the JS fills at runtime —
     # simplest to just set them server-side too so the first render has a value.

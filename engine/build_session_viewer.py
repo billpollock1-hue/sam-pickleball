@@ -97,6 +97,11 @@ latest_date  = dates_sorted[-1] if dates_sorted else ""
 print(f"Dates included: {len(dates_sorted)}")
 print(f"Latest date: {latest_date}")
 
+# Sidecar file for generate_assignments_viewer.py -- lets the Court
+# Assignments page roll its default date forward based on when real
+# results actually landed, instead of guessing by a fixed wall-clock time.
+(REPO_ROOT / "output" / "latest_results_date.txt").write_text(latest_date, encoding="utf-8")
+
 # ── Build HTML ────────────────────────────────────────────────────────────────
 html = f"""<!DOCTYPE html>
 <html lang="en">

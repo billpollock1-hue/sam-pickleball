@@ -288,7 +288,7 @@ for i, r in enumerate(rows_out, start=1):
     table_rows += f"""
       <tr>
         <td class="rk">{i}</td>
-        <td class="nm">{r['player']}{flag} <span class="bear-log-link" data-player="{r['player']}" title="Bear pool log">📋</span></td>
+        <td class="nm"><span class="bear-log-link player-link" data-player="{r['player']}" title="Bears earned">{r['player']}</span>{flag} <span class="bear-log-link" data-player="{r['player']}" title="Bears earned">📋</span></td>
         <td>{r['play_dates']}</td>
         <td>{r['leader_2']}</td>
         <td>{r['leader_3']}</td>
@@ -383,6 +383,8 @@ html = f"""<!DOCTYPE html>
 
   .bear-log-link {{ cursor: pointer; font-size: 12px; opacity: 0.55; }}
   .bear-log-link:hover {{ opacity: 1; }}
+  .player-link {{ opacity: 1; font-size: inherit; color: var(--blue-mid); text-decoration: none; }}
+  .player-link:hover {{ text-decoration: underline; }}
 
   .modal-overlay {{ position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2000;
                      display: flex; align-items: center; justify-content: center; padding: 16px; }}
@@ -396,7 +398,9 @@ html = f"""<!DOCTYPE html>
                    color: #8a97a8; cursor: pointer; padding: 0 4px; }}
   .modal-close:hover {{ color: var(--blue-dark); }}
   .modal-body {{ padding: 12px 18px 18px; }}
-  .modal-body .no-data {{ font-size: 13px; color: #8a97a8; text-align: center; padding: 20px 0; }}
+  .modal-body .no-data {{ font-size: 13px; color: #8a97a8; text-align: center; padding: 8px 0 16px; }}
+  .bear-log-section {{ font-size: 13px; font-weight: 700; color: var(--blue-dark); margin: 14px 0 6px; }}
+  .bear-log-section:first-child {{ margin-top: 0; }}
 
   .hist-table {{ width: 100%; border-collapse: collapse; font-size: 12.5px; box-shadow: none; }}
   .hist-table th {{ background: var(--blue-light); color: var(--blue-dark); position: static;
@@ -491,32 +495,51 @@ const PLAYER_DETAIL = {player_detail_json};
 
 function showHistory(name) {{
   const rows = (PLAYER_DETAIL[name] || []).slice().reverse();
-  document.getElementById('historyModalTitle').textContent = name + ' — Bear Log';
+  document.getElementById('historyModalTitle').textContent = name + ' — Bears Earned';
 
-  const body = document.getElementById('historyModalBody');
-  if (rows.length === 0) {{
-    body.innerHTML = '<p class="no-data">No pool data available yet.</p>';
+  // "Actual bears earned" only -- pickle bears listed separately from shootout
+  // bears, and a male pool leader with only 2 wins (shootout_bear == false)
+  // is excluded entirely rather than shown as an informational non-bear row.
+  const pickleRows = rows.filter(r => r.pickle_bears > 0);
+  const shootoutRows = rows.filter(r => r.shootout_bear);
+
+  let h = '<h4 class="bear-log-section">🥒 Pickle Bears</h4>';
+  if (pickleRows.length === 0) {{
+    h += '<p class="no-data">No pickle bears yet.</p>';
   }} else {{
-    let h = `<table class="hist-table"><thead><tr>
-      <th>Date</th><th>Sht</th><th>Pool</th><th>Wins</th><th>Pool Leader</th><th>Bears</th>
+    h += `<table class="hist-table"><thead><tr>
+      <th>Date</th><th>Sht</th><th>Pool</th><th>Pickle Bears</th>
     </tr></thead><tbody>`;
-    rows.forEach(r => {{
-      let bears = '';
-      if (r.pickle_bears > 0) bears += '🥒'.repeat(r.pickle_bears);
-      if (r.shootout_bear) bears += `<span class="tr-badge">🏆<span class="tr-num">${{r.wins}}</span></span>`;
-      if (!bears) bears = '—';
+    pickleRows.forEach(r => {{
+      h += `<tr>
+        <td>${{r.date}}</td>
+        <td>${{r.shootout}}</td>
+        <td>${{r.pool}}</td>
+        <td>${{'🥒'.repeat(r.pickle_bears)}}</td>
+      </tr>`;
+    }});
+    h += '</tbody></table>';
+  }}
+
+  h += '<h4 class="bear-log-section">🏆 Shootout Bears</h4>';
+  if (shootoutRows.length === 0) {{
+    h += '<p class="no-data">No shootout bears yet.</p>';
+  }} else {{
+    h += `<table class="hist-table"><thead><tr>
+      <th>Date</th><th>Sht</th><th>Pool</th><th>Wins</th>
+    </tr></thead><tbody>`;
+    shootoutRows.forEach(r => {{
       h += `<tr>
         <td>${{r.date}}</td>
         <td>${{r.shootout}}</td>
         <td>${{r.pool}}</td>
         <td>${{r.wins}}/3</td>
-        <td>${{r.leader ? 'Yes' : '—'}}</td>
-        <td>${{bears}}</td>
       </tr>`;
     }});
     h += '</tbody></table>';
-    body.innerHTML = h;
   }}
+
+  document.getElementById('historyModalBody').innerHTML = h;
   document.getElementById('historyModal').style.display = 'flex';
 }}
 

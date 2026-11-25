@@ -525,6 +525,11 @@ else
   cycle_step "5c2. Building Ratings Change page"
   python3 engine/build_compare_ratings_html.py
 
+  echo ""
+  echo "5c4. Building History File Adjustments page..."
+  cycle_step "5c4. Building History File Adjustments page"
+  python3 engine/build_history_adjustments.py
+
   # Only record success now that every rebuild step above has
   # actually completed -- if any step above failed, the script
   # would have already exited (set -e) before reaching this line,
@@ -552,6 +557,7 @@ cp output/leaderboard.html docs/
 cp output/data_status.json docs/
 cp output/compare_ratings.html docs/
 cp output/bear_count.html docs/
+cp output/history_adjustments.html docs/
 cp assignments/output/court_assignments_viewer.html docs/court_assignments.html
 # storybook.html intentionally excluded from docs/ sync while still in development
 
